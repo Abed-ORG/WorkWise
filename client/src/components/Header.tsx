@@ -33,7 +33,21 @@ export default function Header({ onMenuToggle }: HeaderProps) {
       </div>
 
       <div className="topbar-actions">
-        <div className="search-pill"><Icon name="search" size={16} /> Search anything...</div>
+        <input
+          className="search-pill"
+          placeholder="Search anything..."
+          value={location.pathname === '/tasks' ? new URLSearchParams(location.search).get('q') ?? '' : ''}
+          onChange={(event) => {
+           const value = event.target.value;
+
+          if (location.pathname !== '/tasks') {
+            navigate(`/tasks?q=${encodeURIComponent(value)}`);
+            return;
+          }
+
+          navigate(value ? `/tasks?q=${encodeURIComponent(value)}` : '/tasks');
+        }}
+        />
         <ThemeToggle />
         <button className="icon-button notification-button" type="button" aria-label="Notifications"><Icon name="bell" size={18} /></button>
         <Dropdown
