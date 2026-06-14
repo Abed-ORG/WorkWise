@@ -424,6 +424,8 @@ textarea.field-control { resize: vertical; }
 .profile-stat { min-width: 110px; padding: 13px; border-radius: 13px; background: var(--surface-muted); }
 .profile-stat strong { display: block; font-size: 18px; }
 .profile-stat span { color: var(--text-subtle); font-size: 10px; }
+.profile-edit-action { display: flex; justify-content: flex-end; margin-top: 18px; }
+.avatar-upload-row { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; }
 
 .section-kicker { margin: 0 0 5px; color: #9d8200; font-size: 10px; font-weight: 800; letter-spacing: .13em; text-transform: uppercase; }
 [data-theme='dark'] .section-kicker { color: var(--primary-strong); }
@@ -486,6 +488,8 @@ textarea.field-control { resize: vertical; }
 .backlog-table tbody tr { transition: background .2s ease; }
 .backlog-table tbody tr:hover td { background: color-mix(in srgb, var(--primary) 4%, var(--surface)); }
 .backlog-table tbody tr.is-selected td { background: color-mix(in srgb, var(--primary) 9%, var(--surface)); }
+.task-table-link { padding: 0; border: 0; color: var(--text); background: transparent; font: inherit; font-weight: 760; text-align: left; cursor: pointer; }
+.task-table-link:hover { color: var(--primary-strong); }
 .backlog-table input[type='checkbox'] { width: 15px; height: 15px; margin: 0; accent-color: var(--primary-strong); }
 .checkbox-cell { width: 42px; text-align: center !important; }
 .task-table-title { color: var(--text); font-size: 12px; font-weight: 720; }
@@ -520,6 +524,9 @@ textarea.field-control { resize: vertical; }
 .dropdown-item:hover, .dropdown-item:focus { color: var(--text); background: var(--surface-hover); }
 .modal-backdrop { background: rgba(0,0,0,.58); backdrop-filter: blur(4px); }
 .modal-panel { border: 1px solid var(--border); border-radius: 20px; background: var(--surface-raised); box-shadow: var(--shadow-hover); animation: modal-in .22s ease both; }
+.form-grid-2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.page-actions { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; }
+.project-team-card { margin-top: 22px; }
 
 .skeleton { border-radius: 10px; background: linear-gradient(90deg, var(--surface-muted) 25%, var(--surface-hover) 50%, var(--surface-muted) 75%); background-size: 200% 100%; animation: shimmer 1.4s infinite; }
 .animate-enter { animation: enter .45s cubic-bezier(.2,.7,.2,1) both; }
@@ -576,6 +583,7 @@ textarea.field-control { resize: vertical; }
 }
 
 @media (max-width: 620px) {
+  .form-grid-2 { grid-template-columns: 1fr; }
   .app-content { padding: 24px 16px 38px; }
   .topbar { height: 68px; padding: 0 16px; }
   .topbar-kicker, .profile-copy, .topbar .notification-button { display: none; }

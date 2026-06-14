@@ -1,6 +1,9 @@
 import { Router } from "express";
 import {
   createTaskController,
+  deleteTaskController,
+  getAssignedTasksController,
+  getProjectTasksController,
   getTaskByIdController,
   updateTaskController,
 } from "../controllers/task.controller";
@@ -8,7 +11,7 @@ import { createCommentController } from "../controllers/comment.controller";
 import { commentSchema } from "../validators/comment.validator";
 import { authenticate } from "../middleware/auth.middleware";
 import { validateBody } from "../middleware/validate.middleware";
-import { createTaskSchema } from "../validators/task.validator";
+import { createTaskSchema, updateTaskSchema } from "../validators/task.validator";
 
 const router = Router();
 
@@ -19,9 +22,12 @@ router.post(
   createTaskController
 );
 
+router.get("/assigned/me", authenticate, getAssignedTasksController);
+router.get("/project/:projectId", authenticate, getProjectTasksController);
 router.get("/:id", authenticate, getTaskByIdController);
 
-router.patch("/:id", authenticate, updateTaskController);
+router.patch("/:id", authenticate, validateBody(updateTaskSchema), updateTaskController);
+router.delete("/:id", authenticate, deleteTaskController);
 router.post(
   "/:id/comments",
   authenticate,

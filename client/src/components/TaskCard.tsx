@@ -7,6 +7,7 @@ interface TaskCardProps {
   dragging?: boolean;
   onDragStart: (event: DragEvent<HTMLElement>) => void;
   onDragEnd: () => void;
+  onClick?: () => void;
 }
 
 function getInitials(name?: string) {
@@ -19,13 +20,15 @@ function getInitials(name?: string) {
     .toUpperCase();
 }
 
-export default function TaskCard({ task, dragging = false, onDragStart, onDragEnd }: TaskCardProps) {
+export default function TaskCard({ task, dragging = false, onDragStart, onDragEnd, onClick }: TaskCardProps) {
   return (
     <article
       className={`task-card priority-${task.priority.toLowerCase()}${dragging ? ' is-dragging' : ''}`}
       draggable
       onDragStart={onDragStart}
       onDragEnd={onDragEnd}
+      onClick={onClick}
+      onKeyDown={(event) => { if (onClick && (event.key === 'Enter' || event.key === ' ')) onClick(); }}
       tabIndex={0}
       aria-label={`${task.title}, ${task.priority.toLowerCase()} priority`}
     >

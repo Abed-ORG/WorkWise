@@ -1,36 +1,60 @@
 import apiClient from './apiClient';
 
-export type TaskStatus =
-  | 'BACKLOG'
-  | 'TODO'
-  | 'IN_PROGRESS'
-  | 'IN_REVIEW'
-  | 'DONE';
+export type TaskStatus = 'BACKLOG' | 'TODO' | 'IN_PROGRESS' | 'IN_REVIEW' | 'DONE';
+export type TaskPriority = 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT';
+
+export interface TaskUser {
+  id: string;
+  name: string;
+  email: string;
+  avatarUrl?: string;
+}
 
 export interface Task {
   id: string;
   title: string;
-  priority: string;
+  description?: string;
+  priority: TaskPriority;
   status: TaskStatus;
-  assignee?: {
-    id: string;
-    name: string;
-    email: string;
-  } | null;
+  labels: string[];
+  dueDate?: string | null;
+  projectId: string;
+  project?: { id: string; name: string; key: string };
+  assignee?: TaskUser | null;
+  creator?: TaskUser;
 }
 
 export interface CreateTaskPayload {
   title: string;
   description?: string;
-  priority?: 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT';
+  priority?: TaskPriority;
+  labels?: string[];
+  dueDate?: string;
   projectId: string;
+  sprintId?: string;
+  assigneeId?: string;
 }
 
-export async function createTask(payload: CreateTaskPayload): Promise<void> {
-  await apiClient.post('/tasks', payload);
+export async function createTask(payload: CreateTaskPayload): Promise<Task> {
+  const response = await apiClient.post('/tasks', payload);
+  return response.data.data;
 }
 
-export async function updateTaskStatus(taskId: string, status: TaskStatus) {
+export async function getProjectTasks(projectId: string): Promise<Task[]> {
+  const response = await apiClient.get(`/tasks/project/${projectId}`);
+  return response.data.data;
+}
+
+export async function getAssignedTasks(): Promise<Task[]> {
+  const response = await apiClient.get('/tasks/assigned/me');
+  return response.data.data;
+}
+
+export async function updateTaskStatus(taskId: string, status: TaskStatus): Promise<Task> {
   const response = await apiClient.patch(`/tasks/${taskId}`, { status });
-  return response.data;
+  return response.data.data;
+}
+
+export async function deleteTask(taskId: string): Promise<void> {
+  await apiClient.delete(`/tasks/${taskId}`);
 }
