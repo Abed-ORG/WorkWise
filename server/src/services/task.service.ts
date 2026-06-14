@@ -1,6 +1,22 @@
-import { TaskPriority, TaskStatus } from "@prisma/client";
+import { Role, TaskPriority, TaskStatus } from "@prisma/client";
 import prisma from "../utils/prisma";
 import { NotFoundError } from "../errors/NotFoundError";
+import { AppError } from "../errors/AppError";
+
+const taskSummaryInclude = {
+  project: { select: { id: true, name: true, key: true } },
+  assignee: { select: { id: true, name: true, email: true, avatarUrl: true } },
+  creator: { select: { id: true, name: true, email: true } },
+} as const;
+
+const requireProjectMember = async (projectId: string, userId: string) => {
+  const member = await prisma.projectMember.findUnique({
+    where: { userId_projectId: { userId, projectId } },
+  });
+
+  if (!member) throw new NotFoundError("Project not found");
+  return member;
+};
 
 export interface CreateTaskInput {
   title: string;
@@ -95,7 +111,26 @@ export const createTask = async (input: CreateTaskInput) => {
     },
   });
 };
-export const getTaskById = async (taskId: string) => {
+export const getProjectTasks = async (projectId: string, userId: string) => {
+  await requireProjectMember(projectId, userId);
+
+  return prisma.task.findMany({
+    where: { projectId },
+    include: taskSummaryInclude,
+    orderBy: [{ order: "asc" }, { createdAt: "desc" }],
+  });
+};
+
+export const getAssignedTasks = async (userId: string) => prisma.task.findMany({
+  where: {
+    assigneeId: userId,
+    project: { members: { some: { userId } } },
+  },
+  include: taskSummaryInclude,
+  orderBy: [{ dueDate: "asc" }, { createdAt: "desc" }],
+});
+
+export const getTaskById = async (taskId: string, userId: string) => {
   const task = await prisma.task.findUnique({
     where: {
       id: taskId,
@@ -163,6 +198,8 @@ export const getTaskById = async (taskId: string) => {
     throw new NotFoundError("Task not found");
   }
 
+  await requireProjectMember(task.projectId, userId);
+
   return task;
 };
 export interface UpdateTaskInput {
@@ -188,6 +225,12 @@ export const updateTask = async (
     throw new NotFoundError("Task not found");
   }
 
+  await requireProjectMember(existingTask.projectId, input.userId);
+
+  if (input.assigneeId) {
+    await requireProjectMember(existingTask.projectId, input.assigneeId);
+  }
+
   const updatedTask = await prisma.task.update({
     where: { id: taskId },
     data: {
@@ -211,4 +254,16 @@ export const updateTask = async (
   });
 
   return updatedTask;
+};
+
+export const deleteTask = async (taskId: string, userId: string) => {
+  const task = await prisma.task.findUnique({ where: { id: taskId } });
+  if (!task) throw new NotFoundError("Task not found");
+
+  const member = await requireProjectMember(task.projectId, userId);
+  if (member.role !== Role.ADMIN) {
+    throw new AppError("Only project admins can delete tasks", 403);
+  }
+
+  await prisma.task.delete({ where: { id: taskId } });
 };

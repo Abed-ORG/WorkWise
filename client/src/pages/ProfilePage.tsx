@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import PageHeader from '../components/PageHeader';
 import Icon from '../components/Icon';
@@ -9,6 +9,40 @@ import { useAuth } from '../hooks/useAuth';
 import { useToast } from '../hooks/useToast';
 
 interface FormState { name: string; avatarUrl: string; }
+
+const MAX_AVATAR_FILE_SIZE = 5 * 1024 * 1024;
+const AVATAR_SIZE = 256;
+
+function resizeAvatar(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    const objectUrl = URL.createObjectURL(file);
+
+    image.onload = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = AVATAR_SIZE;
+      canvas.height = AVATAR_SIZE;
+      const context = canvas.getContext('2d');
+      if (!context) {
+        URL.revokeObjectURL(objectUrl);
+        reject(new Error('Canvas is unavailable'));
+        return;
+      }
+
+      const sourceSize = Math.min(image.naturalWidth, image.naturalHeight);
+      const sourceX = (image.naturalWidth - sourceSize) / 2;
+      const sourceY = (image.naturalHeight - sourceSize) / 2;
+      context.drawImage(image, sourceX, sourceY, sourceSize, sourceSize, 0, 0, AVATAR_SIZE, AVATAR_SIZE);
+      URL.revokeObjectURL(objectUrl);
+      resolve(canvas.toDataURL('image/jpeg', 0.78));
+    };
+    image.onerror = () => {
+      URL.revokeObjectURL(objectUrl);
+      reject(new Error('Invalid image'));
+    };
+    image.src = objectUrl;
+  });
+}
 
 function getInitials(name: string): string {
   const parts = name.trim().split(/\s+/).filter(Boolean);
@@ -27,6 +61,8 @@ export default function ProfilePage() {
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState<FormState>({ name: '', avatarUrl: '' });
   const [nameError, setNameError] = useState('');
+  const [avatarError, setAvatarError] = useState('');
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     getMyProfile()
@@ -60,7 +96,28 @@ export default function ProfilePage() {
   function handleCancel() {
     if (profile) setForm({ name: profile.name, avatarUrl: profile.avatarUrl ?? '' });
     setNameError('');
+    setAvatarError('');
     setEditing(false);
+  }
+
+  async function handleAvatarChange(file?: File) {
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      setAvatarError('Please choose an image file.');
+      return;
+    }
+    if (file.size > MAX_AVATAR_FILE_SIZE) {
+      setAvatarError('Choose an image smaller than 5 MB.');
+      return;
+    }
+
+    try {
+      const avatarUrl = await resizeAvatar(file);
+      setForm((current) => ({ ...current, avatarUrl }));
+      setAvatarError('');
+    } catch {
+      setAvatarError('This image could not be processed.');
+    }
   }
 
   if (loading) return <div className="empty-panel"><Spinner size="lg" /><p className="mt-4">Loading your profile...</p></div>;
@@ -73,7 +130,9 @@ export default function ProfilePage() {
         <section className="app-card profile-hero">
           <div className="profile-identity">
             <div className="profile-avatar">
-              {profile.avatarUrl ? <img src={profile.avatarUrl} alt={profile.name} /> : getInitials(profile.name)}
+              {(editing ? form.avatarUrl : profile.avatarUrl)
+                ? <img src={(editing ? form.avatarUrl : profile.avatarUrl) ?? ''} alt={profile.name} />
+                : getInitials(profile.name)}
             </div>
             <div><h2>{profile.name}</h2><p>{profile.email}</p></div>
           </div>
@@ -91,11 +150,19 @@ export default function ProfilePage() {
           {editing ? (
             <div className="form-stack">
               <Input label="Full name" value={form.name} onChange={(event) => { setForm((current) => ({ ...current, name: event.target.value })); setNameError(''); }} error={nameError} autoFocus />
-              <Input label="Avatar URL" type="url" placeholder="https://example.com/avatar.jpg" value={form.avatarUrl} onChange={(event) => setForm((current) => ({ ...current, avatarUrl: event.target.value }))} helperText="Optional. Paste a direct link to your profile picture." />
+              <div className="field">
+                <label className="field-label" htmlFor="avatar-upload">Profile picture</label>
+                <input ref={fileInputRef} id="avatar-upload" className="sr-only" type="file" accept="image/png,image/jpeg,image/webp" onChange={(event) => handleAvatarChange(event.target.files?.[0])} />
+                <div className="avatar-upload-row">
+                  <Button variant="secondary" onClick={() => fileInputRef.current?.click()}><Icon name="user" size={16} /> Choose from device</Button>
+                  {form.avatarUrl && <Button variant="ghost" onClick={() => { setForm((current) => ({ ...current, avatarUrl: '' })); if (fileInputRef.current) fileInputRef.current.value = ''; }}>Remove picture</Button>}
+                </div>
+                <p className={`field-help${avatarError ? ' field-error' : ''}`}>{avatarError || 'JPG, PNG, or WebP. The image is cropped and resized automatically.'}</p>
+              </div>
               <div className="flex gap-2"><Button loading={saving} onClick={handleSave}>Save changes</Button><Button variant="secondary" onClick={handleCancel} disabled={saving}>Cancel</Button></div>
             </div>
           ) : (
-            <div className="flex justify-end"><Button variant="secondary" onClick={() => setEditing(true)}><Icon name="user" size={16} /> Edit profile</Button></div>
+            <div className="profile-edit-action"><Button variant="secondary" onClick={() => setEditing(true)}><Icon name="user" size={16} /> Edit profile</Button></div>
           )}
         </section>
 
