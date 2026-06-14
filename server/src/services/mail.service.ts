@@ -1,4 +1,5 @@
 import { env } from "../config/env";
+import nodemailer from "nodemailer";
 
 interface ProjectInvitationEmail {
   to: string;
@@ -35,10 +36,33 @@ const escapeHtml = (value: string) => value
   .replace(/'/g, "&#039;");
 
 const sendMail = async ({ to, subject, text, html }: EmailMessage) => {
-  const { resendApiKey, from } = env.email;
-  if (!resendApiKey) throw new Error("MAIL_NOT_CONFIGURED");
+  const { resendApiKey, from, smtp } = env.email;
+  const smtpConfigured = Boolean(smtp.host && smtp.user && smtp.pass && smtp.from);
+
+  if (!smtpConfigured && !resendApiKey) throw new Error("MAIL_NOT_CONFIGURED");
 
   try {
+    if (smtpConfigured) {
+      const transporter = nodemailer.createTransport({
+        host: smtp.host,
+        port: smtp.port,
+        secure: smtp.secure,
+        auth: {
+          user: smtp.user,
+          pass: smtp.pass,
+        },
+      });
+
+      await transporter.sendMail({
+        from: smtp.from,
+        to,
+        subject,
+        text,
+        html,
+      });
+      return;
+    }
+
     const response = await fetch("https://api.resend.com/emails", {
       method: "POST",
       headers: {

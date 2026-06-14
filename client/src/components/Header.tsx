@@ -87,11 +87,15 @@ export default function Header({ onMenuToggle }: HeaderProps) {
   }, [navigate]);
 
   function handleSearchChange(value: string) {
-    setSearchParams((current) => {
-      const next = new URLSearchParams(current);
-      if (value) next.set('q', value);
-      else next.delete('q');
-      return next;
+    if (location.pathname !== '/tasks') {
+      navigate(value ? `/tasks?q=${encodeURIComponent(value)}` : '/tasks');
+      return;
+     }
+      setSearchParams((current) => {
+        const next = new URLSearchParams(current);
+        if (value) next.set('q', value);
+        else next.delete('q');
+        return next;
     });
   }
 
@@ -107,33 +111,35 @@ export default function Header({ onMenuToggle }: HeaderProps) {
             <div className="topbar-title">{pageTitle}</div>
           </div>
         </div>
+      <div className="topbar-actions">
+        <label className="search-pill" aria-label="Workspace search">
+          <Icon name="search" size={16} />
+          <input
+            ref={searchInputRef}
+            type="search"
+            value={location.pathname === '/tasks' ? search : ''}
+            onChange={(event) => handleSearchChange(event.target.value)}
+            placeholder="Search anything..."
+          />
+          <kbd>/</kbd>
+        </label>
 
-        <div className="topbar-actions">
-          <label className="search-pill" aria-label="Workspace search">
-            <Icon name="search" size={16} />
-            <input
-              ref={searchInputRef}
-              type="search"
-              value={search}
-              onChange={(event) => handleSearchChange(event.target.value)}
-              placeholder="Search anything..."
-            />
-            <kbd>/</kbd>
-          </label>
-          <ThemeToggle />
-          <button className="icon-button notification-button" type="button" aria-label="Notifications"><Icon name="bell" size={18} /></button>
-          <Dropdown
-            align="right"
-            trigger={
-              <span className="profile-trigger">
-                <span className="avatar">{user.avatarUrl ? <img src={user.avatarUrl} alt="" /> : user.initials}</span>
-                <span className="profile-copy">
-                  <span className="profile-name">{user.name}</span>
-                  <span className="profile-role">Workspace member</span>
-                </span>
-                <Icon name="chevron-down" size={15} />
+        <ThemeToggle />
+        <button className="icon-button notification-button" type="button" aria-label="Notifications">
+          <Icon name="bell" size={18} />
+        </button>
+        <Dropdown
+          align="right"
+          trigger={
+            <span className="profile-trigger">
+              <span className="avatar">{user.avatarUrl ? <img src={user.avatarUrl} alt="" /> : user.initials}</span>
+              <span className="profile-copy">
+                <span className="profile-name">{user.name}</span>
+                <span className="profile-role">Workspace member</span>
               </span>
-            }
+              <Icon name="chevron-down" size={15} />
+            </span>
+          }
             items={[
               { label: 'View profile', onSelect: () => navigate('/profile') },
               { label: 'Sign out', onSelect: logout },

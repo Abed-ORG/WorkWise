@@ -27,5 +27,13 @@ export const env = {
   email: {
     resendApiKey: process.env.RESEND_API_KEY?.trim(),
     from: process.env.EMAIL_FROM || "WorkWise <onboarding@resend.dev>",
+    smtp: {
+      host: process.env.SMTP_HOST?.trim(),
+      port: Number(process.env.SMTP_PORT || 587),
+      secure: process.env.SMTP_SECURE === "true",
+      user: process.env.SMTP_USER?.trim(),
+      pass: process.env.SMTP_PASS?.trim(),
+      from: process.env.MAIL_FROM?.trim() || process.env.EMAIL_FROM?.trim(),
+    },
   },
 };
