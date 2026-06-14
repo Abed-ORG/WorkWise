@@ -15,7 +15,12 @@ const FOCUSABLE_SELECTOR =
 
 export default function Modal({ isOpen, onClose, title, children, className = '' }: ModalProps) {
   const dialogRef = useRef<HTMLDivElement>(null);
+  const onCloseRef = useRef(onClose);
   const titleId = useId();
+
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  }, [onClose]);
 
   // Focus trap, Escape-to-close, and body scroll lock — only need to run while open.
   useEffect(() => {
@@ -29,7 +34,7 @@ export default function Modal({ isOpen, onClose, title, children, className = ''
     function handleKeyDown(event: KeyboardEvent) {
       if (event.key === 'Escape') {
         event.preventDefault();
-        onClose();
+        onCloseRef.current();
         return;
       }
 
@@ -59,7 +64,7 @@ export default function Modal({ isOpen, onClose, title, children, className = ''
       document.body.style.overflow = previousOverflow;
       previouslyFocused?.focus();
     };
-  }, [isOpen, onClose]);
+  }, [isOpen]);
 
   if (!isOpen) return null;
 

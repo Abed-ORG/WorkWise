@@ -60,7 +60,7 @@ export default function RegisterPage() {
   }
 
   return (
-    <AuthLayout>
+    <AuthLayout compact>
       <p className="auth-kicker">Start building clearly</p>
       <h1 className="auth-title">Create your workspace</h1>
       <p className="auth-subtitle">Already have an account? <Link to="/login">Sign in</Link></p>
