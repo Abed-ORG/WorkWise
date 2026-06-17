@@ -5,7 +5,14 @@ import type { LoginPayload, RegisterPayload, User } from '../services/authServic
 export interface AuthState {
   isAuthenticated: boolean;
   isInitializing: boolean;
-  user: { id: string; name: string; email: string; initials: string; avatarUrl?: string | null };
+  user: {
+    id: string;
+    name: string;
+    email: string;
+    initials: string;
+    avatarUrl?: string | null;
+    notificationPreference?: User['notificationPreference'];
+  };
   login: (payload: LoginPayload) => Promise<void>;
   register: (payload: RegisterPayload) => Promise<void>;
   updateUser: (user: User) => void;
@@ -36,6 +43,7 @@ export function useAuth(): AuthState {
       email: user?.email ?? '',
       initials: user ? getInitials(user.name) : '',
       avatarUrl: user?.avatarUrl,
+      notificationPreference: user?.notificationPreference,
     },
     login,
     register,

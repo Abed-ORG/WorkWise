@@ -4,6 +4,7 @@ import { useAuth } from '../hooks/useAuth';
 import Dropdown from './ui/Dropdown';
 import Modal from './ui/Modal';
 import Icon from './Icon';
+import NotificationBell from './NotificationBell';
 import ThemeToggle from './ThemeToggle';
 
 interface HeaderProps { onMenuToggle: () => void; }
@@ -125,9 +126,7 @@ export default function Header({ onMenuToggle }: HeaderProps) {
         </label>
 
         <ThemeToggle />
-        <button className="icon-button notification-button" type="button" aria-label="Notifications">
-          <Icon name="bell" size={18} />
-        </button>
+        <NotificationBell />
         <Dropdown
           align="right"
           trigger={

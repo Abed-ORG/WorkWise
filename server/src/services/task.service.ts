@@ -1,7 +1,10 @@
-import { Role, TaskPriority, TaskStatus } from "@prisma/client";
+import { NotificationType, Role, TaskPriority, TaskStatus } from "@prisma/client";
 import prisma from "../utils/prisma";
 import { NotFoundError } from "../errors/NotFoundError";
 import { AppError } from "../errors/AppError";
+import { emitProjectEvent } from "./realtime.service";
+import { createNotification, notifyProjectMembers } from "./notification.service";
+import { createProjectActivity } from "./activity.service";
 
 const taskSummaryInclude = {
   project: { select: { id: true, name: true, key: true } },
@@ -67,7 +70,7 @@ export const createTask = async (input: CreateTaskInput) => {
     }
   }
 
-  return prisma.task.create({
+  const task = await prisma.task.create({
     data: {
       title: input.title,
       description: input.description,
@@ -80,36 +83,35 @@ export const createTask = async (input: CreateTaskInput) => {
       assigneeId: input.assigneeId,
       creatorId: input.creatorId,
     },
-    include: {
-      project: {
-        select: {
-          id: true,
-          name: true,
-          key: true,
-        },
-      },
-      sprint: {
-        select: {
-          id: true,
-          name: true,
-        },
-      },
-      assignee: {
-        select: {
-          id: true,
-          name: true,
-          email: true,
-        },
-      },
-      creator: {
-        select: {
-          id: true,
-          name: true,
-          email: true,
-        },
-      },
+    include: taskSummaryInclude,
+  });
+
+  await prisma.taskActivity.create({
+    data: {
+      taskId: task.id,
+      userId: input.creatorId,
+      action: "TASK_CREATED",
+      details: `Created task "${task.title}"`,
     },
   });
+  await createProjectActivity({
+    projectId: task.projectId,
+    userId: input.creatorId,
+    action: "TASK_CREATED",
+    target: task.title,
+    details: `Created ${task.project.key}-${task.id.slice(-4)}`,
+  });
+
+  if (task.assigneeId && task.assigneeId !== input.creatorId) {
+    await createNotification({
+      userId: task.assigneeId,
+      type: NotificationType.TASK_ASSIGNED,
+      message: `You were assigned to "${task.title}" in ${task.project.name}.`,
+    });
+  }
+
+  emitProjectEvent(task.projectId, "task:created", task);
+  return task;
 };
 export const getProjectTasks = async (projectId: string, userId: string) => {
   await requireProjectMember(projectId, userId);
@@ -242,16 +244,53 @@ export const updateTask = async (
       dueDate: input.dueDate ? new Date(input.dueDate) : undefined,
       assigneeId: input.assigneeId,
     },
+    include: taskSummaryInclude,
   });
 
   await prisma.taskActivity.create({
     data: {
       taskId,
       userId: input.userId,
-      action: "TASK_UPDATED",
-      details: "Task details were updated",
+      action: input.status && input.status !== existingTask.status ? "TASK_MOVED" : "TASK_UPDATED",
+      details: input.status && input.status !== existingTask.status
+        ? `Moved task "${updatedTask.title}" from ${existingTask.status} to ${input.status}`
+        : `Updated task "${updatedTask.title}"`,
     },
   });
+
+  if (input.status && input.status !== existingTask.status) {
+    await createProjectActivity({
+      projectId: existingTask.projectId,
+      userId: input.userId,
+      action: "TASK_MOVED",
+      target: updatedTask.title,
+      details: `${existingTask.status} to ${input.status}`,
+    });
+    await notifyProjectMembers(
+      existingTask.projectId,
+      input.userId,
+      NotificationType.TASK_MOVED,
+      `"${updatedTask.title}" moved to ${input.status.replace("_", " ").toLowerCase()}.`
+    );
+  } else {
+    await createProjectActivity({
+      projectId: existingTask.projectId,
+      userId: input.userId,
+      action: "TASK_UPDATED",
+      target: updatedTask.title,
+      details: "Task details updated",
+    });
+  }
+
+  if (input.assigneeId && input.assigneeId !== existingTask.assigneeId && input.assigneeId !== input.userId) {
+    await createNotification({
+      userId: input.assigneeId,
+      type: NotificationType.TASK_ASSIGNED,
+      message: `You were assigned to "${updatedTask.title}" in ${updatedTask.project.name}.`,
+    });
+  }
+
+  emitProjectEvent(existingTask.projectId, "task:updated", updatedTask);
 
   return updatedTask;
 };

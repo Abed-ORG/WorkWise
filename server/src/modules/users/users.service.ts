@@ -10,6 +10,7 @@ export class UsersService {
         name: true,
         email: true,
         avatarUrl: true,
+        notificationPreference: true,
         onboardingCompleted: true,
         onboardingDismissed: true,
         createdAt: true,
@@ -49,6 +50,7 @@ export class UsersService {
         name: true,
         email: true,
         avatarUrl: true,
+        notificationPreference: true,
       },
     });
 

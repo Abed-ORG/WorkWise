@@ -14,6 +14,7 @@ import ProjectOverviewPage from '../pages/ProjectOverviewPage';
 import TasksPage from '../pages/TasksPage';
 import ForgotPasswordPage from '../pages/ForgotPasswordPage';
 import ResetPasswordPage from '../pages/ResetPasswordPage';
+import ActivityFeedPage from '../pages/ActivityFeedPage';
 
 const router = createBrowserRouter([
   {
@@ -39,6 +40,7 @@ const router = createBrowserRouter([
           { path: '/projects', element: <ProjectsPage /> },
           { path: '/projects/create', element: <CreateProjectPage /> },
           { path: '/projects/:projectId', element: <ProjectOverviewPage /> },
+          { path: '/projects/:projectId/activity', element: <ActivityFeedPage /> },
           { path: '/projects/:projectId/settings', element: <ProjectSettingsPage /> },
           { path: '/tasks', element: <TasksPage /> },
           { path: '/profile', element: <ProfilePage /> },
