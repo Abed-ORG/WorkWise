@@ -232,6 +232,104 @@ export class ProjectsController {
     }
   }
 
+  async getProjectDocuments(req: Request, res: Response) {
+    try {
+      const projectId = String(req.params['projectId']);
+      const userId = String((req as any).user?.userId);
+      const documents = await projectsService.getProjectDocuments(projectId, userId);
+      return res.status(200).json({ success: true, data: documents });
+    } catch (error: any) {
+      if (error.message === 'PROJECT_NOT_FOUND') {
+        return res.status(404).json({ success: false, message: 'Project not found' });
+      }
+      return res.status(500).json({ success: false, message: 'Internal server error' });
+    }
+  }
+
+  async createProjectDocument(req: Request, res: Response) {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ success: false, errors: errors.array() });
+    }
+
+    try {
+      const projectId = String(req.params['projectId']);
+      const userId = String((req as any).user?.userId);
+      const document = await projectsService.createProjectDocument(projectId, userId, {
+        title: req.body.title,
+        content: req.body.content,
+      });
+      return res.status(201).json({ success: true, data: document });
+    } catch (error: any) {
+      if (error.message === 'PROJECT_NOT_FOUND') {
+        return res.status(404).json({ success: false, message: 'Project not found' });
+      }
+      return res.status(500).json({ success: false, message: 'Internal server error' });
+    }
+  }
+
+  async getProjectDocumentById(req: Request, res: Response) {
+    try {
+      const projectId = String(req.params['projectId']);
+      const documentId = String(req.params['documentId']);
+      const userId = String((req as any).user?.userId);
+      const document = await projectsService.getProjectDocumentById(projectId, userId, documentId);
+      return res.status(200).json({ success: true, data: document });
+    } catch (error: any) {
+      if (error.message === 'PROJECT_NOT_FOUND') {
+        return res.status(404).json({ success: false, message: 'Project not found' });
+      }
+      if (error.message === 'DOCUMENT_NOT_FOUND') {
+        return res.status(404).json({ success: false, message: 'Document not found' });
+      }
+      return res.status(500).json({ success: false, message: 'Internal server error' });
+    }
+  }
+
+  async updateProjectDocumentById(req: Request, res: Response) {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ success: false, errors: errors.array() });
+    }
+
+    try {
+      const projectId = String(req.params['projectId']);
+      const documentId = String(req.params['documentId']);
+      const userId = String((req as any).user?.userId);
+      const document = await projectsService.updateProjectDocument(projectId, userId, documentId, {
+        title: req.body.title,
+        content: req.body.content,
+      });
+      return res.status(200).json({ success: true, data: document });
+    } catch (error: any) {
+      if (error.message === 'PROJECT_NOT_FOUND') {
+        return res.status(404).json({ success: false, message: 'Project not found' });
+      }
+      if (error.message === 'DOCUMENT_NOT_FOUND') {
+        return res.status(404).json({ success: false, message: 'Document not found' });
+      }
+      return res.status(500).json({ success: false, message: 'Internal server error' });
+    }
+  }
+
+  async deleteProjectDocument(req: Request, res: Response) {
+    try {
+      const projectId = String(req.params['projectId']);
+      const documentId = String(req.params['documentId']);
+      const userId = String((req as any).user?.userId);
+      await projectsService.deleteProjectDocument(projectId, userId, documentId);
+      return res.status(200).json({ success: true, message: 'Document deleted successfully' });
+    } catch (error: any) {
+      if (error.message === 'PROJECT_NOT_FOUND') {
+        return res.status(404).json({ success: false, message: 'Project not found' });
+      }
+      if (error.message === 'DOCUMENT_NOT_FOUND') {
+        return res.status(404).json({ success: false, message: 'Document not found' });
+      }
+      return res.status(500).json({ success: false, message: 'Internal server error' });
+    }
+  }
+
   async getProjectDocument(req: Request, res: Response) {
     try {
       const projectId = String(req.params['projectId']);

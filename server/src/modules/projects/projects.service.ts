@@ -313,6 +313,78 @@ export class ProjectsService {
     });
   }
 
+  async getProjectDocuments(projectId: string, userId: string) {
+    await this.requireProjectMember(projectId, userId);
+
+    return prisma.document.findMany({
+      where: { projectId },
+      orderBy: [{ updatedAt: 'desc' }, { createdAt: 'desc' }],
+    });
+  }
+
+  async getProjectDocumentById(projectId: string, userId: string, documentId: string) {
+    await this.requireProjectMember(projectId, userId);
+
+    const document = await prisma.document.findFirst({
+      where: { id: documentId, projectId },
+    });
+
+    if (!document) {
+      throw new Error('DOCUMENT_NOT_FOUND');
+    }
+
+    return document;
+  }
+
+  async createProjectDocument(projectId: string, userId: string, data: { title: string; content?: string | null }) {
+    await this.requireProjectMember(projectId, userId);
+
+    return prisma.document.create({
+      data: {
+        title: data.title.trim(),
+        content: data.content ?? '',
+        projectId,
+        authorId: userId,
+      },
+    });
+  }
+
+  async updateProjectDocument(projectId: string, userId: string, documentId: string, data: { title: string; content?: string | null }) {
+    await this.requireProjectMember(projectId, userId);
+
+    const document = await prisma.document.findFirst({
+      where: { id: documentId, projectId },
+    });
+
+    if (!document) {
+      throw new Error('DOCUMENT_NOT_FOUND');
+    }
+
+    return prisma.document.update({
+      where: { id: document.id },
+      data: {
+        title: data.title.trim(),
+        content: data.content ?? '',
+      },
+    });
+  }
+
+  async deleteProjectDocument(projectId: string, userId: string, documentId: string) {
+    await this.requireProjectMember(projectId, userId);
+
+    const document = await prisma.document.findFirst({
+      where: { id: documentId, projectId },
+    });
+
+    if (!document) {
+      throw new Error('DOCUMENT_NOT_FOUND');
+    }
+
+    await prisma.document.delete({
+      where: { id: document.id },
+    });
+  }
+
   async getProjectDocument(projectId: string, userId: string) {
     await this.requireProjectMember(projectId, userId);
 
@@ -323,31 +395,13 @@ export class ProjectsService {
   }
 
   async saveProjectDocument(projectId: string, userId: string, data: { title: string; content?: string | null }) {
-    await this.requireProjectMember(projectId, userId);
-
-    const existingDocument = await prisma.document.findFirst({
-      where: { projectId },
-      orderBy: { createdAt: 'asc' },
-    });
+    const existingDocument = await this.getProjectDocument(projectId, userId);
 
     if (existingDocument) {
-      return prisma.document.update({
-        where: { id: existingDocument.id },
-        data: {
-          title: data.title.trim(),
-          content: data.content ?? '',
-        },
-      });
+      return this.updateProjectDocument(projectId, userId, existingDocument.id, data);
     }
 
-    return prisma.document.create({
-      data: {
-        title: data.title.trim(),
-        content: data.content ?? '',
-        projectId,
-        authorId: userId,
-      },
-    });
+    return this.createProjectDocument(projectId, userId, data);
   }
 
   // ── Update Member Role ─────────────────────────────────────

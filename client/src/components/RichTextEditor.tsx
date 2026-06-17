@@ -1,4 +1,5 @@
-import { type ReactNode, useEffect, useState } from 'react';
+import { type ReactNode, useEffect, useRef, useState } from 'react';
+import type { Editor } from '@tiptap/react';
 import Link from '@tiptap/extension-link';
 import { EditorContent, useEditor } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
@@ -15,6 +16,127 @@ interface ToolbarButtonProps {
   disabled?: boolean;
   onClick: () => void;
   title: string;
+}
+
+function escapeHtml(value: string) {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function looksLikeMarkdown(value: string) {
+  const text = value.trim();
+
+  if (!text) return false;
+
+  return [
+    /^#{1,3}\s+\S/m,
+    /(^|\n)\s*[-*]\s+\S/,
+    /(^|\n)\s*\d+\.\s+\S/,
+    /\*\*[^*\n][\s\S]*?\*\*/,
+    /(^|[^*])\*[^*\n]+\*(?!\*)/,
+    /`[^`\n]+`/,
+    /```[\s\S]*?```/,
+    /\[[^\]\n]+\]\(https?:\/\/[^)\s]+\)/i,
+  ].some((pattern) => pattern.test(text));
+}
+
+function markdownInlineToHtml(value: string) {
+  const codePlaceholders: string[] = [];
+  let html = escapeHtml(value).replace(/`([^`\n]+)`/g, (_match, code: string) => {
+    const token = `@@CODE_${codePlaceholders.length}@@`;
+    codePlaceholders.push(`<code>${code}</code>`);
+    return token;
+  });
+
+  html = html
+    .replace(/\[([^\]\n]+)\]\((https?:\/\/[^)\s]+)\)/gi, '<a href="$2">$1</a>')
+    .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+    .replace(/(^|[^*])\*([^*\n]+)\*(?!\*)/g, '$1<em>$2</em>');
+
+  codePlaceholders.forEach((codeHtml, index) => {
+    html = html.replace(`@@CODE_${index}@@`, codeHtml);
+  });
+
+  return html;
+}
+
+function markdownToHtml(value: string) {
+  const normalized = value.replace(/\r\n?/g, '\n');
+  const lines = normalized.split('\n');
+  const blocks: string[] = [];
+  let index = 0;
+
+  while (index < lines.length) {
+    const line = lines[index];
+
+    if (!line.trim()) {
+      index += 1;
+      continue;
+    }
+
+    if (line.trim().startsWith('```')) {
+      const codeLines: string[] = [];
+      index += 1;
+
+      while (index < lines.length && !lines[index].trim().startsWith('```')) {
+        codeLines.push(lines[index]);
+        index += 1;
+      }
+
+      if (index < lines.length) index += 1;
+      blocks.push(`<pre><code>${escapeHtml(codeLines.join('\n'))}</code></pre>`);
+      continue;
+    }
+
+    const heading = line.match(/^(#{1,3})\s+(.+)$/);
+    if (heading) {
+      const level = heading[1].length === 1 ? 1 : 2;
+      blocks.push(`<h${level}>${markdownInlineToHtml(heading[2].trim())}</h${level}>`);
+      index += 1;
+      continue;
+    }
+
+    const unorderedItems: string[] = [];
+    while (index < lines.length) {
+      const item = lines[index].match(/^\s*[-*]\s+(.+)$/);
+      if (!item) break;
+      unorderedItems.push(`<li>${markdownInlineToHtml(item[1].trim())}</li>`);
+      index += 1;
+    }
+    if (unorderedItems.length > 0) {
+      blocks.push(`<ul>${unorderedItems.join('')}</ul>`);
+      continue;
+    }
+
+    const orderedItems: string[] = [];
+    while (index < lines.length) {
+      const item = lines[index].match(/^\s*\d+\.\s+(.+)$/);
+      if (!item) break;
+      orderedItems.push(`<li>${markdownInlineToHtml(item[1].trim())}</li>`);
+      index += 1;
+    }
+    if (orderedItems.length > 0) {
+      blocks.push(`<ol>${orderedItems.join('')}</ol>`);
+      continue;
+    }
+
+    const paragraphLines: string[] = [];
+    while (index < lines.length) {
+      const currentLine = lines[index];
+      if (!currentLine.trim()) break;
+      if (/^(#{1,3})\s+/.test(currentLine) || /^\s*[-*]\s+/.test(currentLine) || /^\s*\d+\.\s+/.test(currentLine) || currentLine.trim().startsWith('```')) break;
+      paragraphLines.push(currentLine.trim());
+      index += 1;
+    }
+
+    blocks.push(`<p>${paragraphLines.map(markdownInlineToHtml).join('<br>')}</p>`);
+  }
+
+  return blocks.join('');
 }
 
 function ToolbarButton({ active = false, children, disabled = false, onClick, title }: ToolbarButtonProps) {
@@ -34,6 +156,7 @@ function ToolbarButton({ active = false, children, disabled = false, onClick, ti
 
 export default function RichTextEditor({ value, onChange, disabled = false }: RichTextEditorProps) {
   const [listMenuOpen, setListMenuOpen] = useState(false);
+  const editorRef = useRef<Editor | null>(null);
 
   const editor = useEditor({
     extensions: [
@@ -56,11 +179,26 @@ export default function RichTextEditor({ value, onChange, disabled = false }: Ri
       attributes: {
         class: 'rich-text-editor-content',
       },
+      handlePaste: (_view, event) => {
+        const pastedText = event.clipboardData?.getData('text/plain');
+
+        if (!pastedText || !looksLikeMarkdown(pastedText)) {
+          return false;
+        }
+
+        event.preventDefault();
+        editorRef.current?.chain().focus().insertContent(markdownToHtml(pastedText)).run();
+        return true;
+      },
     },
     onUpdate: ({ editor: currentEditor }) => {
       onChange(currentEditor.getHTML());
     },
   });
+
+  useEffect(() => {
+    editorRef.current = editor;
+  }, [editor]);
 
   useEffect(() => {
     if (!editor) return;
