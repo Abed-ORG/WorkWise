@@ -352,6 +352,44 @@ export class ProjectsService {
     });
   }
 
+  // ── Create Sprint (inactive) ───────────────────────────────
+  async createSprint(projectId: string, userId: string, data: {
+    name: string;
+    startDate?: string;
+    endDate?: string;
+    goal?: string;
+  }) {
+    await this.requireAdminRole(projectId, userId);
+
+    return prisma.sprint.create({
+      data: {
+        name: data.name.trim(),
+        goal: data.goal?.trim() || undefined,
+        startDate: data.startDate ? new Date(data.startDate) : undefined,
+        endDate: data.endDate ? new Date(data.endDate) : undefined,
+        isActive: false,
+        projectId,
+      },
+    });
+  }
+
+  // ── Get All Sprints for Project ────────────────────────────
+  async getSprints(projectId: string, userId: string) {
+    const project = await prisma.project.findFirst({
+      where: { id: projectId, members: { some: { userId } } },
+      select: { id: true },
+    });
+
+    if (!project) {
+      throw new Error('PROJECT_NOT_FOUND');
+    }
+
+    return prisma.sprint.findMany({
+      where: { projectId },
+      orderBy: [{ startDate: 'asc' }, { createdAt: 'asc' }],
+    });
+  }
+
   // ── Helper — Require Admin Role ────────────────────────────
   private async requireAdminRole(projectId: string, userId: string) {
     const member = await prisma.projectMember.findUnique({
