@@ -27,6 +27,7 @@ export interface ProjectMember {
 export interface ActiveSprint {
   id: string;
   name: string;
+  goal?: string | null;
   startDate?: string;
   endDate?: string;
 }
@@ -168,8 +169,8 @@ export const saveProjectDocument = async (
   return response.data.data;
 };
 
-export const getProjectDocuments = async (projectId: string): Promise<ProjectDocument[]> => {
-  const response = await apiClient.get(`/api/projects/${projectId}/documents`);
+export const getProjectDocuments = async (projectId: string, q?: string): Promise<ProjectDocument[]> => {
+  const response = await apiClient.get(`/api/projects/${projectId}/documents`, { params: q ? { q } : undefined });
   return response.data.data;
 };
 
@@ -202,4 +203,21 @@ export const deleteProjectDocument = async (
   documentId: string
 ): Promise<void> => {
   await apiClient.delete(`/api/projects/${projectId}/documents/${documentId}`);
+};
+
+export const getSprintDocuments = async (
+  projectId: string,
+  sprintId: string
+): Promise<ProjectDocument[]> => {
+  const response = await apiClient.get(`/api/projects/${projectId}/sprints/${sprintId}/documents`);
+  return response.data.data;
+};
+
+export const updateSprintDocuments = async (
+  projectId: string,
+  sprintId: string,
+  documentIds: string[]
+): Promise<ProjectDocument[]> => {
+  const response = await apiClient.put(`/api/projects/${projectId}/sprints/${sprintId}/documents`, { documentIds });
+  return response.data.data;
 };

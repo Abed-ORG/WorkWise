@@ -5,6 +5,8 @@ import {
   getAssignedTasksController,
   getProjectTasksController,
   getTaskByIdController,
+  getTaskDocumentsController,
+  updateTaskDocumentsController,
   updateTaskController,
 } from "../controllers/task.controller";
 import { createCommentController } from "../controllers/comment.controller";
@@ -24,6 +26,8 @@ router.post(
 
 router.get("/assigned/me", authenticate, getAssignedTasksController);
 router.get("/project/:projectId", authenticate, getProjectTasksController);
+router.get("/:id/documents", authenticate, getTaskDocumentsController);
+router.put("/:id/documents", authenticate, updateTaskDocumentsController);
 router.get("/:id", authenticate, getTaskByIdController);
 
 router.patch("/:id", authenticate, validateBody(updateTaskSchema), updateTaskController);

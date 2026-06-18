@@ -3,6 +3,16 @@ import { sendProjectInvitationEmail } from '../../services/mail.service';
 
 const prisma = new PrismaClient();
 
+const linkedDocumentSelect = {
+  id: true,
+  title: true,
+  content: true,
+  projectId: true,
+  authorId: true,
+  createdAt: true,
+  updatedAt: true,
+} as const;
+
 export class ProjectsService {
 
   // ── Create Project ─────────────────────────────────────────
@@ -85,7 +95,7 @@ export class ProjectsService {
         },
         sprints: {
           where: { isActive: true },
-          select: { id: true, name: true, startDate: true, endDate: true },
+          select: { id: true, name: true, goal: true, startDate: true, endDate: true },
         },
         _count: {
           select: { tasks: true },
@@ -313,13 +323,65 @@ export class ProjectsService {
     });
   }
 
-  async getProjectDocuments(projectId: string, userId: string) {
+  async getProjectDocuments(projectId: string, userId: string, q?: string) {
     await this.requireProjectMember(projectId, userId);
+    const query = q?.trim();
 
     return prisma.document.findMany({
-      where: { projectId },
+      where: {
+        projectId,
+        ...(query
+          ? {
+              OR: [
+                { title: { contains: query, mode: 'insensitive' } },
+                { content: { contains: query, mode: 'insensitive' } },
+              ],
+            }
+          : {}),
+      },
       orderBy: [{ updatedAt: 'desc' }, { createdAt: 'desc' }],
     });
+  }
+
+  async getSprintDocuments(projectId: string, sprintId: string, userId: string) {
+    await this.requireSprintInProject(projectId, sprintId, userId);
+
+    const links = await prisma.sprintDocument.findMany({
+      where: { sprintId },
+      include: { document: { select: linkedDocumentSelect } },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    return links.map((link) => link.document);
+  }
+
+  async updateSprintDocuments(projectId: string, sprintId: string, userId: string, documentIds: string[]) {
+    await this.requireSprintInProject(projectId, sprintId, userId);
+    const uniqueDocumentIds = Array.from(new Set(documentIds));
+
+    if (uniqueDocumentIds.length > 0) {
+      const documents = await prisma.document.findMany({
+        where: { id: { in: uniqueDocumentIds }, projectId },
+        select: { id: true },
+      });
+
+      if (documents.length !== uniqueDocumentIds.length) {
+        throw new Error('DOCUMENT_NOT_FOUND');
+      }
+    }
+
+    await prisma.$transaction(async (tx) => {
+      await tx.sprintDocument.deleteMany({ where: { sprintId } });
+
+      if (uniqueDocumentIds.length > 0) {
+        await tx.sprintDocument.createMany({
+          data: uniqueDocumentIds.map((documentId) => ({ sprintId, documentId })),
+          skipDuplicates: true,
+        });
+      }
+    });
+
+    return this.getSprintDocuments(projectId, sprintId, userId);
   }
 
   async getProjectDocumentById(projectId: string, userId: string, documentId: string) {
@@ -468,6 +530,21 @@ export class ProjectsService {
     }
 
     return member;
+  }
+
+  private async requireSprintInProject(projectId: string, sprintId: string, userId: string) {
+    await this.requireProjectMember(projectId, userId);
+
+    const sprint = await prisma.sprint.findFirst({
+      where: { id: sprintId, projectId },
+      select: { id: true },
+    });
+
+    if (!sprint) {
+      throw new Error('SPRINT_NOT_FOUND');
+    }
+
+    return sprint;
   }
 }
 

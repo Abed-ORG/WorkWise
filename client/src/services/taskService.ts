@@ -1,4 +1,5 @@
 import apiClient from './apiClient';
+import type { ProjectDocument } from './projectService';
 
 export type TaskStatus = 'BACKLOG' | 'TODO' | 'IN_PROGRESS' | 'IN_REVIEW' | 'DONE';
 export type TaskPriority = 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT';
@@ -22,6 +23,25 @@ export interface Task {
   project?: { id: string; name: string; key: string };
   assignee?: TaskUser | null;
   creator?: TaskUser;
+  sprint?: { id: string; name: string } | null;
+  comments?: TaskComment[];
+  activities?: TaskActivity[];
+  documents?: ProjectDocument[];
+}
+
+export interface TaskComment {
+  id: string;
+  content: string;
+  createdAt: string;
+  author: TaskUser;
+}
+
+export interface TaskActivity {
+  id: string;
+  action: string;
+  details?: string | null;
+  createdAt: string;
+  user: TaskUser;
 }
 
 export interface CreateTaskPayload {
@@ -47,6 +67,21 @@ export async function getProjectTasks(projectId: string): Promise<Task[]> {
 
 export async function getAssignedTasks(): Promise<Task[]> {
   const response = await apiClient.get('/tasks/assigned/me');
+  return response.data.data;
+}
+
+export async function getTaskById(taskId: string): Promise<Task> {
+  const response = await apiClient.get(`/tasks/${taskId}`);
+  return response.data.data;
+}
+
+export async function getTaskDocuments(taskId: string): Promise<ProjectDocument[]> {
+  const response = await apiClient.get(`/tasks/${taskId}/documents`);
+  return response.data.data;
+}
+
+export async function updateTaskDocuments(taskId: string, documentIds: string[]): Promise<ProjectDocument[]> {
+  const response = await apiClient.put(`/tasks/${taskId}/documents`, { documentIds });
   return response.data.data;
 }
 

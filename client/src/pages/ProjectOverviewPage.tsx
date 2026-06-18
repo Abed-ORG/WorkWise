@@ -6,6 +6,7 @@ import Icon from '../components/Icon';
 import KanbanBoard from '../components/KanbanBoard';
 import PageHeader from '../components/PageHeader';
 import RichTextEditor from '../components/RichTextEditor';
+import TaskDetailModal from '../components/TaskDetailModal';
 import { Button, Spinner } from '../components/ui';
 import { useAuth } from '../hooks/useAuth';
 import { useToast } from '../hooks/useToast';
@@ -38,6 +39,7 @@ export default function ProjectOverviewPage() {
   const [documentTitle, setDocumentTitle] = useState('');
   const [documentContent, setDocumentContent] = useState('');
   const [documentMessage, setDocumentMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!projectId) return;
@@ -185,8 +187,8 @@ export default function ProjectOverviewPage() {
         <article className="app-card stat-card"><div className="stat-head"><span>Project key</span><span className="stat-icon"><Icon name="board" size={18} /></span></div><p className="stat-value text-xl">{project.key}</p><p className="stat-label">Task identifier prefix</p></article>
       </section>
 
-      <section className="animate-enter-delay"><KanbanBoard tasks={tasks} onTasksChange={setTasks} /></section>
-      <BacklogList tasks={tasks} title="Project backlog" description="All tasks belonging to this project." canDelete={isAdmin} onDeleteSelected={handleDeleteSelected} />
+      <section className="animate-enter-delay"><KanbanBoard tasks={tasks} onTasksChange={setTasks} onTaskClick={(task) => setSelectedTaskId(task.id)} /></section>
+      <BacklogList tasks={tasks} title="Project backlog" description="All tasks belonging to this project." canDelete={isAdmin} onDeleteSelected={handleDeleteSelected} onTaskClick={(task) => setSelectedTaskId(task.id)} />
 
       <section className="app-card card-padding animate-enter-delay project-document-card">
         <div className="section-heading">
@@ -273,6 +275,7 @@ export default function ProjectOverviewPage() {
       </section>
 
       <CreateTaskModal isOpen={createOpen} projectId={projectId} members={project.members ?? []} onClose={() => setCreateOpen(false)} onCreated={(task) => { setTasks((current) => [task, ...current]); toast.success('Task created successfully.'); }} />
+      <TaskDetailModal taskId={selectedTaskId} onClose={() => setSelectedTaskId(null)} />
     </>
   );
 }
