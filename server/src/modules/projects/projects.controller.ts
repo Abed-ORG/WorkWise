@@ -236,11 +236,54 @@ export class ProjectsController {
     try {
       const projectId = String(req.params['projectId']);
       const userId = String((req as any).user?.userId);
-      const documents = await projectsService.getProjectDocuments(projectId, userId);
+      const documents = await projectsService.getProjectDocuments(projectId, userId, String(req.query['q'] ?? ''));
       return res.status(200).json({ success: true, data: documents });
     } catch (error: any) {
       if (error.message === 'PROJECT_NOT_FOUND') {
         return res.status(404).json({ success: false, message: 'Project not found' });
+      }
+      return res.status(500).json({ success: false, message: 'Internal server error' });
+    }
+  }
+
+  async getSprintDocuments(req: Request, res: Response) {
+    try {
+      const projectId = String(req.params['projectId']);
+      const sprintId = String(req.params['sprintId']);
+      const userId = String((req as any).user?.userId);
+      const documents = await projectsService.getSprintDocuments(projectId, sprintId, userId);
+      return res.status(200).json({ success: true, data: documents });
+    } catch (error: any) {
+      if (error.message === 'PROJECT_NOT_FOUND') {
+        return res.status(404).json({ success: false, message: 'Project not found' });
+      }
+      if (error.message === 'SPRINT_NOT_FOUND') {
+        return res.status(404).json({ success: false, message: 'Sprint not found' });
+      }
+      return res.status(500).json({ success: false, message: 'Internal server error' });
+    }
+  }
+
+  async updateSprintDocuments(req: Request, res: Response) {
+    try {
+      const projectId = String(req.params['projectId']);
+      const sprintId = String(req.params['sprintId']);
+      const userId = String((req as any).user?.userId);
+      const documentIds = req.body.documentIds;
+      if (!Array.isArray(documentIds) || documentIds.some((documentId) => typeof documentId !== 'string')) {
+        return res.status(400).json({ success: false, message: 'documentIds must be an array of strings' });
+      }
+      const documents = await projectsService.updateSprintDocuments(projectId, sprintId, userId, documentIds);
+      return res.status(200).json({ success: true, data: documents });
+    } catch (error: any) {
+      if (error.message === 'PROJECT_NOT_FOUND') {
+        return res.status(404).json({ success: false, message: 'Project not found' });
+      }
+      if (error.message === 'SPRINT_NOT_FOUND') {
+        return res.status(404).json({ success: false, message: 'Sprint not found' });
+      }
+      if (error.message === 'DOCUMENT_NOT_FOUND') {
+        return res.status(404).json({ success: false, message: 'Document not found' });
       }
       return res.status(500).json({ success: false, message: 'Internal server error' });
     }

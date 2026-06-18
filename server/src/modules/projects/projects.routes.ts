@@ -30,6 +30,8 @@ router.post('/:projectId/documents', createProjectDocumentValidation, (req: Requ
 router.get('/:projectId/documents/:documentId', documentIdValidation, (req: Request, res: Response) => projectsController.getProjectDocumentById(req, res));
 router.put('/:projectId/documents/:documentId', updateProjectDocumentValidation, (req: Request, res: Response) => projectsController.updateProjectDocumentById(req, res));
 router.delete('/:projectId/documents/:documentId', documentIdValidation, (req: Request, res: Response) => projectsController.deleteProjectDocument(req, res));
+router.get('/:projectId/sprints/:sprintId/documents', (req: Request, res: Response) => projectsController.getSprintDocuments(req, res));
+router.put('/:projectId/sprints/:sprintId/documents', (req: Request, res: Response) => projectsController.updateSprintDocuments(req, res));
 router.get('/:projectId', (req: Request, res: Response) => projectsController.getProjectById(req, res));
 router.patch('/:projectId', updateProjectValidation, (req: Request, res: Response) => projectsController.updateProject(req, res));
 router.delete('/:projectId', (req: Request, res: Response) => projectsController.deleteProject(req, res));
