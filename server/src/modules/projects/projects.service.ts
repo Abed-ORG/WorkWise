@@ -328,6 +328,43 @@ export class ProjectsService {
     return sprint;
   }
 
+  async getProjectDocument(projectId: string, userId: string) {
+    await this.requireProjectMember(projectId, userId);
+
+    return prisma.document.findFirst({
+      where: { projectId },
+      orderBy: { createdAt: 'asc' },
+    });
+  }
+
+  async saveProjectDocument(projectId: string, userId: string, data: { title: string; content?: string | null }) {
+    await this.requireProjectMember(projectId, userId);
+
+    const existingDocument = await prisma.document.findFirst({
+      where: { projectId },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    if (existingDocument) {
+      return prisma.document.update({
+        where: { id: existingDocument.id },
+        data: {
+          title: data.title.trim(),
+          content: data.content ?? '',
+        },
+      });
+    }
+
+    return prisma.document.create({
+      data: {
+        title: data.title.trim(),
+        content: data.content ?? '',
+        projectId,
+        authorId: userId,
+      },
+    });
+  }
+
   // ── Update Member Role ─────────────────────────────────────
   async updateMemberRole(projectId: string, requesterId: string, memberId: string, role: Role) {
     await this.requireAdminRole(projectId, requesterId);
@@ -380,6 +417,18 @@ export class ProjectsService {
     if (member.role !== Role.ADMIN) {
       throw new Error('FORBIDDEN');
     }
+  }
+
+  private async requireProjectMember(projectId: string, userId: string) {
+    const member = await prisma.projectMember.findUnique({
+      where: { userId_projectId: { userId, projectId } },
+    });
+
+    if (!member) {
+      throw new Error('PROJECT_NOT_FOUND');
+    }
+
+    return member;
   }
 }
 

@@ -8,6 +8,7 @@ import {
   inviteMemberValidation,
   updateMemberRoleValidation,
   startSprintValidation,
+  saveProjectDocumentValidation,
 } from './projects.validation';
 
 const router = Router();
@@ -24,6 +25,8 @@ router.get('/', (req: Request, res: Response) => projectsController.getUserProje
 router.get('/:projectId', (req: Request, res: Response) => projectsController.getProjectById(req, res));
 router.patch('/:projectId', updateProjectValidation, (req: Request, res: Response) => projectsController.updateProject(req, res));
 router.delete('/:projectId', (req: Request, res: Response) => projectsController.deleteProject(req, res));
+router.get('/:projectId/document', (req: Request, res: Response) => projectsController.getProjectDocument(req, res));
+router.put('/:projectId/document', saveProjectDocumentValidation, (req: Request, res: Response) => projectsController.saveProjectDocument(req, res));
 router.post('/:projectId/sprints/start', startSprintValidation, (req: Request, res: Response) => projectsController.startSprint(req, res));
 
 router.post('/:projectId/members/invite', invitationEmailLimiter, inviteMemberValidation, (req: Request, res: Response) => projectsController.inviteMember(req, res));

@@ -71,3 +71,14 @@ export const startSprintValidation = [
     .trim()
     .isLength({ max: 500 }).withMessage('Sprint goal must be under 500 characters'),
 ];
+
+export const saveProjectDocumentValidation = [
+  param('projectId').notEmpty().withMessage('Project ID is required'),
+  body('title')
+    .trim()
+    .notEmpty().withMessage('Document title is required')
+    .isLength({ max: 150 }).withMessage('Document title must be under 150 characters'),
+  body('content')
+    .optional({ nullable: true })
+    .isString().withMessage('Document content must be text'),
+];
