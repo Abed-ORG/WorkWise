@@ -25,6 +25,7 @@ export default function DocumentLinkPicker({ projectId, linkedDocuments, onChang
   const [error, setError] = useState('');
 
   const linkedIds = useMemo(() => new Set(linkedDocuments.map((document) => document.id)), [linkedDocuments]);
+  const addableDocuments = useMemo(() => results.filter((document) => !linkedIds.has(document.id)), [results, linkedIds]);
 
   useEffect(() => {
     let active = true;
@@ -67,57 +68,58 @@ export default function DocumentLinkPicker({ projectId, linkedDocuments, onChang
 
   return (
     <div className="document-link-picker">
-      <div className="document-link-search">
-        <Icon name="search" size={15} />
-        <input
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-          placeholder="Search project documents"
-          disabled={disabled}
-          aria-label="Search project documents"
-        />
-        {loading && <Spinner size="sm" />}
-      </div>
-
-      <div className="linked-document-list" aria-label="Linked documents">
-        {linkedDocuments.length ? linkedDocuments.map((document) => (
-          <div className="linked-document-row" key={document.id}>
-            <span className="linked-document-icon"><Icon name="document" size={15} /></span>
-            <span className="linked-document-copy">
-              <strong>{document.title}</strong>
-              <span>{getPreview(document.content).slice(0, 110)}</span>
-            </span>
-            <Button variant="ghost" disabled={disabled || savingId === document.id} onClick={() => toggleDocument(document.id)}>
-              {savingId === document.id ? <Spinner size="sm" /> : <Icon name="close" size={15} />} Unlink
-            </Button>
-          </div>
-        )) : (
-          <div className="document-link-empty">No documents linked yet.</div>
-        )}
-      </div>
-
-      <div className="document-search-results" aria-label="Project document search results">
-        {results.map((document) => {
-          const linked = linkedIds.has(document.id);
-          return (
-            <button
-              type="button"
-              className={`document-result-row${linked ? ' is-linked' : ''}`}
-              key={document.id}
-              disabled={disabled || savingId !== null}
-              onClick={() => toggleDocument(document.id)}
-            >
+      <section className="document-link-section">
+        <div className="linked-document-list" aria-label="Linked documents">
+          {linkedDocuments.length ? linkedDocuments.map((document) => (
+            <div className="linked-document-row" key={document.id}>
               <span className="linked-document-icon"><Icon name="document" size={15} /></span>
               <span className="linked-document-copy">
                 <strong>{document.title}</strong>
-                <span>{getPreview(document.content).slice(0, 120)}</span>
+                <span>{getPreview(document.content).slice(0, 110)}</span>
               </span>
-              <span className="document-result-action">{savingId === document.id ? 'Saving' : linked ? 'Linked' : 'Link'}</span>
-            </button>
-          );
-        })}
-        {!loading && results.length === 0 && <div className="document-link-empty">No matching documents.</div>}
-      </div>
+              <Button variant="ghost" disabled={disabled || savingId === document.id} onClick={() => toggleDocument(document.id)}>
+                {savingId === document.id ? <Spinner size="sm" /> : <Icon name="close" size={15} />} Unlink
+              </Button>
+            </div>
+          )) : (
+            <div className="document-link-empty">No documents linked yet.</div>
+          )}
+        </div>
+      </section>
+
+      <section className="document-link-section">
+        <div className="document-link-section-head"><h4>Add Documents</h4>{loading && <Spinner size="sm" />}</div>
+        <div className="document-link-search">
+          <Icon name="search" size={15} />
+          <input
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Search project documents"
+            disabled={disabled}
+            aria-label="Search project documents"
+          />
+        </div>
+
+        <div className="document-search-results" aria-label="Project document search results">
+          {addableDocuments.map((document) => (
+              <button
+                type="button"
+                className="document-result-row"
+                key={document.id}
+                disabled={disabled || savingId !== null}
+                onClick={() => toggleDocument(document.id)}
+              >
+                <span className="linked-document-icon"><Icon name="document" size={15} /></span>
+                <span className="linked-document-copy">
+                  <strong>{document.title}</strong>
+                  <span>{getPreview(document.content).slice(0, 120)}</span>
+                </span>
+                <span className="document-result-action">{savingId === document.id ? 'Saving' : 'Link'}</span>
+              </button>
+          ))}
+          {!loading && addableDocuments.length === 0 && <div className="document-link-empty">No unlinked documents match.</div>}
+        </div>
+      </section>
 
       {error && <p className="document-message document-message-error">{error}</p>}
     </div>

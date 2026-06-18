@@ -15,6 +15,7 @@ export interface Task {
   id: string;
   title: string;
   description?: string;
+  acceptanceCriteria?: string | null;
   priority: TaskPriority;
   status: TaskStatus;
   labels: string[];
@@ -47,6 +48,7 @@ export interface TaskActivity {
 export interface CreateTaskPayload {
   title: string;
   description?: string;
+  acceptanceCriteria?: string;
   priority?: TaskPriority;
   labels?: string[];
   dueDate?: string;
@@ -87,6 +89,11 @@ export async function updateTaskDocuments(taskId: string, documentIds: string[])
 
 export async function updateTaskStatus(taskId: string, status: TaskStatus): Promise<Task> {
   const response = await apiClient.patch(`/tasks/${taskId}`, { status });
+  return response.data.data;
+}
+
+export async function updateTask(taskId: string, payload: Partial<Pick<Task, 'title' | 'description' | 'acceptanceCriteria' | 'priority' | 'status' | 'labels' | 'dueDate'>> & { assigneeId?: string | null }): Promise<Task> {
+  const response = await apiClient.patch(`/tasks/${taskId}`, payload);
   return response.data.data;
 }
 

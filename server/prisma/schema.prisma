@@ -123,6 +123,7 @@ model Task {
   id          String       @id @default(cuid())
   title       String
   description String?
+  acceptanceCriteria String?
   status      TaskStatus   @default(BACKLOG)
   priority    TaskPriority @default(MEDIUM)
   labels      String[]

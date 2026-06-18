@@ -31,6 +31,7 @@ const requireProjectMember = async (projectId: string, userId: string) => {
 export interface CreateTaskInput {
   title: string;
   description?: string;
+  acceptanceCriteria?: string;
   priority?: TaskPriority;
   labels?: string[];
   dueDate?: string;
@@ -81,6 +82,7 @@ export const createTask = async (input: CreateTaskInput) => {
     data: {
       title: input.title,
       description: input.description,
+      acceptanceCriteria: input.acceptanceCriteria,
       priority: input.priority ?? TaskPriority.MEDIUM,
       status: TaskStatus.BACKLOG,
       labels: input.labels ?? [],
@@ -283,6 +285,7 @@ export const updateTaskDocuments = async (taskId: string, userId: string, docume
 export interface UpdateTaskInput {
   title?: string;
   description?: string;
+  acceptanceCriteria?: string | null;
   status?: TaskStatus;
   priority?: TaskPriority;
   labels?: string[];
@@ -314,6 +317,7 @@ export const updateTask = async (
     data: {
       title: input.title,
       description: input.description,
+      acceptanceCriteria: input.acceptanceCriteria,
       status: input.status,
       priority: input.priority,
       labels: input.labels,
