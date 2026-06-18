@@ -1,10 +1,11 @@
 # Dependencies
 node_modules/
 
-# Environment variables
+# Environment variables — ignore all .env variants, but keep .env.example committed
 .env
-.env.local
-.env.*.local
+.env.*
+!.env.example
+!.env.*.example
 
 # Build output
 client/dist/

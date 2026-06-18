@@ -69,10 +69,18 @@ workwise/
    ```
 
 5. Set up environment variables:
-   - Copy `.env.example` to `.env` in the `server/` directory
-   - Fill in your Supabase database URL, JWT secret, and Gemini API key
+   ```bash
+   cp server/.env.example server/.env
+   cp client/.env.example client/.env
+   ```
+   Fill in real values — see the [Environment Variables](#environment-variables) section below for what each variable does and where to obtain it.
 
-6. Run Prisma migrations:
+6. Activate the pre-commit hook (one-time per clone — keeps secrets out of git):
+   ```bash
+   git config core.hooksPath .githooks
+   ```
+
+7. Run Prisma migrations:
    ```bash
    npx prisma migrate dev
    ```
@@ -87,6 +95,84 @@ workwise/
    cd client
    npm run dev
    ```
+
+## Environment Variables
+
+> **Never commit `.env` files.** The pre-commit hook blocks this automatically once you run `git config core.hooksPath .githooks`. Production values (Render / Vercel) are set via each platform's dashboard — never in code.
+
+### Server (`server/.env`)
+
+Copy the template: `cp server/.env.example server/.env`
+
+#### Database — Supabase / PostgreSQL
+
+| Variable | Purpose | Where to get it |
+|---|---|---|
+| `DATABASE_URL` | Runtime DB connection via pgBouncer transaction-mode pooler (port 6543). Must end with `?pgbouncer=true`. | Supabase dashboard → Settings → Database → Connection string → **Transaction mode** |
+| `DIRECT_URL` | Prisma CLI connection (migrations, Studio) via session-mode pooler (port 5432). | Supabase dashboard → Settings → Database → Connection string → **Session mode** |
+
+#### Supabase (optional — only needed for direct Supabase API calls)
+
+| Variable | Purpose | Where to get it |
+|---|---|---|
+| `SUPABASE_URL` | Project REST API base URL. | Supabase dashboard → Settings → API → Project URL |
+| `SUPABASE_PUBLISHABLE_KEY` | Anon/public key — safe for client-side use. | Supabase dashboard → Settings → API → `anon` key |
+| `SUPABASE_SECRET_KEY` | Service role key — **server-side only, never expose to the browser.** | Supabase dashboard → Settings → API → `service_role` key |
+
+#### Authentication
+
+| Variable | Purpose | Where to get it |
+|---|---|---|
+| `JWT_SECRET` | Signs access tokens (short-lived). Must be long and random. | Generate: `openssl rand -hex 64` |
+| `JWT_REFRESH_SECRET` | Signs refresh tokens. Must differ from `JWT_SECRET`. | Generate: `openssl rand -hex 64` |
+
+#### AI
+
+| Variable | Purpose | Where to get it |
+|---|---|---|
+| `GEMINI_API_KEY` | Google Gemini API key for AI task breakdown and sprint planning features. | [Google AI Studio](https://aistudio.google.com/app/apikey) → Get API key |
+
+#### App
+
+| Variable | Purpose | Default |
+|---|---|---|
+| `PORT` | Port the Express server listens on. Render overrides this automatically. | `3000` |
+| `NODE_ENV` | Runtime environment. Use `development` locally, `production` on Render. | `development` |
+| `FRONTEND_URL` | Allowed CORS origin and base URL for password-reset email links. | `http://localhost:5173` |
+
+#### Email — SMTP (primary)
+
+Uses the team's Gmail mailbox via a Google App Password. Requires 2-Step Verification to be enabled on the Gmail account.
+
+| Variable | Purpose | Where to get it |
+|---|---|---|
+| `SMTP_HOST` | SMTP server hostname. | `smtp.gmail.com` for Gmail |
+| `SMTP_PORT` | SMTP port. `587` for STARTTLS (recommended). | `587` |
+| `SMTP_SECURE` | Set to `true` only for port 465 (SSL). Leave `false` for port 587. | `false` |
+| `SMTP_USER` | Gmail address used as sender. | The Gmail account address |
+| `SMTP_PASS` | Google App Password — **not** your regular Gmail password. | Google Account → Security → 2-Step Verification → App Passwords |
+| `MAIL_FROM` | Display name + address in the `From:` header. | Match `SMTP_USER`, e.g. `WorkWise <you@gmail.com>` |
+
+#### Email — Resend (optional fallback)
+
+| Variable | Purpose | Where to get it |
+|---|---|---|
+| `RESEND_API_KEY` | Resend transactional email API key. Leave empty to use SMTP instead. | [resend.com/api-keys](https://resend.com/api-keys) |
+| `EMAIL_FROM` | Sender address for Resend-delivered emails. | Must be a verified domain in your Resend account |
+
+---
+
+### Client (`client/.env`)
+
+Copy the template: `cp client/.env.example client/.env`
+
+Only variables prefixed with `VITE_` are embedded into the browser bundle by Vite.
+
+| Variable | Purpose | Default |
+|---|---|---|
+| `VITE_API_BASE_URL` | Base URL of the backend API. Every HTTP request in `src/services/apiClient.ts` is sent to this origin. Set to your Render URL in production. | `http://localhost:3000` |
+
+---
 
 ## Git Workflow
 

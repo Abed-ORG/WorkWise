@@ -1,0 +1,103 @@
+#!/usr/bin/env bash
+# WorkWise pre-commit hook — blocks accidental secret commits.
+#
+# Activate once per clone:
+#   git config core.hooksPath .githooks
+#
+# What this checks:
+#   1. No .env file (any path, any name matching *.env or named exactly .env)
+#      is staged — except .env.example files, which are intentionally committed.
+#   2. No staged file contains obvious high-confidence secret patterns
+#      (Supabase secret keys, connection strings with embedded credentials).
+
+set -euo pipefail
+
+RED='\033[0;31m'
+YELLOW='\033[1;33m'
+NC='\033[0m' # no colour
+
+fail=0
+
+# ---------------------------------------------------------------------------
+# Check 1 — Block staging of .env files
+# ---------------------------------------------------------------------------
+# Matches any staged file whose name is ".env" or ends with "/.env",
+# or whose name matches ".env.*" — but NOT ".env.example" or ".env.*.example".
+
+blocked_env_files=()
+while IFS= read -r staged_file; do
+  basename="${staged_file##*/}"
+  # Allow .env.example and .env.*.example (the committed templates)
+  if [[ "$basename" == ".env.example" ]] || [[ "$basename" == .env.*.example ]]; then
+    continue
+  fi
+  # Block .env and .env.* (e.g. .env.local, .env.development, .env.production)
+  if [[ "$basename" == ".env" ]] || [[ "$basename" == .env.* ]]; then
+    blocked_env_files+=("$staged_file")
+  fi
+done < <(git diff --cached --name-only)
+
+if [[ ${#blocked_env_files[@]} -gt 0 ]]; then
+  echo -e "${RED}[pre-commit] ERROR: Attempt to commit .env file(s) detected.${NC}"
+  echo -e "${RED}These files may contain real secrets and must never be committed:${NC}"
+  for f in "${blocked_env_files[@]}"; do
+    echo -e "${RED}  ✗  $f${NC}"
+  done
+  echo ""
+  echo "  To unstage: git restore --staged ${blocked_env_files[*]}"
+  echo "  To ignore:  ensure the file is listed in .gitignore"
+  fail=1
+fi
+
+# ---------------------------------------------------------------------------
+# Check 2 — Scan staged file contents for high-confidence secret patterns
+# ---------------------------------------------------------------------------
+# Only flags patterns that are extremely unlikely to appear in legitimate code.
+# Triggers on:
+#   - Supabase service-role key prefix  (sb_secret_)
+#   - PostgreSQL connection strings with embedded credentials
+#     (postgresql://user:password@host — the colon+password portion is the signal)
+
+secret_patterns=(
+  'sb_secret_[A-Za-z0-9_-]{10,}'
+  'postgresql://[^:@/]+:[^@/]{8,}@'
+  'postgres://[^:@/]+:[^@/]{8,}@'
+)
+
+flagged_secrets=()
+while IFS= read -r staged_file; do
+  # Only scan text files; skip binary and .env.example files
+  basename="${staged_file##*/}"
+  if [[ "$basename" == ".env.example" ]] || [[ "$basename" == .env.*.example ]]; then
+    continue
+  fi
+  # git show :file reads the staged version
+  for pattern in "${secret_patterns[@]}"; do
+    if git show ":$staged_file" 2>/dev/null | grep -qE "$pattern"; then
+      flagged_secrets+=("$staged_file (pattern: $pattern)")
+      break
+    fi
+  done
+done < <(git diff --cached --name-only)
+
+if [[ ${#flagged_secrets[@]} -gt 0 ]]; then
+  echo -e "${YELLOW}[pre-commit] WARNING: Staged file(s) may contain secrets:${NC}"
+  for entry in "${flagged_secrets[@]}"; do
+    echo -e "${YELLOW}  ⚠  $entry${NC}"
+  done
+  echo ""
+  echo "  Review the file(s) above before committing."
+  echo "  If this is a false positive, you can bypass with: git commit --no-verify"
+  echo "  (only do this if you are certain no real secrets are present)"
+  fail=1
+fi
+
+# ---------------------------------------------------------------------------
+
+if [[ $fail -ne 0 ]]; then
+  echo ""
+  echo -e "${RED}Commit blocked. Fix the issues above and try again.${NC}"
+  exit 1
+fi
+
+exit 0
