@@ -8,6 +8,7 @@ import authRoutes from './routes/auth.routes';
 import projectRoutes from './modules/projects/projects.routes';
 import taskRoutes from './routes/task.routes';
 import commentRoutes from './routes/comment.routes';
+import aiRoutes from './modules/ai/ai.routes';
 import { errorHandler } from './middleware/error.middleware';
 import { env } from './config/env';
 
@@ -39,6 +40,7 @@ app.use('/tasks', taskRoutes);
 app.use('/comments', commentRoutes);
 app.use('/api/projects', projectRoutes);
 app.use('/api/users', userRoutes);
+app.use('/api/ai', aiRoutes);
 app.use(errorHandler);
 
 export default app;
