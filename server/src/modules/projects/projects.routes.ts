@@ -9,10 +9,10 @@ import {
   updateMemberRoleValidation,
   startSprintValidation,
   createSprintValidation,
+  saveProjectDocumentValidation,
 } from './projects.validation';
 
 const router = Router();
-
 router.use(authenticate);
 
 // Static invitation paths must be declared before the dynamic /:projectId path.
@@ -25,9 +25,13 @@ router.get('/', (req: Request, res: Response) => projectsController.getUserProje
 router.get('/:projectId', (req: Request, res: Response) => projectsController.getProjectById(req, res));
 router.patch('/:projectId', updateProjectValidation, (req: Request, res: Response) => projectsController.updateProject(req, res));
 router.delete('/:projectId', (req: Request, res: Response) => projectsController.deleteProject(req, res));
+
 router.post('/:projectId/sprints', createSprintValidation, (req: Request, res: Response) => projectsController.createSprint(req, res));
 router.get('/:projectId/sprints', (req: Request, res: Response) => projectsController.getSprints(req, res));
 router.post('/:projectId/sprints/start', startSprintValidation, (req: Request, res: Response) => projectsController.startSprint(req, res));
+
+router.get('/:projectId/document', (req: Request, res: Response) => projectsController.getProjectDocument(req, res));
+router.put('/:projectId/document', saveProjectDocumentValidation, (req: Request, res: Response) => projectsController.saveProjectDocument(req, res));
 
 router.post('/:projectId/members/invite', invitationEmailLimiter, inviteMemberValidation, (req: Request, res: Response) => projectsController.inviteMember(req, res));
 router.get('/:projectId/members/invitations', (req: Request, res: Response) => projectsController.getProjectInvitations(req, res));

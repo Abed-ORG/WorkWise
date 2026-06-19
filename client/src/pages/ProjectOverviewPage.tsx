@@ -5,10 +5,11 @@ import CreateTaskModal from '../components/CreateTaskModal';
 import Icon from '../components/Icon';
 import KanbanBoard from '../components/KanbanBoard';
 import PageHeader from '../components/PageHeader';
+import RichTextEditor from '../components/RichTextEditor';
 import { Button, Spinner } from '../components/ui';
 import { useAuth } from '../hooks/useAuth';
 import { useToast } from '../hooks/useToast';
-import { getProjectById } from '../services/projectService';
+import { getProjectById, getProjectDocument, saveProjectDocument } from '../services/projectService';
 import type { Project } from '../services/projectService';
 import { deleteTask, getProjectTasks } from '../services/taskService';
 import type { Task } from '../services/taskService';
@@ -22,6 +23,11 @@ export default function ProjectOverviewPage() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
   const [createOpen, setCreateOpen] = useState(false);
+  const [documentLoading, setDocumentLoading] = useState(true);
+  const [documentSaving, setDocumentSaving] = useState(false);
+  const [documentTitle, setDocumentTitle] = useState('Project documentation');
+  const [documentContent, setDocumentContent] = useState('');
+  const [documentMessage, setDocumentMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   useEffect(() => {
     if (!projectId) return;
@@ -30,6 +36,20 @@ export default function ProjectOverviewPage() {
       .catch(() => navigate('/projects', { replace: true }))
       .finally(() => setLoading(false));
   }, [projectId, navigate]);
+
+  useEffect(() => {
+    if (!projectId) return;
+    setDocumentLoading(true);
+    setDocumentMessage(null);
+
+    getProjectDocument(projectId)
+      .then((projectDocument) => {
+        setDocumentTitle(projectDocument?.title || 'Project documentation');
+        setDocumentContent(projectDocument?.content || '');
+      })
+      .catch(() => setDocumentMessage({ type: 'error', text: 'Documentation could not be loaded.' }))
+      .finally(() => setDocumentLoading(false));
+  }, [projectId]);
 
   if (loading) return <div className="empty-panel"><Spinner size="lg" /><p className="mt-4">Opening project...</p></div>;
   if (!project || !projectId) return null;
@@ -45,6 +65,27 @@ export default function ProjectOverviewPage() {
       toast.success(`${taskIds.length} task${taskIds.length === 1 ? '' : 's'} deleted.`);
     } catch {
       toast.error('One or more tasks could not be deleted.');
+    }
+  }
+
+  async function handleSaveDocument() {
+    if (!projectId) return;
+
+    setDocumentSaving(true);
+    setDocumentMessage(null);
+
+    try {
+      const savedDocument = await saveProjectDocument(projectId, {
+        title: documentTitle.trim() || 'Project documentation',
+        content: documentContent,
+      });
+      setDocumentTitle(savedDocument.title);
+      setDocumentContent(savedDocument.content || '');
+      setDocumentMessage({ type: 'success', text: 'Documentation saved.' });
+    } catch {
+      setDocumentMessage({ type: 'error', text: 'Documentation could not be saved.' });
+    } finally {
+      setDocumentSaving(false);
     }
   }
 
@@ -71,6 +112,39 @@ export default function ProjectOverviewPage() {
 
       <section className="animate-enter-delay"><KanbanBoard tasks={tasks} onTasksChange={setTasks} /></section>
       <BacklogList tasks={tasks} title="Project backlog" description="All tasks belonging to this project." canDelete={isAdmin} onDeleteSelected={handleDeleteSelected} />
+
+      <section className="app-card card-padding animate-enter-delay project-document-card">
+        <div className="section-heading">
+          <div>
+            <h2>Documentation</h2>
+            <p>Capture the project brief, decisions, and implementation notes.</p>
+          </div>
+          <Button onClick={handleSaveDocument} loading={documentSaving} disabled={documentLoading}>
+            <Icon name="check" size={16} /> Save
+          </Button>
+        </div>
+
+        {documentLoading ? (
+          <div className="document-loading"><Spinner /><span>Loading documentation...</span></div>
+        ) : (
+          <div className="document-editor-stack">
+            <label className="field">
+              <span className="field-label">Title</span>
+              <input
+                className="field-control"
+                value={documentTitle}
+                onChange={(event) => setDocumentTitle(event.target.value)}
+                disabled={documentSaving}
+                placeholder="Project documentation"
+              />
+            </label>
+            <RichTextEditor value={documentContent} onChange={setDocumentContent} disabled={documentSaving} />
+            {documentMessage && (
+              <p className={`document-message document-message-${documentMessage.type}`}>{documentMessage.text}</p>
+            )}
+          </div>
+        )}
+      </section>
 
       <section className="app-card card-padding animate-enter-delay project-team-card">
         <div className="section-heading"><div><h2>Project team</h2><p>People who can collaborate in this workspace.</p></div></div>

@@ -60,6 +60,21 @@ export interface CreateProjectDto {
   description?: string;
 }
 
+export interface ProjectDocument {
+  id: string;
+  title: string;
+  content?: string | null;
+  projectId: string;
+  authorId: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SaveProjectDocumentDto {
+  title: string;
+  content: string;
+}
+
 // ── Project CRUD ───────────────────────────────────────────
 
 export const createProject = async (data: CreateProjectDto): Promise<Project> => {
@@ -150,5 +165,18 @@ export const startSprint = async (
   data: { name: string; goal?: string }
 ): Promise<Sprint> => {
   const response = await apiClient.post(`/api/projects/${projectId}/sprints/start`, data);
+  return response.data.data;
+};
+
+export const getProjectDocument = async (projectId: string): Promise<ProjectDocument | null> => {
+  const response = await apiClient.get(`/api/projects/${projectId}/document`);
+  return response.data.data;
+};
+
+export const saveProjectDocument = async (
+  projectId: string,
+  data: SaveProjectDocumentDto
+): Promise<ProjectDocument> => {
+  const response = await apiClient.put(`/api/projects/${projectId}/document`, data);
   return response.data.data;
 };
