@@ -97,6 +97,11 @@ export const createSprintValidation = [
     .isLength({ max: 500 }).withMessage('Sprint goal must be under 500 characters'),
 ];
 
+export const documentIdValidation = [
+  param('projectId').notEmpty().withMessage('Project ID is required'),
+  param('documentId').notEmpty().withMessage('Document ID is required'),
+];
+
 export const saveProjectDocumentValidation = [
   param('projectId').notEmpty().withMessage('Project ID is required'),
   body('title')
@@ -107,3 +112,17 @@ export const saveProjectDocumentValidation = [
     .optional({ nullable: true })
     .isString().withMessage('Document content must be text'),
 ];
+
+export const createProjectDocumentValidation = saveProjectDocumentValidation;
+
+export const updateProjectDocumentValidation = [
+  ...documentIdValidation,
+  body('title')
+    .trim()
+    .notEmpty().withMessage('Document title is required')
+    .isLength({ max: 150 }).withMessage('Document title must be under 150 characters'),
+  body('content')
+    .optional({ nullable: true })
+    .isString().withMessage('Document content must be text'),
+];
+

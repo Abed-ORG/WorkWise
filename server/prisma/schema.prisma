@@ -123,6 +123,7 @@ model Sprint {
 
   project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
   tasks   Task[]
+  documents SprintDocument[]
 
   @@map("sprints")
 }
@@ -131,6 +132,7 @@ model Task {
   id          String       @id @default(cuid())
   title       String
   description String?
+  acceptanceCriteria String?
   status      TaskStatus   @default(BACKLOG)
   priority    TaskPriority @default(MEDIUM)
   labels      String[]
@@ -150,6 +152,7 @@ model Task {
   creator    User           @relation("TaskCreator", fields: [creatorId], references: [id])
   comments   Comment[]
   activities TaskActivity[]
+  documents  TaskDocument[]
 
   @@map("tasks")
 }
@@ -196,8 +199,40 @@ model Document {
 
   project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
   author  User    @relation(fields: [authorId], references: [id])
+  tasks   TaskDocument[]
+  sprints SprintDocument[]
 
   @@map("documents")
+}
+
+model TaskDocument {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+
+  taskId     String
+  documentId String
+
+  task     Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  document Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@unique([taskId, documentId])
+  @@index([documentId])
+  @@map("task_documents")
+}
+
+model SprintDocument {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+
+  sprintId   String
+  documentId String
+
+  sprint   Sprint   @relation(fields: [sprintId], references: [id], onDelete: Cascade)
+  document Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@unique([sprintId, documentId])
+  @@index([documentId])
+  @@map("sprint_documents")
 }
 
 model Notification {

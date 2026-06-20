@@ -12,6 +12,16 @@ const taskSummaryInclude = {
   creator: { select: { id: true, name: true, email: true } },
 } as const;
 
+const linkedDocumentSelect = {
+  id: true,
+  title: true,
+  content: true,
+  projectId: true,
+  authorId: true,
+  createdAt: true,
+  updatedAt: true,
+} as const;
+
 const requireProjectMember = async (projectId: string, userId: string) => {
   const member = await prisma.projectMember.findUnique({
     where: { userId_projectId: { userId, projectId } },
@@ -24,6 +34,7 @@ const requireProjectMember = async (projectId: string, userId: string) => {
 export interface CreateTaskInput {
   title: string;
   description?: string;
+  acceptanceCriteria?: string;
   priority?: TaskPriority;
   labels?: string[];
   dueDate?: string;
@@ -74,6 +85,7 @@ export const createTask = async (input: CreateTaskInput) => {
     data: {
       title: input.title,
       description: input.description,
+      acceptanceCriteria: input.acceptanceCriteria,
       priority: input.priority ?? TaskPriority.MEDIUM,
       status: TaskStatus.BACKLOG,
       labels: input.labels ?? [],
@@ -193,6 +205,16 @@ export const getTaskById = async (taskId: string, userId: string) => {
           createdAt: "desc",
         },
       },
+      documents: {
+        include: {
+          document: {
+            select: linkedDocumentSelect,
+          },
+        },
+        orderBy: {
+          createdAt: "desc",
+        },
+      },
     },
   });
 
@@ -202,11 +224,70 @@ export const getTaskById = async (taskId: string, userId: string) => {
 
   await requireProjectMember(task.projectId, userId);
 
+  return {
+    ...task,
+    documents: task.documents.map((link) => link.document),
+  };
+};
+
+const getTaskForDocumentLinks = async (taskId: string, userId: string) => {
+  const task = await prisma.task.findUnique({
+    where: { id: taskId },
+    select: { id: true, projectId: true },
+  });
+
+  if (!task) throw new NotFoundError("Task not found");
+  await requireProjectMember(task.projectId, userId);
   return task;
+};
+
+export const getTaskDocuments = async (taskId: string, userId: string) => {
+  await getTaskForDocumentLinks(taskId, userId);
+
+  const links = await prisma.taskDocument.findMany({
+    where: { taskId },
+    include: { document: { select: linkedDocumentSelect } },
+    orderBy: { createdAt: "desc" },
+  });
+
+  return links.map((link) => link.document);
+};
+
+export const updateTaskDocuments = async (taskId: string, userId: string, documentIds: string[]) => {
+  const task = await getTaskForDocumentLinks(taskId, userId);
+  const uniqueDocumentIds = Array.from(new Set(documentIds));
+
+  if (uniqueDocumentIds.length > 0) {
+    const documents = await prisma.document.findMany({
+      where: {
+        id: { in: uniqueDocumentIds },
+        projectId: task.projectId,
+      },
+      select: { id: true },
+    });
+
+    if (documents.length !== uniqueDocumentIds.length) {
+      throw new NotFoundError("Document not found");
+    }
+  }
+
+  await prisma.$transaction(async (tx) => {
+    await tx.taskDocument.deleteMany({ where: { taskId } });
+
+    if (uniqueDocumentIds.length > 0) {
+      await tx.taskDocument.createMany({
+        data: uniqueDocumentIds.map((documentId) => ({ taskId, documentId })),
+        skipDuplicates: true,
+      });
+    }
+  });
+
+  return getTaskDocuments(taskId, userId);
 };
 export interface UpdateTaskInput {
   title?: string;
   description?: string;
+  acceptanceCriteria?: string | null;
   status?: TaskStatus;
   priority?: TaskPriority;
   labels?: string[];
@@ -238,6 +319,7 @@ export const updateTask = async (
     data: {
       title: input.title,
       description: input.description,
+      acceptanceCriteria: input.acceptanceCriteria,
       status: input.status,
       priority: input.priority,
       labels: input.labels,

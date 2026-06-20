@@ -10,6 +10,9 @@ import {
   startSprintValidation,
   createSprintValidation,
   saveProjectDocumentValidation,
+  createProjectDocumentValidation,
+  updateProjectDocumentValidation,
+  documentIdValidation,
 } from './projects.validation';
 
 const router = Router();
@@ -22,6 +25,13 @@ router.post('/invitations/:invitationId/decline', (req: Request, res: Response) 
 
 router.post('/', createProjectValidation, (req: Request, res: Response) => projectsController.createProject(req, res));
 router.get('/', (req: Request, res: Response) => projectsController.getUserProjects(req, res));
+router.get('/:projectId/documents', (req: Request, res: Response) => projectsController.getProjectDocuments(req, res));
+router.post('/:projectId/documents', createProjectDocumentValidation, (req: Request, res: Response) => projectsController.createProjectDocument(req, res));
+router.get('/:projectId/documents/:documentId', documentIdValidation, (req: Request, res: Response) => projectsController.getProjectDocumentById(req, res));
+router.put('/:projectId/documents/:documentId', updateProjectDocumentValidation, (req: Request, res: Response) => projectsController.updateProjectDocumentById(req, res));
+router.delete('/:projectId/documents/:documentId', documentIdValidation, (req: Request, res: Response) => projectsController.deleteProjectDocument(req, res));
+router.get('/:projectId/sprints/:sprintId/documents', (req: Request, res: Response) => projectsController.getSprintDocuments(req, res));
+router.put('/:projectId/sprints/:sprintId/documents', (req: Request, res: Response) => projectsController.updateSprintDocuments(req, res));
 router.get('/:projectId', (req: Request, res: Response) => projectsController.getProjectById(req, res));
 router.patch('/:projectId', updateProjectValidation, (req: Request, res: Response) => projectsController.updateProject(req, res));
 router.delete('/:projectId', (req: Request, res: Response) => projectsController.deleteProject(req, res));

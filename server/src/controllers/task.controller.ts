@@ -5,7 +5,9 @@ import {
   getAssignedTasks,
   getProjectTasks,
   getTaskById,
+  getTaskDocuments,
   updateTask,
+  updateTaskDocuments,
 } from "../services/task.service";
 
 export const createTaskController = async (req: Request, res: Response, next: NextFunction) => {
@@ -43,6 +45,30 @@ export const getTaskByIdController = async (req: Request, res: Response, next: N
     const user = (req as any).user;
     const task = await getTaskById(req.params.id as string, user.userId);
     return res.status(200).json({ success: true, data: task });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getTaskDocumentsController = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const user = (req as any).user;
+    const documents = await getTaskDocuments(req.params.id as string, user.userId);
+    return res.status(200).json({ success: true, data: documents });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const updateTaskDocumentsController = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const user = (req as any).user;
+    const documentIds = req.body.documentIds;
+    if (!Array.isArray(documentIds) || documentIds.some((documentId) => typeof documentId !== "string")) {
+      return res.status(400).json({ success: false, message: "documentIds must be an array of strings" });
+    }
+    const documents = await updateTaskDocuments(req.params.id as string, user.userId, documentIds);
+    return res.status(200).json({ success: true, data: documents });
   } catch (error) {
     next(error);
   }
