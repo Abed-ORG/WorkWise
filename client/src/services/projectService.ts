@@ -34,6 +34,14 @@ export interface ActiveSprint {
 export interface Sprint extends ActiveSprint {
   goal?: string;
   isActive: boolean;
+  createdAt: string;
+}
+
+export interface CreateSprintDto {
+  name: string;
+  startDate?: string;
+  endDate?: string;
+  goal?: string;
 }
 
 export interface Invitation {
@@ -137,6 +145,19 @@ export const acceptInvitation = async (invitationId: string): Promise<Project> =
 
 export const declineInvitation = async (invitationId: string): Promise<void> => {
   await apiClient.post(`/api/projects/invitations/${invitationId}/decline`);
+};
+
+export const createSprint = async (
+  projectId: string,
+  data: CreateSprintDto
+): Promise<Sprint> => {
+  const response = await apiClient.post(`/api/projects/${projectId}/sprints`, data);
+  return response.data.data;
+};
+
+export const getProjectSprints = async (projectId: string): Promise<Sprint[]> => {
+  const response = await apiClient.get(`/api/projects/${projectId}/sprints`);
+  return response.data.data;
 };
 
 export const startSprint = async (
