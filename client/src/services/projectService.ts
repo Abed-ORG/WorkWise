@@ -37,6 +37,16 @@ export interface Sprint extends ActiveSprint {
   createdAt: string;
 }
 
+export interface SprintWithCount extends Sprint {
+  _count: { tasks: number };
+}
+
+export interface CompleteSprintResult {
+  sprint: Sprint;
+  completedCount: number;
+  incompleteCount: number;
+}
+
 export interface CreateSprintDto {
   name: string;
   startDate?: string;
@@ -147,8 +157,22 @@ export const getProjectSprints = async (projectId: string): Promise<Sprint[]> =>
 
 export const startSprint = async (
   projectId: string,
-  data: { name: string; goal?: string }
+  data: { name: string; goal?: string; startDate?: string; endDate?: string }
 ): Promise<Sprint> => {
   const response = await apiClient.post(`/api/projects/${projectId}/sprints/start`, data);
+  return response.data.data;
+};
+
+export const getSprintById = async (projectId: string, sprintId: string): Promise<SprintWithCount> => {
+  const response = await apiClient.get(`/api/projects/${projectId}/sprints/${sprintId}`);
+  return response.data.data;
+};
+
+export const completeSprint = async (
+  projectId: string,
+  sprintId: string,
+  data: { incompleteTaskDestination: 'backlog' | 'sprint'; targetSprintId?: string }
+): Promise<CompleteSprintResult> => {
+  const response = await apiClient.post(`/api/projects/${projectId}/sprints/${sprintId}/complete`, data);
   return response.data.data;
 };

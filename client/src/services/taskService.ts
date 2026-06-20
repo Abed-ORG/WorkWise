@@ -18,7 +18,9 @@ export interface Task {
   status: TaskStatus;
   labels: string[];
   dueDate?: string | null;
+  order: number;
   projectId: string;
+  sprintId?: string | null;
   project?: { id: string; name: string; key: string };
   assignee?: TaskUser | null;
   creator?: TaskUser;
@@ -57,4 +59,14 @@ export async function updateTaskStatus(taskId: string, status: TaskStatus): Prom
 
 export async function deleteTask(taskId: string): Promise<void> {
   await apiClient.delete(`/tasks/${taskId}`);
+}
+
+export async function moveTaskToSprint(taskId: string, sprintId: string | null): Promise<Task> {
+  const response = await apiClient.patch(`/tasks/${taskId}`, { sprintId });
+  return response.data.data;
+}
+
+export async function reorderTask(taskId: string, order: number): Promise<Task> {
+  const response = await apiClient.patch(`/tasks/${taskId}`, { order });
+  return response.data.data;
 }

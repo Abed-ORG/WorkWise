@@ -270,6 +270,50 @@ export class ProjectsController {
     }
   }
 
+  // ── Get Single Sprint ──────────────────────────────────────
+  async getSprintById(req: Request, res: Response) {
+    try {
+      const projectId = String(req.params['projectId']);
+      const sprintId = String(req.params['sprintId']);
+      const userId = String((req as any).user?.userId);
+      const sprint = await projectsService.getSprintById(projectId, sprintId, userId);
+      return res.status(200).json({ success: true, data: sprint });
+    } catch (error: any) {
+      if (error.message === 'PROJECT_NOT_FOUND') {
+        return res.status(404).json({ success: false, message: 'Project not found' });
+      }
+      if (error.message === 'SPRINT_NOT_FOUND') {
+        return res.status(404).json({ success: false, message: 'Sprint not found' });
+      }
+      return res.status(500).json({ success: false, message: 'Internal server error' });
+    }
+  }
+
+  // ── Complete Sprint ────────────────────────────────────────
+  async completeSprint(req: Request, res: Response) {
+    try {
+      const projectId = String(req.params['projectId']);
+      const sprintId = String(req.params['sprintId']);
+      const userId = String((req as any).user?.userId);
+      const result = await projectsService.completeSprint(projectId, sprintId, userId, req.body);
+      return res.status(200).json({ success: true, data: result });
+    } catch (error: any) {
+      if (error.message === 'FORBIDDEN') {
+        return res.status(403).json({ success: false, message: 'Only project admins can complete sprints' });
+      }
+      if (error.message === 'SPRINT_NOT_FOUND') {
+        return res.status(404).json({ success: false, message: 'Sprint not found or not active' });
+      }
+      if (error.message === 'TARGET_SPRINT_NOT_FOUND') {
+        return res.status(404).json({ success: false, message: 'Target sprint not found' });
+      }
+      if (error.message === 'CANNOT_TARGET_SAME_SPRINT') {
+        return res.status(400).json({ success: false, message: 'Cannot move tasks to the same sprint' });
+      }
+      return res.status(500).json({ success: false, message: 'Internal server error' });
+    }
+  }
+
   // ── Update Member Role ─────────────────────────────────────
   async updateMemberRole(req: Request, res: Response) {
     const errors = validationResult(req);

@@ -286,7 +286,11 @@ export class ProjectsService {
     });
   }
 
-  async startSprint(projectId: string, userId: string, data: { name: string; goal?: string }) {
+  async startSprint(
+    projectId: string,
+    userId: string,
+    data: { name: string; goal?: string; startDate?: string; endDate?: string },
+  ) {
     await this.requireAdminRole(projectId, userId);
 
     const activeSprint = await prisma.sprint.findFirst({
@@ -297,16 +301,18 @@ export class ProjectsService {
       throw new Error('ACTIVE_SPRINT_EXISTS');
     }
 
-    const startDate = new Date();
-    const endDate = new Date(startDate);
-    endDate.setDate(endDate.getDate() + 14);
+    // Use provided dates when supplied; fall back to today / today+14 only when omitted
+    const resolvedStart = data.startDate ? new Date(data.startDate) : new Date();
+    const resolvedEnd = data.endDate
+      ? new Date(data.endDate)
+      : (() => { const d = new Date(resolvedStart); d.setDate(d.getDate() + 14); return d; })();
 
     return prisma.sprint.create({
       data: {
         name: data.name.trim(),
         goal: data.goal?.trim() || undefined,
-        startDate,
-        endDate,
+        startDate: resolvedStart,
+        endDate: resolvedEnd,
         isActive: true,
         projectId,
       },
@@ -388,6 +394,84 @@ export class ProjectsService {
       where: { projectId },
       orderBy: [{ startDate: 'asc' }, { createdAt: 'asc' }],
     });
+  }
+
+  // ── Get Single Sprint ──────────────────────────────────────
+  async getSprintById(projectId: string, sprintId: string, userId: string) {
+    const project = await prisma.project.findFirst({
+      where: { id: projectId, members: { some: { userId } } },
+      select: { id: true },
+    });
+
+    if (!project) throw new Error('PROJECT_NOT_FOUND');
+
+    const sprint = await prisma.sprint.findFirst({
+      where: { id: sprintId, projectId },
+      include: { _count: { select: { tasks: true } } },
+    });
+
+    if (!sprint) throw new Error('SPRINT_NOT_FOUND');
+
+    return sprint;
+  }
+
+  // ── Complete Sprint ────────────────────────────────────────
+  async completeSprint(
+    projectId: string,
+    sprintId: string,
+    userId: string,
+    data: { incompleteTaskDestination: 'backlog' | 'sprint'; targetSprintId?: string },
+  ) {
+    await this.requireAdminRole(projectId, userId);
+
+    const sprint = await prisma.sprint.findFirst({
+      where: { id: sprintId, projectId, isActive: true },
+    });
+
+    if (!sprint) throw new Error('SPRINT_NOT_FOUND');
+
+    const tasks = await prisma.task.findMany({
+      where: { sprintId },
+      select: { id: true, status: true },
+    });
+
+    const completedCount = tasks.filter((t) => t.status === 'DONE').length;
+    const incompleteCount = tasks.length - completedCount;
+
+    if (data.incompleteTaskDestination === 'sprint' && data.targetSprintId) {
+      const targetSprint = await prisma.sprint.findFirst({
+        where: { id: data.targetSprintId, projectId },
+      });
+      if (!targetSprint) throw new Error('TARGET_SPRINT_NOT_FOUND');
+      if (targetSprint.id === sprintId) throw new Error('CANNOT_TARGET_SAME_SPRINT');
+    }
+
+    if (incompleteCount > 0) {
+      if (data.incompleteTaskDestination === 'backlog') {
+        await prisma.task.updateMany({
+          where: { sprintId, status: { not: 'DONE' } },
+          data: { sprintId: null },
+        });
+      } else if (data.targetSprintId) {
+        await prisma.task.updateMany({
+          where: { sprintId, status: { not: 'DONE' } },
+          data: { sprintId: data.targetSprintId },
+        });
+      }
+    }
+
+    // Always overwrite endDate with now so the sprint's endDate reflects actual completion
+    // time, not the originally planned date. This guarantees SprintPage's Past bucket
+    // (filter: !isActive && endDate <= today) picks it up even when completed early.
+    const completedSprint = await prisma.sprint.update({
+      where: { id: sprintId },
+      data: {
+        isActive: false,
+        endDate: new Date(),
+      },
+    });
+
+    return { sprint: completedSprint, completedCount, incompleteCount };
   }
 
   // ── Helper — Require Admin Role ────────────────────────────

@@ -20,4 +20,6 @@ export const updateTaskSchema = z.object({
   labels: z.array(z.string()).optional(),
   dueDate: z.string().datetime().nullable().optional(),
   assigneeId: z.string().nullable().optional(),
+  sprintId: z.string().nullable().optional(),
+  order: z.number().int().optional(),
 });
