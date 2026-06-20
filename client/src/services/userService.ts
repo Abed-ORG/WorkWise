@@ -5,6 +5,7 @@ export interface UserProfile {
   name: string;
   email: string;
   avatarUrl?: string | null;
+  notificationPreference?: 'ALL' | 'MENTIONS_ONLY' | 'NONE';
   onboardingCompleted: boolean;
   onboardingDismissed: boolean;
   createdAt: string;

@@ -1,5 +1,8 @@
-import { PrismaClient, Role } from '@prisma/client';
+import { NotificationType, PrismaClient, Role } from '@prisma/client';
 import { sendProjectInvitationEmail } from '../../services/mail.service';
+import { createProjectActivity } from '../../services/activity.service';
+import { notifyProjectMembers } from '../../services/notification.service';
+import { emitProjectEvent } from '../../services/realtime.service';
 
 const prisma = new PrismaClient();
 
@@ -301,7 +304,7 @@ export class ProjectsService {
     const endDate = new Date(startDate);
     endDate.setDate(endDate.getDate() + 14);
 
-    return prisma.sprint.create({
+    const sprint = await prisma.sprint.create({
       data: {
         name: data.name.trim(),
         goal: data.goal?.trim() || undefined,
@@ -311,6 +314,18 @@ export class ProjectsService {
         projectId,
       },
     });
+
+    await createProjectActivity({
+      projectId,
+      userId,
+      action: 'SPRINT_STARTED',
+      target: sprint.name,
+      details: sprint.goal || 'Sprint started',
+    });
+    await notifyProjectMembers(projectId, userId, NotificationType.SPRINT_STARTED, `Sprint "${sprint.name}" started.`);
+    emitProjectEvent(projectId, 'sprint:started', sprint);
+
+    return sprint;
   }
 
   async getProjectDocument(projectId: string, userId: string) {
