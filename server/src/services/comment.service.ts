@@ -1,6 +1,10 @@
+import { NotificationType } from "@prisma/client";
 import prisma from "../utils/prisma";
 import { NotFoundError } from "../errors/NotFoundError";
 import { UnauthorizedError } from "../errors/UnauthorizedError";
+import { notifyProjectMembers } from "./notification.service";
+import { emitProjectEvent } from "./realtime.service";
+import { createProjectActivity } from "./activity.service";
 
 export const createComment = async (
   taskId: string,
@@ -9,6 +13,7 @@ export const createComment = async (
 ) => {
   const task = await prisma.task.findUnique({
     where: { id: taskId },
+    include: { project: { select: { name: true } } },
   });
 
   if (!task) {
@@ -40,6 +45,21 @@ export const createComment = async (
       details: "A comment was added to the task",
     },
   });
+  await createProjectActivity({
+    projectId: task.projectId,
+    userId: authorId,
+    action: "COMMENT_ADDED",
+    target: task.title,
+    details: "Comment added",
+  });
+
+  await notifyProjectMembers(
+    task.projectId,
+    authorId,
+    NotificationType.COMMENT_ADDED,
+    `A comment was added to "${task.title}" in ${task.project.name}.`
+  );
+  emitProjectEvent(task.projectId, "comment:created", { taskId, comment });
 
   return comment;
 };

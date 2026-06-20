@@ -9,6 +9,9 @@ import projectRoutes from './modules/projects/projects.routes';
 import taskRoutes from './routes/task.routes';
 import commentRoutes from './routes/comment.routes';
 import aiRoutes from './modules/ai/ai.routes';
+
+import notificationRoutes from './routes/notification.routes';
+import activityRoutes from './routes/activity.routes';
 import { errorHandler } from './middleware/error.middleware';
 import { env } from './config/env';
 
@@ -38,6 +41,8 @@ app.use('/', healthRoutes);
 app.use('/auth', authLimiter, authRoutes);
 app.use('/tasks', taskRoutes);
 app.use('/comments', commentRoutes);
+app.use('/notifications', notificationRoutes);
+app.use('/activities', activityRoutes);
 app.use('/api/projects', projectRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/ai', aiRoutes);

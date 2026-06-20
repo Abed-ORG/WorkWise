@@ -5,6 +5,7 @@ export interface User {
   name: string;
   email: string;
   avatarUrl?: string | null;
+  notificationPreference?: 'ALL' | 'MENTIONS_ONLY' | 'NONE';
 }
 
 export interface AuthResponse {

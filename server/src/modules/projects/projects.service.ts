@@ -1,7 +1,20 @@
-import { PrismaClient, Role } from '@prisma/client';
+import { NotificationType, PrismaClient, Role } from '@prisma/client';
 import { sendProjectInvitationEmail } from '../../services/mail.service';
+import { createProjectActivity } from '../../services/activity.service';
+import { notifyProjectMembers } from '../../services/notification.service';
+import { emitProjectEvent } from '../../services/realtime.service';
 
 const prisma = new PrismaClient();
+
+const linkedDocumentSelect = {
+  id: true,
+  title: true,
+  content: true,
+  projectId: true,
+  authorId: true,
+  createdAt: true,
+  updatedAt: true,
+} as const;
 
 export class ProjectsService {
 
@@ -85,7 +98,7 @@ export class ProjectsService {
         },
         sprints: {
           where: { isActive: true },
-          select: { id: true, name: true, startDate: true, endDate: true },
+          select: { id: true, name: true, goal: true, startDate: true, endDate: true },
         },
         _count: {
           select: { tasks: true },
@@ -301,7 +314,7 @@ export class ProjectsService {
     const endDate = new Date(startDate);
     endDate.setDate(endDate.getDate() + 14);
 
-    return prisma.sprint.create({
+    const sprint = await prisma.sprint.create({
       data: {
         name: data.name.trim(),
         goal: data.goal?.trim() || undefined,
@@ -310,6 +323,142 @@ export class ProjectsService {
         isActive: true,
         projectId,
       },
+    });
+
+    await createProjectActivity({
+      projectId,
+      userId,
+      action: 'SPRINT_STARTED',
+      target: sprint.name,
+      details: sprint.goal || 'Sprint started',
+    });
+    await notifyProjectMembers(projectId, userId, NotificationType.SPRINT_STARTED, `Sprint "${sprint.name}" started.`);
+    emitProjectEvent(projectId, 'sprint:started', sprint);
+
+    return sprint;
+  }
+
+  async getProjectDocuments(projectId: string, userId: string, q?: string) {
+    await this.requireProjectMember(projectId, userId);
+    const query = q?.trim();
+
+    return prisma.document.findMany({
+      where: {
+        projectId,
+        ...(query
+          ? {
+              OR: [
+                { title: { contains: query, mode: 'insensitive' } },
+                { content: { contains: query, mode: 'insensitive' } },
+              ],
+            }
+          : {}),
+      },
+      orderBy: [{ updatedAt: 'desc' }, { createdAt: 'desc' }],
+    });
+  }
+
+  async getSprintDocuments(projectId: string, sprintId: string, userId: string) {
+    await this.requireSprintInProject(projectId, sprintId, userId);
+
+    const links = await prisma.sprintDocument.findMany({
+      where: { sprintId },
+      include: { document: { select: linkedDocumentSelect } },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    return links.map((link) => link.document);
+  }
+
+  async updateSprintDocuments(projectId: string, sprintId: string, userId: string, documentIds: string[]) {
+    await this.requireSprintInProject(projectId, sprintId, userId);
+    const uniqueDocumentIds = Array.from(new Set(documentIds));
+
+    if (uniqueDocumentIds.length > 0) {
+      const documents = await prisma.document.findMany({
+        where: { id: { in: uniqueDocumentIds }, projectId },
+        select: { id: true },
+      });
+
+      if (documents.length !== uniqueDocumentIds.length) {
+        throw new Error('DOCUMENT_NOT_FOUND');
+      }
+    }
+
+    await prisma.$transaction(async (tx) => {
+      await tx.sprintDocument.deleteMany({ where: { sprintId } });
+
+      if (uniqueDocumentIds.length > 0) {
+        await tx.sprintDocument.createMany({
+          data: uniqueDocumentIds.map((documentId) => ({ sprintId, documentId })),
+          skipDuplicates: true,
+        });
+      }
+    });
+
+    return this.getSprintDocuments(projectId, sprintId, userId);
+  }
+
+  async getProjectDocumentById(projectId: string, userId: string, documentId: string) {
+    await this.requireProjectMember(projectId, userId);
+
+    const document = await prisma.document.findFirst({
+      where: { id: documentId, projectId },
+    });
+
+    if (!document) {
+      throw new Error('DOCUMENT_NOT_FOUND');
+    }
+
+    return document;
+  }
+
+  async createProjectDocument(projectId: string, userId: string, data: { title: string; content?: string | null }) {
+    await this.requireProjectMember(projectId, userId);
+
+    return prisma.document.create({
+      data: {
+        title: data.title.trim(),
+        content: data.content ?? '',
+        projectId,
+        authorId: userId,
+      },
+    });
+  }
+
+  async updateProjectDocument(projectId: string, userId: string, documentId: string, data: { title: string; content?: string | null }) {
+    await this.requireProjectMember(projectId, userId);
+
+    const document = await prisma.document.findFirst({
+      where: { id: documentId, projectId },
+    });
+
+    if (!document) {
+      throw new Error('DOCUMENT_NOT_FOUND');
+    }
+
+    return prisma.document.update({
+      where: { id: document.id },
+      data: {
+        title: data.title.trim(),
+        content: data.content ?? '',
+      },
+    });
+  }
+
+  async deleteProjectDocument(projectId: string, userId: string, documentId: string) {
+    await this.requireProjectMember(projectId, userId);
+
+    const document = await prisma.document.findFirst({
+      where: { id: documentId, projectId },
+    });
+
+    if (!document) {
+      throw new Error('DOCUMENT_NOT_FOUND');
+    }
+
+    await prisma.document.delete({
+      where: { id: document.id },
     });
   }
 
@@ -323,31 +472,13 @@ export class ProjectsService {
   }
 
   async saveProjectDocument(projectId: string, userId: string, data: { title: string; content?: string | null }) {
-    await this.requireProjectMember(projectId, userId);
-
-    const existingDocument = await prisma.document.findFirst({
-      where: { projectId },
-      orderBy: { createdAt: 'asc' },
-    });
+    const existingDocument = await this.getProjectDocument(projectId, userId);
 
     if (existingDocument) {
-      return prisma.document.update({
-        where: { id: existingDocument.id },
-        data: {
-          title: data.title.trim(),
-          content: data.content ?? '',
-        },
-      });
+      return this.updateProjectDocument(projectId, userId, existingDocument.id, data);
     }
 
-    return prisma.document.create({
-      data: {
-        title: data.title.trim(),
-        content: data.content ?? '',
-        projectId,
-        authorId: userId,
-      },
-    });
+    return this.createProjectDocument(projectId, userId, data);
   }
 
   // ── Update Member Role ─────────────────────────────────────
@@ -389,6 +520,44 @@ export class ProjectsService {
     });
   }
 
+  // ── Create Sprint (inactive) ───────────────────────────────
+  async createSprint(projectId: string, userId: string, data: {
+    name: string;
+    startDate?: string;
+    endDate?: string;
+    goal?: string;
+  }) {
+    await this.requireAdminRole(projectId, userId);
+
+    return prisma.sprint.create({
+      data: {
+        name: data.name.trim(),
+        goal: data.goal?.trim() || undefined,
+        startDate: data.startDate ? new Date(data.startDate) : undefined,
+        endDate: data.endDate ? new Date(data.endDate) : undefined,
+        isActive: false,
+        projectId,
+      },
+    });
+  }
+
+  // ── Get All Sprints for Project ────────────────────────────
+  async getSprints(projectId: string, userId: string) {
+    const project = await prisma.project.findFirst({
+      where: { id: projectId, members: { some: { userId } } },
+      select: { id: true },
+    });
+
+    if (!project) {
+      throw new Error('PROJECT_NOT_FOUND');
+    }
+
+    return prisma.sprint.findMany({
+      where: { projectId },
+      orderBy: [{ startDate: 'asc' }, { createdAt: 'asc' }],
+    });
+  }
+
   // ── Helper — Require Admin Role ────────────────────────────
   private async requireAdminRole(projectId: string, userId: string) {
     const member = await prisma.projectMember.findUnique({
@@ -414,6 +583,21 @@ export class ProjectsService {
     }
 
     return member;
+  }
+
+  private async requireSprintInProject(projectId: string, sprintId: string, userId: string) {
+    await this.requireProjectMember(projectId, userId);
+
+    const sprint = await prisma.sprint.findFirst({
+      where: { id: sprintId, projectId },
+      select: { id: true },
+    });
+
+    if (!sprint) {
+      throw new Error('SPRINT_NOT_FOUND');
+    }
+
+    return sprint;
   }
 }
 
