@@ -27,7 +27,6 @@ export interface ProjectMember {
 export interface ActiveSprint {
   id: string;
   name: string;
-  goal?: string | null;
   startDate?: string;
   endDate?: string;
 }
@@ -36,6 +35,16 @@ export interface Sprint extends ActiveSprint {
   goal?: string;
   isActive: boolean;
   createdAt: string;
+}
+
+export interface SprintWithCount extends Sprint {
+  _count: { tasks: number };
+}
+
+export interface CompleteSprintResult {
+  sprint: Sprint;
+  completedCount: number;
+  incompleteCount: number;
 }
 
 export interface CreateSprintDto {
@@ -75,8 +84,6 @@ export interface SaveProjectDocumentDto {
   title: string;
   content: string;
 }
-
-export type ProjectDocumentPayload = SaveProjectDocumentDto;
 
 // ── Project CRUD ───────────────────────────────────────────
 
@@ -150,6 +157,8 @@ export const declineInvitation = async (invitationId: string): Promise<void> => 
   await apiClient.post(`/api/projects/invitations/${invitationId}/decline`);
 };
 
+// ── Sprints ────────────────────────────────────────────────
+
 export const createSprint = async (
   projectId: string,
   data: CreateSprintDto
@@ -165,20 +174,30 @@ export const getProjectSprints = async (projectId: string): Promise<Sprint[]> =>
 
 export const startSprint = async (
   projectId: string,
-  data: { name: string; goal?: string }
+  data: { name: string; goal?: string; startDate?: string; endDate?: string }
 ): Promise<Sprint> => {
   const response = await apiClient.post(`/api/projects/${projectId}/sprints/start`, data);
   return response.data.data;
 };
 
-export const getProjectDocument = async (
+export const getSprintById = async (projectId: string, sprintId: string): Promise<SprintWithCount> => {
+  const response = await apiClient.get(`/api/projects/${projectId}/sprints/${sprintId}`);
+  return response.data.data;
+};
+
+export const completeSprint = async (
   projectId: string,
-  documentId?: string
-): Promise<ProjectDocument | null> => {
-  const path = documentId
-    ? `/api/projects/${projectId}/documents/${documentId}`
-    : `/api/projects/${projectId}/document`;
-  const response = await apiClient.get(path);
+  sprintId: string,
+  data: { incompleteTaskDestination: 'backlog' | 'sprint'; targetSprintId?: string }
+): Promise<CompleteSprintResult> => {
+  const response = await apiClient.post(`/api/projects/${projectId}/sprints/${sprintId}/complete`, data);
+  return response.data.data;
+};
+
+// ── Documents ──────────────────────────────────────────────
+
+export const getProjectDocument = async (projectId: string): Promise<ProjectDocument | null> => {
+  const response = await apiClient.get(`/api/projects/${projectId}/document`);
   return response.data.data;
 };
 
@@ -187,58 +206,5 @@ export const saveProjectDocument = async (
   data: SaveProjectDocumentDto
 ): Promise<ProjectDocument> => {
   const response = await apiClient.put(`/api/projects/${projectId}/document`, data);
-  return response.data.data;
-};
-
-export const getProjectDocuments = async (projectId: string, q?: string): Promise<ProjectDocument[]> => {
-  const response = await apiClient.get(`/api/projects/${projectId}/documents`, { params: q ? { q } : undefined });
-  return response.data.data;
-};
-
-export const getProjectDocumentById = async (
-  projectId: string,
-  documentId: string
-): Promise<ProjectDocument> => {
-  return getProjectDocument(projectId, documentId) as Promise<ProjectDocument>;
-};
-
-export const createProjectDocument = async (
-  projectId: string,
-  data: ProjectDocumentPayload
-): Promise<ProjectDocument> => {
-  const response = await apiClient.post(`/api/projects/${projectId}/documents`, data);
-  return response.data.data;
-};
-
-export const updateProjectDocument = async (
-  projectId: string,
-  documentId: string,
-  data: ProjectDocumentPayload
-): Promise<ProjectDocument> => {
-  const response = await apiClient.put(`/api/projects/${projectId}/documents/${documentId}`, data);
-  return response.data.data;
-};
-
-export const deleteProjectDocument = async (
-  projectId: string,
-  documentId: string
-): Promise<void> => {
-  await apiClient.delete(`/api/projects/${projectId}/documents/${documentId}`);
-};
-
-export const getSprintDocuments = async (
-  projectId: string,
-  sprintId: string
-): Promise<ProjectDocument[]> => {
-  const response = await apiClient.get(`/api/projects/${projectId}/sprints/${sprintId}/documents`);
-  return response.data.data;
-};
-
-export const updateSprintDocuments = async (
-  projectId: string,
-  sprintId: string,
-  documentIds: string[]
-): Promise<ProjectDocument[]> => {
-  const response = await apiClient.put(`/api/projects/${projectId}/sprints/${sprintId}/documents`, { documentIds });
   return response.data.data;
 };

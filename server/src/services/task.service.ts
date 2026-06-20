@@ -293,6 +293,9 @@ export interface UpdateTaskInput {
   labels?: string[];
   dueDate?: string;
   assigneeId?: string | null;
+  // global order field; per-sprint ordering uses this — no migration needed, field already exists
+  order?: number;
+  sprintId?: string | null;
   userId: string;
 }
 
@@ -314,6 +317,13 @@ export const updateTask = async (
     await requireProjectMember(existingTask.projectId, input.assigneeId);
   }
 
+  if (input.sprintId) {
+    const sprint = await prisma.sprint.findUnique({ where: { id: input.sprintId } });
+    if (!sprint || sprint.projectId !== existingTask.projectId) {
+      throw new AppError("Sprint not found or does not belong to this project", 404);
+    }
+  }
+
   const updatedTask = await prisma.task.update({
     where: { id: taskId },
     data: {
@@ -325,6 +335,8 @@ export const updateTask = async (
       labels: input.labels,
       dueDate: input.dueDate ? new Date(input.dueDate) : undefined,
       assigneeId: input.assigneeId,
+      sprintId: input.sprintId,
+      ...(input.order !== undefined && { order: input.order }),
     },
     include: taskSummaryInclude,
   });
