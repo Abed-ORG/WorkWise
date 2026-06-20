@@ -18,8 +18,16 @@ import {
   updateProjectDocument,
 } from '../services/projectService';
 import type { Project, ProjectDocument } from '../services/projectService';
+import { joinProjectRoom, leaveProjectRoom } from '../services/realtimeService';
 import { deleteTask, getProjectTasks } from '../services/taskService';
 import type { Task } from '../services/taskService';
+
+
+function upsertTask(tasks: Task[], nextTask: Task) {
+  const exists = tasks.some((task) => task.id === nextTask.id);
+  if (exists) return tasks.map((task) => (task.id === nextTask.id ? nextTask : task));
+  return [nextTask, ...tasks];
+}
 
 export default function ProjectOverviewPage() {
   const { projectId } = useParams<{ projectId: string }>();
@@ -50,9 +58,46 @@ export default function ProjectOverviewPage() {
   }, [projectId, navigate]);
 
   useEffect(() => {
+    if (!projectId) return undefined;
+
+    const activeSocket = joinProjectRoom(projectId);
+    if (!activeSocket) return undefined;
+
+    function handleTaskCreated(task: Task) {
+      if (task.projectId === projectId) {
+        setTasks((current) => upsertTask(current, task));
+      }
+    }
+
+    function handleTaskUpdated(task: Task) {
+      if (task.projectId === projectId) {
+        setTasks((current) => upsertTask(current, task));
+      }
+    }
+
+    function handleSprintStarted(sprint: NonNullable<Project['sprints']>[number]) {
+      setProject((current) => {
+        if (!current || current.id !== projectId) return current;
+        return { ...current, sprints: [sprint, ...(current.sprints ?? []).filter((item) => item.id !== sprint.id)] };
+      });
+    }
+
+    activeSocket.on('task:created', handleTaskCreated);
+    activeSocket.on('task:updated', handleTaskUpdated);
+    activeSocket.on('sprint:started', handleSprintStarted);
+
+    return () => {
+      activeSocket.off('task:created', handleTaskCreated);
+      activeSocket.off('task:updated', handleTaskUpdated);
+      activeSocket.off('sprint:started', handleSprintStarted);
+      leaveProjectRoom(projectId);
+    };
+  }, [projectId]);
+
+  useEffect(() => {
     if (!projectId) return;
-    setDocumentLoading(true);
-    setDocumentMessage(null);
+
+    let active = true;
 
     getProjectDocuments(projectId)
       .then((projectDocuments) => {
@@ -64,8 +109,14 @@ export default function ProjectOverviewPage() {
         setDocumentTitle(firstDocument?.title ?? '');
         setDocumentContent(firstDocument?.content || '');
       })
-      .catch(() => setDocumentMessage({ type: 'error', text: 'Documentation could not be loaded.' }))
-      .finally(() => setDocumentLoading(false));
+      .catch(() => {
+        if (active) setDocumentMessage({ type: 'error', text: 'Documentation could not be loaded.' });
+      })
+      .finally(() => {
+        if (active) setDocumentLoading(false);
+      });
+
+    return () => { active = false; };
   }, [projectId]);
 
   if (loading) return <div className="empty-panel"><Spinner size="lg" /><p className="mt-4">Opening project...</p></div>;
@@ -176,6 +227,7 @@ export default function ProjectOverviewPage() {
         description={project.description || 'A shared workspace for planning, prioritizing, and delivering the next milestone.'}
         actions={<div className="page-actions">
           {isAdmin && <Button onClick={() => setCreateOpen(true)}><Icon name="plus" size={16} /> Create task</Button>}
+          <Button variant="secondary" onClick={() => navigate(`/projects/${project.id}/activity`)}><Icon name="activity" size={16} /> Activity feed</Button>
           <Button variant="secondary" onClick={() => navigate(`/projects/${project.id}/sprints`)}><Icon name="activity" size={16} /> Sprints</Button>
           {isAdmin && <Button variant="secondary" onClick={() => navigate(`/projects/${project.id}/settings`)}><Icon name="settings" size={16} /> Project settings</Button>}
         </div>}

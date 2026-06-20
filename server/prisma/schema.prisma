@@ -44,6 +44,12 @@ enum NotificationType {
   SPRINT_COMPLETED
 }
 
+enum NotificationPreference {
+  ALL
+  MENTIONS_ONLY
+  NONE
+}
+
 model User {
   id                  String   @id @default(cuid())
   name                String
@@ -52,6 +58,7 @@ model User {
   avatarUrl           String?
   onboardingCompleted Boolean  @default(false)
   onboardingDismissed Boolean  @default(false)
+  notificationPreference NotificationPreference @default(ALL)
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
 
@@ -60,6 +67,7 @@ model User {
   createdTasks        Task[]               @relation("TaskCreator")
   comments            Comment[]
   taskActivities      TaskActivity[]
+  projectActivities   ProjectActivity[]
   notifications       Notification[]
   documents           Document[]
   invitationsSent     Invitation[]         @relation("InvitationSender")
@@ -81,6 +89,7 @@ model Project {
   sprints     Sprint[]
   documents   Document[]
   invitations Invitation[]
+  activities  ProjectActivity[]
 
   @@map("projects")
 }
@@ -268,4 +277,21 @@ model PasswordResetToken {
 
   @@index([userId])
   @@map("password_reset_tokens")
+}
+
+model ProjectActivity {
+  id        String   @id @default(cuid())
+  action    String
+  target    String
+  details   String?
+  createdAt DateTime @default(now())
+
+  projectId String
+  userId    String
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, createdAt])
+  @@map("project_activities")
 }

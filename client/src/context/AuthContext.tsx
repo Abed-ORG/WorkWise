@@ -49,7 +49,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     getMyProfile()
       .then((profile) => {
         if (!active) return;
-        updateUser({ id: profile.id, name: profile.name, email: profile.email, avatarUrl: profile.avatarUrl });
+        updateUser({
+          id: profile.id,
+          name: profile.name,
+          email: profile.email,
+          avatarUrl: profile.avatarUrl,
+          notificationPreference: profile.notificationPreference,
+        });
       })
       .catch(() => {
         if (active) logout();
