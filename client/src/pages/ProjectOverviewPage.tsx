@@ -83,16 +83,28 @@ export default function ProjectOverviewPage() {
 
   useEffect(() => {
     if (!projectId) return;
-    setDocumentLoading(true);
-    setDocumentMessage(null);
+    let active = true;
 
-    getProjectDocument(projectId)
+    Promise.resolve()
+      .then(() => {
+        if (!active) return null;
+        setDocumentLoading(true);
+        setDocumentMessage(null);
+        return getProjectDocument(projectId);
+      })
       .then((projectDocument) => {
+        if (!active) return;
         setDocumentTitle(projectDocument?.title || 'Project documentation');
         setDocumentContent(projectDocument?.content || '');
       })
-      .catch(() => setDocumentMessage({ type: 'error', text: 'Documentation could not be loaded.' }))
-      .finally(() => setDocumentLoading(false));
+      .catch(() => {
+        if (active) setDocumentMessage({ type: 'error', text: 'Documentation could not be loaded.' });
+      })
+      .finally(() => {
+        if (active) setDocumentLoading(false);
+      });
+
+    return () => { active = false; };
   }, [projectId]);
 
   if (loading) return <div className="empty-panel"><Spinner size="lg" /><p className="mt-4">Opening project...</p></div>;

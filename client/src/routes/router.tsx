@@ -1,8 +1,9 @@
-import { createBrowserRouter, Navigate } from 'react-router-dom';
+import { createBrowserRouter } from 'react-router-dom';
 import AppShell from '../components/AppShell';
 import ProtectedRoute from '../components/ProtectedRoute';
 import PublicRoute from '../components/PublicRoute';
 import DashboardPage from '../pages/DashboardPage';
+import LandingPage from '../pages/LandingPage';
 import LoginPage from '../pages/LoginPage';
 import NotFoundPage from '../pages/NotFoundPage';
 import RegisterPage from '../pages/RegisterPage';
@@ -18,12 +19,9 @@ import ActivityFeedPage from '../pages/ActivityFeedPage';
 
 const router = createBrowserRouter([
   {
-    path: '/',
-    element: <Navigate to="/dashboard" replace />,
-  },
-  {
     element: <PublicRoute />,
     children: [
+      { path: '/', element: <LandingPage /> },
       { path: '/login', element: <LoginPage /> },
       { path: '/register', element: <RegisterPage /> },
       { path: '/forgot-password', element: <ForgotPasswordPage /> },
