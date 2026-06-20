@@ -1,8 +1,9 @@
-import { createBrowserRouter, Navigate } from 'react-router-dom';
+import { createBrowserRouter } from 'react-router-dom';
 import AppShell from '../components/AppShell';
 import ProtectedRoute from '../components/ProtectedRoute';
 import PublicRoute from '../components/PublicRoute';
 import DashboardPage from '../pages/DashboardPage';
+import LandingPage from '../pages/LandingPage';
 import LoginPage from '../pages/LoginPage';
 import NotFoundPage from '../pages/NotFoundPage';
 import RegisterPage from '../pages/RegisterPage';
@@ -16,15 +17,13 @@ import SprintPage from '../pages/SprintPage';
 import SprintBoardPage from '../pages/SprintBoardPage';
 import ForgotPasswordPage from '../pages/ForgotPasswordPage';
 import ResetPasswordPage from '../pages/ResetPasswordPage';
+import ActivityFeedPage from '../pages/ActivityFeedPage';
 
 const router = createBrowserRouter([
   {
-    path: '/',
-    element: <Navigate to="/dashboard" replace />,
-  },
-  {
     element: <PublicRoute />,
     children: [
+      { path: '/', element: <LandingPage /> },
       { path: '/login', element: <LoginPage /> },
       { path: '/register', element: <RegisterPage /> },
       { path: '/forgot-password', element: <ForgotPasswordPage /> },
@@ -41,6 +40,7 @@ const router = createBrowserRouter([
           { path: '/projects', element: <ProjectsPage /> },
           { path: '/projects/create', element: <CreateProjectPage /> },
           { path: '/projects/:projectId', element: <ProjectOverviewPage /> },
+          { path: '/projects/:projectId/activity', element: <ActivityFeedPage /> },
           { path: '/projects/:projectId/sprints', element: <SprintPage /> },
           { path: '/projects/:projectId/sprints/:sprintId/board', element: <SprintBoardPage /> },
           { path: '/projects/:projectId/settings', element: <ProjectSettingsPage /> },

@@ -210,6 +210,7 @@ export class ProjectsController {
     }
   }
 
+  // ── Start Sprint (creates + activates) ─────────────────────
   async startSprint(req: Request, res: Response) {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -309,6 +310,44 @@ export class ProjectsController {
       }
       if (error.message === 'CANNOT_TARGET_SAME_SPRINT') {
         return res.status(400).json({ success: false, message: 'Cannot move tasks to the same sprint' });
+      }
+      return res.status(500).json({ success: false, message: 'Internal server error' });
+    }
+  }
+
+  // ── Get Project Document ───────────────────────────────────
+  async getProjectDocument(req: Request, res: Response) {
+    try {
+      const projectId = String(req.params['projectId']);
+      const userId = String((req as any).user?.userId);
+      const document = await projectsService.getProjectDocument(projectId, userId);
+      return res.status(200).json({ success: true, data: document });
+    } catch (error: any) {
+      if (error.message === 'PROJECT_NOT_FOUND') {
+        return res.status(404).json({ success: false, message: 'Project not found' });
+      }
+      return res.status(500).json({ success: false, message: 'Internal server error' });
+    }
+  }
+
+  // ── Save Project Document ──────────────────────────────────
+  async saveProjectDocument(req: Request, res: Response) {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ success: false, errors: errors.array() });
+    }
+
+    try {
+      const projectId = String(req.params['projectId']);
+      const userId = String((req as any).user?.userId);
+      const document = await projectsService.saveProjectDocument(projectId, userId, {
+        title: req.body.title,
+        content: req.body.content,
+      });
+      return res.status(200).json({ success: true, data: document });
+    } catch (error: any) {
+      if (error.message === 'PROJECT_NOT_FOUND') {
+        return res.status(404).json({ success: false, message: 'Project not found' });
       }
       return res.status(500).json({ success: false, message: 'Internal server error' });
     }

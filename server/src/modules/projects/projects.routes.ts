@@ -9,10 +9,13 @@ import {
   updateMemberRoleValidation,
   startSprintValidation,
   createSprintValidation,
+  saveProjectDocumentValidation,
+  createProjectDocumentValidation,
+  updateProjectDocumentValidation,
+  documentIdValidation,
 } from './projects.validation';
 
 const router = Router();
-
 router.use(authenticate);
 
 // Static invitation paths must be declared before the dynamic /:projectId path.
@@ -22,14 +25,25 @@ router.post('/invitations/:invitationId/decline', (req: Request, res: Response) 
 
 router.post('/', createProjectValidation, (req: Request, res: Response) => projectsController.createProject(req, res));
 router.get('/', (req: Request, res: Response) => projectsController.getUserProjects(req, res));
+router.get('/:projectId/documents', (req: Request, res: Response) => projectsController.getProjectDocuments(req, res));
+router.post('/:projectId/documents', createProjectDocumentValidation, (req: Request, res: Response) => projectsController.createProjectDocument(req, res));
+router.get('/:projectId/documents/:documentId', documentIdValidation, (req: Request, res: Response) => projectsController.getProjectDocumentById(req, res));
+router.put('/:projectId/documents/:documentId', updateProjectDocumentValidation, (req: Request, res: Response) => projectsController.updateProjectDocumentById(req, res));
+router.delete('/:projectId/documents/:documentId', documentIdValidation, (req: Request, res: Response) => projectsController.deleteProjectDocument(req, res));
+router.get('/:projectId/sprints/:sprintId/documents', (req: Request, res: Response) => projectsController.getSprintDocuments(req, res));
+router.put('/:projectId/sprints/:sprintId/documents', (req: Request, res: Response) => projectsController.updateSprintDocuments(req, res));
 router.get('/:projectId', (req: Request, res: Response) => projectsController.getProjectById(req, res));
 router.patch('/:projectId', updateProjectValidation, (req: Request, res: Response) => projectsController.updateProject(req, res));
 router.delete('/:projectId', (req: Request, res: Response) => projectsController.deleteProject(req, res));
+
 router.post('/:projectId/sprints', createSprintValidation, (req: Request, res: Response) => projectsController.createSprint(req, res));
 router.get('/:projectId/sprints', (req: Request, res: Response) => projectsController.getSprints(req, res));
 router.post('/:projectId/sprints/start', startSprintValidation, (req: Request, res: Response) => projectsController.startSprint(req, res));
 router.get('/:projectId/sprints/:sprintId', (req: Request, res: Response) => projectsController.getSprintById(req, res));
 router.post('/:projectId/sprints/:sprintId/complete', (req: Request, res: Response) => projectsController.completeSprint(req, res));
+
+router.get('/:projectId/document', (req: Request, res: Response) => projectsController.getProjectDocument(req, res));
+router.put('/:projectId/document', saveProjectDocumentValidation, (req: Request, res: Response) => projectsController.saveProjectDocument(req, res));
 
 router.post('/:projectId/members/invite', invitationEmailLimiter, inviteMemberValidation, (req: Request, res: Response) => projectsController.inviteMember(req, res));
 router.get('/:projectId/members/invitations', (req: Request, res: Response) => projectsController.getProjectInvitations(req, res));

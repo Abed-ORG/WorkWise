@@ -44,6 +44,12 @@ enum NotificationType {
   SPRINT_COMPLETED
 }
 
+enum NotificationPreference {
+  ALL
+  MENTIONS_ONLY
+  NONE
+}
+
 model User {
   id                  String   @id @default(cuid())
   name                String
@@ -52,6 +58,7 @@ model User {
   avatarUrl           String?
   onboardingCompleted Boolean  @default(false)
   onboardingDismissed Boolean  @default(false)
+  notificationPreference NotificationPreference @default(ALL)
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
 
@@ -60,6 +67,7 @@ model User {
   createdTasks        Task[]               @relation("TaskCreator")
   comments            Comment[]
   taskActivities      TaskActivity[]
+  projectActivities   ProjectActivity[]
   notifications       Notification[]
   documents           Document[]
   invitationsSent     Invitation[]         @relation("InvitationSender")
@@ -81,6 +89,7 @@ model Project {
   sprints     Sprint[]
   documents   Document[]
   invitations Invitation[]
+  activities  ProjectActivity[]
 
   @@map("projects")
 }
@@ -114,6 +123,7 @@ model Sprint {
 
   project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
   tasks   Task[]
+  documents SprintDocument[]
 
   @@map("sprints")
 }
@@ -122,6 +132,7 @@ model Task {
   id          String       @id @default(cuid())
   title       String
   description String?
+  acceptanceCriteria String?
   status      TaskStatus   @default(BACKLOG)
   priority    TaskPriority @default(MEDIUM)
   labels      String[]
@@ -141,6 +152,7 @@ model Task {
   creator    User           @relation("TaskCreator", fields: [creatorId], references: [id])
   comments   Comment[]
   activities TaskActivity[]
+  documents  TaskDocument[]
 
   @@map("tasks")
 }
@@ -187,8 +199,40 @@ model Document {
 
   project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
   author  User    @relation(fields: [authorId], references: [id])
+  tasks   TaskDocument[]
+  sprints SprintDocument[]
 
   @@map("documents")
+}
+
+model TaskDocument {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+
+  taskId     String
+  documentId String
+
+  task     Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  document Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@unique([taskId, documentId])
+  @@index([documentId])
+  @@map("task_documents")
+}
+
+model SprintDocument {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+
+  sprintId   String
+  documentId String
+
+  sprint   Sprint   @relation(fields: [sprintId], references: [id], onDelete: Cascade)
+  document Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@unique([sprintId, documentId])
+  @@index([documentId])
+  @@map("sprint_documents")
 }
 
 model Notification {
@@ -233,4 +277,21 @@ model PasswordResetToken {
 
   @@index([userId])
   @@map("password_reset_tokens")
+}
+
+model ProjectActivity {
+  id        String   @id @default(cuid())
+  action    String
+  target    String
+  details   String?
+  createdAt DateTime @default(now())
+
+  projectId String
+  userId    String
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, createdAt])
+  @@map("project_activities")
 }

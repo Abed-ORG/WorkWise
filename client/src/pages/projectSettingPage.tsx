@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import axios from 'axios';
 import PageHeader from '../components/PageHeader';
 import Icon from '../components/Icon';
+import DocumentLinkPicker from '../components/DocumentLinkPicker';
 import { Button, Input, Modal, Select, Spinner, Textarea } from '../components/ui';
 import {
   getProjectById,
@@ -10,10 +11,12 @@ import {
   deleteProject,
   inviteMember,
   getProjectInvitations,
+  getSprintDocuments,
   updateMemberRole,
+  updateSprintDocuments,
   removeMember,
 } from '../services/projectService';
-import type { Project, Invitation } from '../services/projectService';
+import type { Project, Invitation, ProjectDocument, ActiveSprint } from '../services/projectService';
 
 const roleOptions = [
   { value: 'DEVELOPER', label: 'Developer' },
@@ -176,6 +179,19 @@ export default function ProjectSettingsPage() {
           )}
         </section>
 
+        <section className="app-card settings-section">
+          <div className="settings-section-head"><div><h2>Sprint documents</h2><p className="field-help mt-1">Attach project documentation to active sprint planning.</p></div></div>
+          {project.sprints?.length ? (
+            <div className="sprint-document-stack">
+              {project.sprints.map((sprint) => (
+                <SprintDocumentLinks key={sprint.id} projectId={project.id} sprint={sprint} />
+              ))}
+            </div>
+          ) : (
+            <div className="document-link-empty">No active sprint is available for document links.</div>
+          )}
+        </section>
+
         <section className="app-card settings-section danger-card">
           <div className="danger-row">
             <div><h3>Delete this project</h3><p>This permanently removes its tasks, sprints, members, and history.</p></div>
@@ -189,5 +205,35 @@ export default function ProjectSettingsPage() {
         <div className="form-actions mt-6"><Button variant="secondary" onClick={() => setShowDeleteConfirm(false)}>Cancel</Button><Button variant="danger" onClick={handleDelete}>Yes, delete project</Button></div>
       </Modal>
     </>
+  );
+}
+
+function SprintDocumentLinks({ projectId, sprint }: { projectId: string; sprint: ActiveSprint }) {
+  const [documents, setDocuments] = useState<ProjectDocument[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    getSprintDocuments(projectId, sprint.id)
+      .then((linkedDocuments) => setDocuments(Array.isArray(linkedDocuments) ? linkedDocuments : []))
+      .catch(() => setDocuments([]))
+      .finally(() => setLoading(false));
+  }, [projectId, sprint.id]);
+
+  async function handleChange(documentIds: string[]) {
+    const linkedDocuments = await updateSprintDocuments(projectId, sprint.id, documentIds);
+    setDocuments(linkedDocuments);
+    return linkedDocuments;
+  }
+
+  return (
+    <div className="sprint-document-panel">
+      <div className="sprint-document-head">
+        <span className="status-marker status-in_progress" />
+        <div><strong>{sprint.name}</strong><span>{sprint.goal || 'Active sprint'}</span></div>
+      </div>
+      {loading ? <div className="document-loading"><Spinner /><span>Loading sprint documents...</span></div> : (
+        <DocumentLinkPicker projectId={projectId} linkedDocuments={documents} onChange={handleChange} />
+      )}
+    </div>
   );
 }

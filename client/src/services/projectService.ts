@@ -70,6 +70,21 @@ export interface CreateProjectDto {
   description?: string;
 }
 
+export interface ProjectDocument {
+  id: string;
+  title: string;
+  content?: string | null;
+  projectId: string;
+  authorId: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SaveProjectDocumentDto {
+  title: string;
+  content: string;
+}
+
 // ── Project CRUD ───────────────────────────────────────────
 
 export const createProject = async (data: CreateProjectDto): Promise<Project> => {
@@ -142,6 +157,8 @@ export const declineInvitation = async (invitationId: string): Promise<void> => 
   await apiClient.post(`/api/projects/invitations/${invitationId}/decline`);
 };
 
+// ── Sprints ────────────────────────────────────────────────
+
 export const createSprint = async (
   projectId: string,
   data: CreateSprintDto
@@ -174,5 +191,20 @@ export const completeSprint = async (
   data: { incompleteTaskDestination: 'backlog' | 'sprint'; targetSprintId?: string }
 ): Promise<CompleteSprintResult> => {
   const response = await apiClient.post(`/api/projects/${projectId}/sprints/${sprintId}/complete`, data);
+  return response.data.data;
+};
+
+// ── Documents ──────────────────────────────────────────────
+
+export const getProjectDocument = async (projectId: string): Promise<ProjectDocument | null> => {
+  const response = await apiClient.get(`/api/projects/${projectId}/document`);
+  return response.data.data;
+};
+
+export const saveProjectDocument = async (
+  projectId: string,
+  data: SaveProjectDocumentDto
+): Promise<ProjectDocument> => {
+  const response = await apiClient.put(`/api/projects/${projectId}/document`, data);
   return response.data.data;
 };
