@@ -210,6 +210,7 @@ export class ProjectsController {
     }
   }
 
+  // ── Start Sprint (creates + activates) ─────────────────────
   async startSprint(req: Request, res: Response) {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -232,6 +233,45 @@ export class ProjectsController {
     }
   }
 
+  // ── Create Sprint (inactive) ───────────────────────────────
+  async createSprint(req: Request, res: Response) {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ success: false, errors: errors.array() });
+    }
+
+    try {
+      const projectId = String(req.params['projectId']);
+      const userId = String((req as any).user?.userId);
+      const sprint = await projectsService.createSprint(projectId, userId, req.body);
+      return res.status(201).json({ success: true, data: sprint });
+    } catch (error: any) {
+      if (error.message === 'FORBIDDEN') {
+        return res.status(403).json({ success: false, message: 'Only project admins can create sprints' });
+      }
+      if (error.message === 'PROJECT_NOT_FOUND') {
+        return res.status(404).json({ success: false, message: 'Project not found' });
+      }
+      return res.status(500).json({ success: false, message: 'Internal server error' });
+    }
+  }
+
+  // ── Get All Sprints for Project ────────────────────────────
+  async getSprints(req: Request, res: Response) {
+    try {
+      const projectId = String(req.params['projectId']);
+      const userId = String((req as any).user?.userId);
+      const sprints = await projectsService.getSprints(projectId, userId);
+      return res.status(200).json({ success: true, data: sprints });
+    } catch (error: any) {
+      if (error.message === 'PROJECT_NOT_FOUND') {
+        return res.status(404).json({ success: false, message: 'Project not found' });
+      }
+      return res.status(500).json({ success: false, message: 'Internal server error' });
+    }
+  }
+
+  // ── Get Project Document ───────────────────────────────────
   async getProjectDocument(req: Request, res: Response) {
     try {
       const projectId = String(req.params['projectId']);
@@ -246,6 +286,7 @@ export class ProjectsController {
     }
   }
 
+  // ── Save Project Document ──────────────────────────────────
   async saveProjectDocument(req: Request, res: Response) {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {

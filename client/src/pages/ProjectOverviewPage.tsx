@@ -98,6 +98,7 @@ export default function ProjectOverviewPage() {
         description={project.description || 'A shared workspace for planning, prioritizing, and delivering the next milestone.'}
         actions={<div className="page-actions">
           {isAdmin && <Button onClick={() => setCreateOpen(true)}><Icon name="plus" size={16} /> Create task</Button>}
+          <Button variant="secondary" onClick={() => navigate(`/projects/${project.id}/sprints`)}><Icon name="activity" size={16} /> Sprints</Button>
           {isAdmin && <Button variant="secondary" onClick={() => navigate(`/projects/${project.id}/settings`)}><Icon name="settings" size={16} /> Project settings</Button>}
         </div>}
       />
