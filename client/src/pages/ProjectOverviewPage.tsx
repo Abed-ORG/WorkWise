@@ -328,7 +328,7 @@ export default function ProjectOverviewPage() {
       </section>
 
       <CreateTaskModal isOpen={createOpen} projectId={projectId} members={project.members ?? []} onClose={() => setCreateOpen(false)} onCreated={(task) => { setTasks((current) => [task, ...current]); toast.success('Task created successfully.'); }} />
-      <TaskDetailModal taskId={selectedTaskId} onClose={() => setSelectedTaskId(null)} />
+      <TaskDetailModal taskId={selectedTaskId} onClose={() => setSelectedTaskId(null)} onTaskUpdated={(task) => setTasks((current) => upsertTask(current, task))} />
     </>
   );
 }

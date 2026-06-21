@@ -31,7 +31,6 @@ export interface ActiveSprint {
   startDate?: string;
   endDate?: string;
   isActive: boolean;
-  completedAt?: string | null;
   projectId?: string;
   createdAt?: string;
   updatedAt?: string;
@@ -186,6 +185,10 @@ export const completeSprint = async (
 ): Promise<Sprint> => {
   const response = await apiClient.post(`/api/projects/${projectId}/sprints/${sprintId}/complete`, payload);
   return response.data.data;
+};
+
+export const deleteSprint = async (projectId: string, sprintId: string): Promise<void> => {
+  await apiClient.delete(`/api/projects/${projectId}/sprints/${sprintId}`);
 };
 
 export const getProjectDocument = async (

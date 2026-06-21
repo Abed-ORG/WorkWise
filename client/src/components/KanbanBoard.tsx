@@ -5,7 +5,6 @@ import type { Task, TaskStatus } from '../services/taskService';
 import { updateTaskStatus } from '../services/taskService';
 
 const columns: { status: TaskStatus; label: string }[] = [
-  { status: 'BACKLOG', label: 'Backlog' },
   { status: 'TODO', label: 'To do' },
   { status: 'IN_PROGRESS', label: 'In progress' },
   { status: 'IN_REVIEW', label: 'Review' },
@@ -22,6 +21,7 @@ export default function KanbanBoard({ tasks, onTasksChange, onTaskClick }: Kanba
   const [draggedTaskId, setDraggedTaskId] = useState<string | null>(null);
   const [dropTarget, setDropTarget] = useState<TaskStatus | null>(null);
   const [saveError, setSaveError] = useState(false);
+  const boardTaskCount = tasks.filter((task) => task.status !== 'BACKLOG').length;
 
   const handleDragStart = (event: DragEvent<HTMLElement>, taskId: string) => {
     event.dataTransfer.effectAllowed = 'move';
@@ -62,7 +62,7 @@ export default function KanbanBoard({ tasks, onTasksChange, onTaskClick }: Kanba
           <h2>Project board</h2>
           <p>Drag tasks between stages to keep this project moving.</p>
         </div>
-        <span className="kanban-summary"><Icon name="activity" size={15} /> {tasks.length} tasks</span>
+        <span className="kanban-summary"><Icon name="activity" size={15} /> {boardTaskCount} tasks</span>
       </div>
 
       {saveError && <div className="board-alert" role="alert">The status could not be saved. The task was returned to its previous column.</div>}

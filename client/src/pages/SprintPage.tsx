@@ -6,18 +6,21 @@ import PageHeader from '../components/PageHeader';
 import { Button, Input, Modal, Spinner, Textarea } from '../components/ui';
 import { useAuth } from '../hooks/useAuth';
 import { useToast } from '../hooks/useToast';
-import { createSprint, getProjectById, getProjectSprints, startSprint } from '../services/projectService';
+import { createSprint, deleteSprint, getProjectById, getProjectSprints, startSprint } from '../services/projectService';
 import type { Project, Sprint } from '../services/projectService';
 
 function formatDate(dateStr?: string) {
   if (!dateStr) return '—';
-  return new Date(dateStr).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+  const date = dateOnly(dateStr);
+  return date ? date.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : '—';
 }
 
 function daysRemaining(endDateStr?: string): number | null {
-  if (!endDateStr) return null;
-  const diff = new Date(endDateStr).getTime() - Date.now();
-  return Math.max(0, Math.ceil(diff / 86400000));
+  const endDate = dateOnly(endDateStr);
+  if (!endDate) return null;
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  return Math.max(0, Math.round((endDate.getTime() - today.getTime()) / 86400000));
 }
 
 function dateOnly(value?: string): Date | undefined {
@@ -33,9 +36,11 @@ interface SprintCardProps {
   sprint: Sprint;
   variant: 'active' | 'upcoming' | 'past';
   onViewBoard?: () => void;
+  onDelete?: () => void;
+  deleting?: boolean;
 }
 
-function SprintCard({ sprint, variant, onViewBoard }: SprintCardProps) {
+function SprintCard({ sprint, variant, onViewBoard, onDelete, deleting = false }: SprintCardProps) {
   const days = variant === 'active' ? daysRemaining(sprint.endDate) : null;
 
   return (
@@ -53,6 +58,11 @@ function SprintCard({ sprint, variant, onViewBoard }: SprintCardProps) {
             <Button className="sprint-card-view-btn" onClick={onViewBoard}>
               <Icon name="board" size={15} /> View board
             </Button>
+          )}
+          {onDelete && (
+            <button type="button" className="icon-button sprint-card-delete" onClick={onDelete} disabled={deleting} aria-label={`Delete ${sprint.name}`} title="Delete sprint">
+              <Icon name="trash" size={16} />
+            </button>
           )}
         </div>
 
@@ -90,6 +100,7 @@ export default function SprintPage() {
   const [form, setForm] = useState({ name: '', startDate: '', endDate: '', goal: '', activateNow: false });
   const [formError, setFormError] = useState('');
   const [saving, setSaving] = useState(false);
+  const [deletingSprintId, setDeletingSprintId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!projectId) return;
@@ -107,7 +118,7 @@ export default function SprintPage() {
   const activeSprints = sprints.filter((s) => s.isActive);
   const isPastSprint = (sprint: Sprint) => {
     const endDateOnly = dateOnly(sprint.endDate);
-    return Boolean(endDateOnly && endDateOnly < todayOnly);
+    return Boolean(endDateOnly && endDateOnly <= todayOnly);
   };
   const pastSprints = sprints.filter((s) => !s.isActive && isPastSprint(s));
   const upcomingSprints = sprints.filter((s) => !s.isActive && !isPastSprint(s));
@@ -128,7 +139,7 @@ export default function SprintPage() {
     event.preventDefault();
     if (!projectId) return;
     if (!form.name.trim()) return setFormError('Sprint name is required.');
-    if (form.startDate && form.endDate && new Date(form.endDate) < new Date(form.startDate)) {
+    if (form.startDate && form.endDate && form.endDate < form.startDate) {
       return setFormError('End date must be on or after start date.');
     }
     setSaving(true);
@@ -160,6 +171,25 @@ export default function SprintPage() {
       setFormError(message || (form.activateNow ? 'Could not start the sprint.' : 'Could not create the sprint.'));
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function handleDeleteSprint(sprint: Sprint) {
+    if (!projectId) return;
+    if (!window.confirm('Delete this sprint? Tasks in this sprint will be moved back to the backlog.')) return;
+
+    setDeletingSprintId(sprint.id);
+    try {
+      await deleteSprint(projectId, sprint.id);
+      setSprints(await getProjectSprints(projectId));
+      toast.success('Sprint deleted. Its tasks were moved back to the backlog.');
+    } catch (requestError) {
+      const message = axios.isAxiosError<{ message?: string }>(requestError)
+        ? requestError.response?.data?.message
+        : undefined;
+      toast.error(message || 'Could not delete the sprint.');
+    } finally {
+      setDeletingSprintId(null);
     }
   }
 
@@ -195,6 +225,8 @@ export default function SprintPage() {
                   sprint={sprint}
                   variant="active"
                   onViewBoard={() => navigate(`/projects/${projectId}/sprints/${sprint.id}/board`)}
+                  onDelete={isAdmin ? () => handleDeleteSprint(sprint) : undefined}
+                  deleting={deletingSprintId === sprint.id}
                 />
               ))}
             </div>
@@ -219,7 +251,7 @@ export default function SprintPage() {
           {upcomingSprints.length > 0 ? (
             <div className="sprint-list">
               {upcomingSprints.map((sprint) => (
-                <SprintCard key={sprint.id} sprint={sprint} variant="upcoming" />
+                <SprintCard key={sprint.id} sprint={sprint} variant="upcoming" onDelete={isAdmin ? () => handleDeleteSprint(sprint) : undefined} deleting={deletingSprintId === sprint.id} />
               ))}
             </div>
           ) : (
@@ -234,7 +266,7 @@ export default function SprintPage() {
           {pastSprints.length > 0 ? (
             <div className="sprint-list">
               {pastSprints.map((sprint) => (
-                <SprintCard key={sprint.id} sprint={sprint} variant="past" />
+                <SprintCard key={sprint.id} sprint={sprint} variant="past" onDelete={isAdmin ? () => handleDeleteSprint(sprint) : undefined} deleting={deletingSprintId === sprint.id} />
               ))}
             </div>
           ) : (
