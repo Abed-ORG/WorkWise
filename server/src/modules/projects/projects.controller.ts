@@ -210,7 +210,6 @@ export class ProjectsController {
     }
   }
 
-  // ── Start Sprint (creates + activates) ─────────────────────
   async startSprint(req: Request, res: Response) {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -233,7 +232,6 @@ export class ProjectsController {
     }
   }
 
-  // ── Create Sprint (inactive) ───────────────────────────────
   async createSprint(req: Request, res: Response) {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -256,7 +254,6 @@ export class ProjectsController {
     }
   }
 
-  // ── Get All Sprints for Project ────────────────────────────
   async getSprints(req: Request, res: Response) {
     try {
       const projectId = String(req.params['projectId']);
@@ -271,7 +268,6 @@ export class ProjectsController {
     }
   }
 
-  // ── Get Single Sprint ──────────────────────────────────────
   async getSprintById(req: Request, res: Response) {
     try {
       const projectId = String(req.params['projectId']);
@@ -290,7 +286,6 @@ export class ProjectsController {
     }
   }
 
-  // ── Complete Sprint ────────────────────────────────────────
   async completeSprint(req: Request, res: Response) {
     try {
       const projectId = String(req.params['projectId']);
@@ -315,7 +310,147 @@ export class ProjectsController {
     }
   }
 
-  // ── Get Project Document ───────────────────────────────────
+  async getProjectDocuments(req: Request, res: Response) {
+    try {
+      const projectId = String(req.params['projectId']);
+      const userId = String((req as any).user?.userId);
+      const documents = await projectsService.getProjectDocuments(projectId, userId, String(req.query['q'] ?? ''));
+      return res.status(200).json({ success: true, data: documents });
+    } catch (error: any) {
+      if (error.message === 'PROJECT_NOT_FOUND') {
+        return res.status(404).json({ success: false, message: 'Project not found' });
+      }
+      return res.status(500).json({ success: false, message: 'Internal server error' });
+    }
+  }
+
+  async getSprintDocuments(req: Request, res: Response) {
+    try {
+      const projectId = String(req.params['projectId']);
+      const sprintId = String(req.params['sprintId']);
+      const userId = String((req as any).user?.userId);
+      const documents = await projectsService.getSprintDocuments(projectId, sprintId, userId);
+      return res.status(200).json({ success: true, data: documents });
+    } catch (error: any) {
+      if (error.message === 'PROJECT_NOT_FOUND') {
+        return res.status(404).json({ success: false, message: 'Project not found' });
+      }
+      if (error.message === 'SPRINT_NOT_FOUND') {
+        return res.status(404).json({ success: false, message: 'Sprint not found' });
+      }
+      return res.status(500).json({ success: false, message: 'Internal server error' });
+    }
+  }
+
+  async updateSprintDocuments(req: Request, res: Response) {
+    try {
+      const projectId = String(req.params['projectId']);
+      const sprintId = String(req.params['sprintId']);
+      const userId = String((req as any).user?.userId);
+      const documentIds = req.body.documentIds;
+      if (!Array.isArray(documentIds) || documentIds.some((documentId) => typeof documentId !== 'string')) {
+        return res.status(400).json({ success: false, message: 'documentIds must be an array of strings' });
+      }
+      const documents = await projectsService.updateSprintDocuments(projectId, sprintId, userId, documentIds);
+      return res.status(200).json({ success: true, data: documents });
+    } catch (error: any) {
+      if (error.message === 'PROJECT_NOT_FOUND') {
+        return res.status(404).json({ success: false, message: 'Project not found' });
+      }
+      if (error.message === 'SPRINT_NOT_FOUND') {
+        return res.status(404).json({ success: false, message: 'Sprint not found' });
+      }
+      if (error.message === 'DOCUMENT_NOT_FOUND') {
+        return res.status(404).json({ success: false, message: 'Document not found' });
+      }
+      return res.status(500).json({ success: false, message: 'Internal server error' });
+    }
+  }
+
+  async createProjectDocument(req: Request, res: Response) {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ success: false, errors: errors.array() });
+    }
+
+    try {
+      const projectId = String(req.params['projectId']);
+      const userId = String((req as any).user?.userId);
+      const document = await projectsService.createProjectDocument(projectId, userId, {
+        title: req.body.title,
+        content: req.body.content,
+      });
+      return res.status(201).json({ success: true, data: document });
+    } catch (error: any) {
+      if (error.message === 'PROJECT_NOT_FOUND') {
+        return res.status(404).json({ success: false, message: 'Project not found' });
+      }
+      return res.status(500).json({ success: false, message: 'Internal server error' });
+    }
+  }
+
+  async getProjectDocumentById(req: Request, res: Response) {
+    try {
+      const projectId = String(req.params['projectId']);
+      const documentId = String(req.params['documentId']);
+      const userId = String((req as any).user?.userId);
+      const document = await projectsService.getProjectDocumentById(projectId, userId, documentId);
+      return res.status(200).json({ success: true, data: document });
+    } catch (error: any) {
+      if (error.message === 'PROJECT_NOT_FOUND') {
+        return res.status(404).json({ success: false, message: 'Project not found' });
+      }
+      if (error.message === 'DOCUMENT_NOT_FOUND') {
+        return res.status(404).json({ success: false, message: 'Document not found' });
+      }
+      return res.status(500).json({ success: false, message: 'Internal server error' });
+    }
+  }
+
+  async updateProjectDocumentById(req: Request, res: Response) {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ success: false, errors: errors.array() });
+    }
+
+    try {
+      const projectId = String(req.params['projectId']);
+      const documentId = String(req.params['documentId']);
+      const userId = String((req as any).user?.userId);
+      const document = await projectsService.updateProjectDocument(projectId, userId, documentId, {
+        title: req.body.title,
+        content: req.body.content,
+      });
+      return res.status(200).json({ success: true, data: document });
+    } catch (error: any) {
+      if (error.message === 'PROJECT_NOT_FOUND') {
+        return res.status(404).json({ success: false, message: 'Project not found' });
+      }
+      if (error.message === 'DOCUMENT_NOT_FOUND') {
+        return res.status(404).json({ success: false, message: 'Document not found' });
+      }
+      return res.status(500).json({ success: false, message: 'Internal server error' });
+    }
+  }
+
+  async deleteProjectDocument(req: Request, res: Response) {
+    try {
+      const projectId = String(req.params['projectId']);
+      const documentId = String(req.params['documentId']);
+      const userId = String((req as any).user?.userId);
+      await projectsService.deleteProjectDocument(projectId, userId, documentId);
+      return res.status(200).json({ success: true, message: 'Document deleted successfully' });
+    } catch (error: any) {
+      if (error.message === 'PROJECT_NOT_FOUND') {
+        return res.status(404).json({ success: false, message: 'Project not found' });
+      }
+      if (error.message === 'DOCUMENT_NOT_FOUND') {
+        return res.status(404).json({ success: false, message: 'Document not found' });
+      }
+      return res.status(500).json({ success: false, message: 'Internal server error' });
+    }
+  }
+
   async getProjectDocument(req: Request, res: Response) {
     try {
       const projectId = String(req.params['projectId']);
@@ -330,7 +465,6 @@ export class ProjectsController {
     }
   }
 
-  // ── Save Project Document ──────────────────────────────────
   async saveProjectDocument(req: Request, res: Response) {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {

@@ -20,6 +20,15 @@ function daysRemaining(endDateStr?: string): number | null {
   return Math.max(0, Math.ceil(diff / 86400000));
 }
 
+function dateOnly(value?: string): Date | undefined {
+  if (!value) return undefined;
+
+  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(value);
+  if (!match) return undefined;
+
+  return new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+}
+
 interface SprintCardProps {
   sprint: Sprint;
   variant: 'active' | 'upcoming' | 'past';
@@ -93,18 +102,15 @@ export default function SprintPage() {
       .finally(() => setLoading(false));
   }, [projectId, navigate]);
 
-  const today = new Date();
+  const now = new Date();
+  const todayOnly = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   const activeSprints = sprints.filter((s) => s.isActive);
-  const pastSprints = sprints.filter((s) =>
-    !s.isActive &&
-    ((!!s.endDate && new Date(s.endDate) <= today) ||
-     (!!s.startDate && new Date(s.startDate) <= today))
-  );
-  const upcomingSprints = sprints.filter((s) =>
-    !s.isActive &&
-    (!s.endDate || new Date(s.endDate) > today) &&
-    (!s.startDate || new Date(s.startDate) > today)
-  );
+  const isPastSprint = (sprint: Sprint) => {
+    const endDateOnly = dateOnly(sprint.endDate);
+    return Boolean(endDateOnly && endDateOnly < todayOnly);
+  };
+  const pastSprints = sprints.filter((s) => !s.isActive && isPastSprint(s));
+  const upcomingSprints = sprints.filter((s) => !s.isActive && !isPastSprint(s));
 
   function openCreateModal() {
     setForm({ name: '', startDate: '', endDate: '', goal: '', activateNow: activeSprints.length === 0 });
