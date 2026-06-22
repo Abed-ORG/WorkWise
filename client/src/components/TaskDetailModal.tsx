@@ -1,25 +1,21 @@
 import { useEffect, useState } from 'react';
 import DocumentLinkPicker from './DocumentLinkPicker';
 import Icon from './Icon';
-import { Button, Modal, Spinner } from './ui';
+import { Button, Modal, Select, Spinner } from './ui';
 import { getTaskById, updateTask, updateTaskDocuments } from '../services/taskService';
-import type { Task } from '../services/taskService';
+import type { Task, TaskStatus } from '../services/taskService';
 import type { ProjectDocument } from '../services/projectService';
 
 interface TaskDetailModalProps {
   taskId: string | null;
   onClose: () => void;
+  onTaskUpdated?: (task: Task) => void;
 }
 
 interface AcceptanceCriterion {
   id: string;
   text: string;
   done: boolean;
-}
-
-function formatStatus(status?: string) {
-  if (!status) return 'Unknown';
-  return status.toLowerCase().split('_').map((word) => word[0].toUpperCase() + word.slice(1)).join(' ');
 }
 
 function formatDate(date?: string | null) {
@@ -57,7 +53,15 @@ function serializeAcceptanceCriteria(items: AcceptanceCriterion[]) {
   return cleaned.length ? JSON.stringify(cleaned) : '';
 }
 
-export default function TaskDetailModal({ taskId, onClose }: TaskDetailModalProps) {
+const statusOptions = [
+  { value: 'BACKLOG', label: 'Backlog' },
+  { value: 'TODO', label: 'To do' },
+  { value: 'IN_PROGRESS', label: 'In progress' },
+  { value: 'IN_REVIEW', label: 'Review' },
+  { value: 'DONE', label: 'Done' },
+];
+
+export default function TaskDetailModal({ taskId, onClose, onTaskUpdated }: TaskDetailModalProps) {
   const [task, setTask] = useState<Task | null>(null);
   const [linkedDocuments, setLinkedDocuments] = useState<ProjectDocument[]>([]);
   const [loading, setLoading] = useState(false);
@@ -67,6 +71,8 @@ export default function TaskDetailModal({ taskId, onClose }: TaskDetailModalProp
   const [acceptanceCriteriaItems, setAcceptanceCriteriaItems] = useState<AcceptanceCriterion[]>([]);
   const [savingAcceptanceCriteria, setSavingAcceptanceCriteria] = useState(false);
   const [acceptanceCriteriaMessage, setAcceptanceCriteriaMessage] = useState('');
+  const [savingStatus, setSavingStatus] = useState(false);
+  const [statusMessage, setStatusMessage] = useState('');
   const [error, setError] = useState('');
 
   useEffect(() => {
@@ -86,6 +92,7 @@ export default function TaskDetailModal({ taskId, onClose }: TaskDetailModalProp
         setDescriptionMessage('');
         setAcceptanceCriteriaItems(parseAcceptanceCriteria(taskData.acceptanceCriteria));
         setAcceptanceCriteriaMessage('');
+        setStatusMessage('');
       })
       .catch(() => setError('Task details could not be loaded.'))
       .finally(() => setLoading(false));
@@ -132,6 +139,23 @@ export default function TaskDetailModal({ taskId, onClose }: TaskDetailModalProp
       setAcceptanceCriteriaMessage('Could not save');
     } finally {
       setSavingAcceptanceCriteria(false);
+    }
+  }
+
+  async function updateStatus(status: TaskStatus) {
+    if (!taskId || !task || status === task.status) return;
+
+    setSavingStatus(true);
+    setStatusMessage('');
+    try {
+      const updatedTask = await updateTask(taskId, { status });
+      setTask((current) => current ? { ...current, status: updatedTask.status } : current);
+      onTaskUpdated?.(updatedTask);
+      setStatusMessage('Saved');
+    } catch {
+      setStatusMessage('Could not save');
+    } finally {
+      setSavingStatus(false);
     }
   }
 
@@ -242,10 +266,18 @@ export default function TaskDetailModal({ taskId, onClose }: TaskDetailModalProp
               <section className="task-detail-section">
                 <h3>Details</h3>
                 <div className="task-detail-meta">
-                  <span className={`status-badge status-${task.status.toLowerCase()}`}>{formatStatus(task.status)}</span>
                   <span className={`priority-badge priority-${task.priority.toLowerCase()}`}><span />{task.priority.toLowerCase()}</span>
                   <span className="due-date"><Icon name="calendar" size={14} />{formatDate(task.dueDate)}</span>
                 </div>
+                <Select
+                  label="Status"
+                  className="task-status-select"
+                  value={task.status}
+                  options={statusOptions}
+                  onChange={(event) => updateStatus(event.target.value as TaskStatus)}
+                  disabled={savingStatus}
+                  helperText={savingStatus ? 'Saving status...' : statusMessage || 'Changes update the project board immediately.'}
+                />
                 <div className="task-detail-fields">
                   <div><span>Assignee</span><strong>{task.assignee?.name ?? 'Unassigned'}</strong></div>
                   <div><span>Reporter</span><strong>{task.creator?.name ?? 'Unknown'}</strong></div>

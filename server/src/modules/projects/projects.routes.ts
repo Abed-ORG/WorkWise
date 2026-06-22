@@ -40,6 +40,7 @@ router.post('/:projectId/sprints', createSprintValidation, (req: Request, res: R
 router.get('/:projectId/sprints', (req: Request, res: Response) => projectsController.getSprints(req, res));
 router.post('/:projectId/sprints/start', startSprintValidation, (req: Request, res: Response) => projectsController.startSprint(req, res));
 router.get('/:projectId/sprints/:sprintId', (req: Request, res: Response) => projectsController.getSprintById(req, res));
+router.delete('/:projectId/sprints/:sprintId', (req: Request, res: Response) => projectsController.deleteSprint(req, res));
 router.post('/:projectId/sprints/:sprintId/complete', (req: Request, res: Response) => projectsController.completeSprint(req, res));
 
 router.get('/:projectId/document', (req: Request, res: Response) => projectsController.getProjectDocument(req, res));

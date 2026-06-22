@@ -101,7 +101,10 @@ button:disabled { cursor: not-allowed; }
 .search-pill input { min-width: 0; flex: 1; border: 0; outline: none; color: var(--text); background: transparent; font-size: 13px; }
 .search-pill input::placeholder { color: var(--text-subtle); }
 .search-pill input::-webkit-search-cancel-button { display: none; }
-.search-pill kbd, .shortcuts-row kbd { display: inline-flex; min-width: 24px; height: 24px; align-items: center; justify-content: center; flex: none; border: 1px solid var(--border); border-radius: 7px; color: var(--text-muted); background: var(--surface-muted); font-size: 11px; font-weight: 800; line-height: 1; }
+.search-pill kbd, .shortcuts-row kbd, .shortcuts-trigger kbd { display: inline-flex; min-width: 24px; height: 24px; align-items: center; justify-content: center; flex: none; border: 1px solid var(--border); border-radius: 7px; color: var(--text-muted); background: var(--surface-muted); font-size: 11px; font-weight: 800; line-height: 1; }
+.shortcuts-trigger { display: inline-flex; min-height: 38px; align-items: center; gap: 8px; padding: 0 9px 0 11px; border: 1px solid var(--border); border-radius: 12px; color: var(--text-muted); background: var(--surface); font-size: 12px; font-weight: 700; transition: border-color .2s ease, color .2s ease, background .2s ease; }
+.shortcuts-trigger:hover { border-color: var(--primary-strong); color: var(--text); background: var(--surface-raised); }
+.shortcuts-trigger:focus-visible { outline: none; border-color: var(--primary-strong); box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 18%, transparent); }
 .profile-trigger { gap: 10px; margin-left: 3px; padding-left: 10px; border-left: 1px solid var(--border); color: var(--text); }
 .avatar { display: inline-flex; width: 36px; height: 36px; flex: none; align-items: center; justify-content: center; overflow: hidden; border-radius: 50%; color: var(--ink); background: linear-gradient(145deg, var(--primary), var(--primary-strong)); font-size: 11px; font-weight: 800; }
 .avatar img { width: 100%; height: 100%; object-fit: cover; }
@@ -646,7 +649,7 @@ textarea.field-control { resize: vertical; }
 .kanban-heading p:last-child, .backlog-toolbar p:last-child { margin: 5px 0 0; color: var(--text-muted); font-size: 12px; line-height: 1.5; }
 .kanban-summary { display: inline-flex; align-items: center; gap: 7px; padding: 8px 11px; border: 1px solid var(--border); border-radius: 10px; color: var(--text-muted); background: var(--surface-muted); font-size: 11px; font-weight: 700; white-space: nowrap; }
 .board-alert { margin: -4px 0 16px; padding: 11px 13px; border: 1px solid color-mix(in srgb, var(--danger) 35%, var(--border)); border-radius: 11px; color: var(--danger); background: var(--danger-soft); font-size: 11px; animation: enter .25s ease both; }
-.kanban-board { display: grid; grid-template-columns: repeat(5, minmax(210px, 1fr)); gap: 12px; padding-bottom: 5px; overflow-x: auto; scrollbar-width: thin; scrollbar-color: var(--border-strong) transparent; }
+.kanban-board { display: grid; grid-template-columns: repeat(4, minmax(210px, 1fr)); gap: 12px; padding-bottom: 5px; overflow-x: auto; scrollbar-width: thin; scrollbar-color: var(--border-strong) transparent; }
 .kanban-column { min-height: 320px; padding: 11px; border: 1px solid var(--border); border-radius: 15px; background: var(--surface-muted); transition: border-color .2s ease, background .2s ease, box-shadow .2s ease, transform .2s ease; animation: column-enter .4s calc(var(--column-index) * 55ms) cubic-bezier(.2,.7,.2,1) both; }
 .kanban-column.is-drop-target { border-color: var(--primary-strong); background: color-mix(in srgb, var(--primary) 8%, var(--surface-muted)); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--primary) 48%, transparent), 0 10px 28px rgba(255,209,0,.09); transform: translateY(-2px); }
 .kanban-column-head { display: flex; align-items: center; gap: 8px; min-height: 31px; padding: 0 3px 9px; }
@@ -1043,6 +1046,8 @@ textarea.field-control { resize: vertical; }
 .task-title-panel { display: grid; gap: 10px; }
 .task-title-panel h2 { margin: 0; color: var(--text); font-size: 25px; font-weight: 780; letter-spacing: -.035em; line-height: 1.18; }
 .task-detail-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.task-detail-sidebar .task-status-select { min-height: 38px; font-size: 12px; }
+.task-detail-sidebar .field-help { margin-top: 6px; }
 .task-detail-section { display: grid; gap: 10px; }
 .task-detail-section h3 { margin: 0; color: var(--text); font-size: 13px; font-weight: 800; letter-spacing: .02em; }
 .task-detail-section-heading { display: flex; min-height: 18px; align-items: center; justify-content: space-between; gap: 12px; }
@@ -1156,7 +1161,7 @@ textarea.field-control { resize: vertical; }
   .landing-momentum { align-items: flex-start; flex-direction: column; }
   .auth-page { grid-template-columns: minmax(360px, .8fr) minmax(520px, 1.2fr); }
   .auth-copy h2 { font-size: 42px; }
-  .kanban-board { grid-template-columns: repeat(5, 225px); }
+  .kanban-board { grid-template-columns: repeat(4, 225px); }
   .auth-workspace-scene { width: 100%; }
   .scene-review-card { left: -1%; }
   .scene-progress-card { right: -1%; }
@@ -1258,7 +1263,7 @@ textarea.field-control { resize: vertical; }
   .landing-section-heading h2, .landing-momentum h2 { font-size: 38px; }
   .kanban-shell, .backlog-card { padding: 17px; border-radius: 17px; }
   .kanban-heading { align-items: flex-start; flex-direction: column; }
-  .kanban-board { grid-template-columns: repeat(5, 82vw); margin-right: -17px; padding-right: 17px; scroll-snap-type: x proximity; }
+  .kanban-board { grid-template-columns: repeat(4, 82vw); margin-right: -17px; padding-right: 17px; scroll-snap-type: x proximity; }
   .kanban-column { min-height: 290px; scroll-snap-align: start; }
   .kanban-task-stack { min-height: 230px; }
   .backlog-actions .btn { flex: 1; }
@@ -1296,6 +1301,9 @@ textarea.field-control { resize: vertical; }
 .sprint-card-identity { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 /* View board button lives inside identity row — margin-left auto pushes it to the right */
 .sprint-card-view-btn { margin-left: auto; flex-shrink: 0; }
+.sprint-card-delete { width: 32px; height: 32px; flex: none; margin-left: auto; color: var(--text-subtle); }
+.sprint-card-view-btn + .sprint-card-delete { margin-left: 0; }
+.sprint-card-delete:hover { color: var(--danger); background: var(--danger-soft); }
 .sprint-status-pip { width: 8px; height: 8px; flex: none; border-radius: 50%; background: var(--text-subtle); }
 .sprint-status-pip--active { background: var(--primary-strong); box-shadow: 0 0 0 4px color-mix(in srgb, var(--primary-strong) 18%, transparent); }
 .sprint-status-pip--upcoming { background: #6b8afd; box-shadow: 0 0 0 4px rgba(107,138,253,.14); }

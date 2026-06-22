@@ -228,6 +228,9 @@ export class ProjectsController {
       if (error.message === 'ACTIVE_SPRINT_EXISTS') {
         return res.status(409).json({ success: false, message: 'This project already has an active sprint' });
       }
+      if (error.message === 'SPRINT_DATES_OVERLAP') {
+        return res.status(409).json({ success: false, message: 'Sprint dates overlap with an existing sprint' });
+      }
       return res.status(500).json({ success: false, message: 'Internal server error' });
     }
   }
@@ -241,7 +244,9 @@ export class ProjectsController {
     try {
       const projectId = String(req.params['projectId']);
       const userId = String((req as any).user?.userId);
-      const sprint = await projectsService.createSprint(projectId, userId, req.body);
+      const sprint = req.body.activateNow
+        ? await projectsService.startSprint(projectId, userId, req.body)
+        : await projectsService.createSprint(projectId, userId, req.body);
       return res.status(201).json({ success: true, data: sprint });
     } catch (error: any) {
       if (error.message === 'FORBIDDEN') {
@@ -249,6 +254,12 @@ export class ProjectsController {
       }
       if (error.message === 'PROJECT_NOT_FOUND') {
         return res.status(404).json({ success: false, message: 'Project not found' });
+      }
+      if (error.message === 'SPRINT_DATES_OVERLAP') {
+        return res.status(409).json({ success: false, message: 'Sprint dates overlap with an existing sprint' });
+      }
+      if (error.message === 'ACTIVE_SPRINT_EXISTS') {
+        return res.status(409).json({ success: false, message: 'This project already has an active sprint' });
       }
       return res.status(500).json({ success: false, message: 'Internal server error' });
     }
@@ -276,6 +287,27 @@ export class ProjectsController {
       const sprint = await projectsService.getSprintById(projectId, sprintId, userId);
       return res.status(200).json({ success: true, data: sprint });
     } catch (error: any) {
+      if (error.message === 'PROJECT_NOT_FOUND') {
+        return res.status(404).json({ success: false, message: 'Project not found' });
+      }
+      if (error.message === 'SPRINT_NOT_FOUND') {
+        return res.status(404).json({ success: false, message: 'Sprint not found' });
+      }
+      return res.status(500).json({ success: false, message: 'Internal server error' });
+    }
+  }
+
+  async deleteSprint(req: Request, res: Response) {
+    try {
+      const projectId = String(req.params['projectId']);
+      const sprintId = String(req.params['sprintId']);
+      const userId = String((req as any).user?.userId);
+      await projectsService.deleteSprint(projectId, sprintId, userId);
+      return res.status(204).send();
+    } catch (error: any) {
+      if (error.message === 'FORBIDDEN') {
+        return res.status(403).json({ success: false, message: 'Only project admins can delete sprints' });
+      }
       if (error.message === 'PROJECT_NOT_FOUND') {
         return res.status(404).json({ success: false, message: 'Project not found' });
       }

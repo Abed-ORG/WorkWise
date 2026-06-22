@@ -125,6 +125,10 @@ export default function Header({ onMenuToggle }: HeaderProps) {
           <kbd>/</kbd>
         </label>
 
+        <button type="button" className="shortcuts-trigger" onClick={() => setShortcutsOpen(true)} aria-haspopup="dialog">
+          <span>Shortcuts</span>
+          <kbd>?</kbd>
+        </button>
         <ThemeToggle />
         <NotificationBell />
         <Dropdown

@@ -16,6 +16,15 @@ const linkedDocumentSelect = {
   updatedAt: true,
 } as const;
 
+function dateOnlyUtc(value: string) {
+  return new Date(`${value.slice(0, 10)}T00:00:00.000Z`);
+}
+
+function todayUtc() {
+  const now = new Date();
+  return new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()));
+}
+
 export class ProjectsService {
 
   // ── Create Project ─────────────────────────────────────────
@@ -315,10 +324,12 @@ export class ProjectsService {
     }
 
     // Use provided dates when supplied; fall back to today / today+14 only when omitted
-    const resolvedStart = data.startDate ? new Date(data.startDate) : new Date();
+    const resolvedStart = data.startDate ? dateOnlyUtc(data.startDate) : todayUtc();
     const resolvedEnd = data.endDate
-      ? new Date(data.endDate)
+      ? dateOnlyUtc(data.endDate)
       : (() => { const d = new Date(resolvedStart); d.setDate(d.getDate() + 14); return d; })();
+
+    await this.ensureSprintDatesDoNotOverlap(projectId, resolvedStart, resolvedEnd);
 
     const sprint = await prisma.sprint.create({
       data: {
@@ -535,12 +546,18 @@ export class ProjectsService {
   }) {
     await this.requireAdminRole(projectId, userId);
 
+    const startDate = data.startDate ? dateOnlyUtc(data.startDate) : undefined;
+    const endDate = data.endDate ? dateOnlyUtc(data.endDate) : undefined;
+    if (startDate && endDate) {
+      await this.ensureSprintDatesDoNotOverlap(projectId, startDate, endDate);
+    }
+
     return prisma.sprint.create({
       data: {
         name: data.name.trim(),
         goal: data.goal?.trim() || undefined,
-        startDate: data.startDate ? new Date(data.startDate) : undefined,
-        endDate: data.endDate ? new Date(data.endDate) : undefined,
+        startDate,
+        endDate,
         isActive: false,
         projectId,
       },
@@ -583,6 +600,38 @@ export class ProjectsService {
     return sprint;
   }
 
+  async deleteSprint(projectId: string, sprintId: string, userId: string) {
+    await this.requireAdminRole(projectId, userId);
+
+    const activatedSprint = await prisma.$transaction(async (tx) => {
+      const sprint = await tx.sprint.findFirst({
+        where: { id: sprintId, projectId },
+        select: { id: true, isActive: true },
+      });
+      if (!sprint) throw new Error('SPRINT_NOT_FOUND');
+
+      // Task.sprint uses onDelete: SetNull, so deleting a sprint returns its tasks to the backlog.
+      await tx.sprint.delete({ where: { id: sprint.id } });
+      if (!sprint.isActive) return null;
+
+      const todayOnly = todayUtc();
+      const nextSprint = await tx.sprint.findFirst({
+        where: {
+          projectId,
+          isActive: false,
+          startDate: { not: null },
+          endDate: { gt: todayOnly },
+        },
+        orderBy: { startDate: 'asc' },
+      });
+      return nextSprint
+        ? tx.sprint.update({ where: { id: nextSprint.id }, data: { isActive: true } })
+        : null;
+    });
+
+    if (activatedSprint) emitProjectEvent(projectId, 'sprint:started', activatedSprint);
+  }
+
   // ── Complete Sprint ────────────────────────────────────────
   async completeSprint(
     projectId: string,
@@ -592,54 +641,59 @@ export class ProjectsService {
   ) {
     await this.requireAdminRole(projectId, userId);
 
-    const sprint = await prisma.sprint.findFirst({
-      where: { id: sprintId, projectId, isActive: true },
-    });
-
-    if (!sprint) throw new Error('SPRINT_NOT_FOUND');
-
-    const tasks = await prisma.task.findMany({
-      where: { sprintId },
-      select: { id: true, status: true },
-    });
-
-    const completedCount = tasks.filter((t) => t.status === 'DONE').length;
-    const incompleteCount = tasks.length - completedCount;
-
-    if (data.incompleteTaskDestination === 'sprint' && data.targetSprintId) {
-      const targetSprint = await prisma.sprint.findFirst({
-        where: { id: data.targetSprintId, projectId },
+    const result = await prisma.$transaction(async (tx) => {
+      const todayOnly = todayUtc();
+      const sprint = await tx.sprint.findFirst({
+        where: { id: sprintId, projectId, isActive: true },
       });
-      if (!targetSprint) throw new Error('TARGET_SPRINT_NOT_FOUND');
-      if (targetSprint.id === sprintId) throw new Error('CANNOT_TARGET_SAME_SPRINT');
-    }
+      if (!sprint) throw new Error('SPRINT_NOT_FOUND');
 
-    if (incompleteCount > 0) {
-      if (data.incompleteTaskDestination === 'backlog') {
-        await prisma.task.updateMany({
+      const tasks = await tx.task.findMany({
+        where: { sprintId },
+        select: { id: true, status: true },
+      });
+      const completedCount = tasks.filter((t) => t.status === 'DONE').length;
+      const incompleteCount = tasks.length - completedCount;
+
+      if (data.incompleteTaskDestination === 'sprint' && data.targetSprintId) {
+        const targetSprint = await tx.sprint.findFirst({ where: { id: data.targetSprintId, projectId } });
+        if (!targetSprint) throw new Error('TARGET_SPRINT_NOT_FOUND');
+        if (targetSprint.id === sprintId) throw new Error('CANNOT_TARGET_SAME_SPRINT');
+      }
+
+      if (incompleteCount > 0) {
+        await tx.task.updateMany({
           where: { sprintId, status: { not: 'DONE' } },
-          data: { sprintId: null },
-        });
-      } else if (data.targetSprintId) {
-        await prisma.task.updateMany({
-          where: { sprintId, status: { not: 'DONE' } },
-          data: { sprintId: data.targetSprintId },
+          data: { sprintId: data.incompleteTaskDestination === 'backlog' ? null : data.targetSprintId },
         });
       }
-    }
 
-    // Always overwrite endDate with now so the sprint's endDate reflects actual completion
-    // time, not the originally planned date. This guarantees SprintPage's Past bucket
-    // (filter: !isActive && endDate <= today) picks it up even when completed early.
-    const completedSprint = await prisma.sprint.update({
-      where: { id: sprintId },
-      data: {
-        isActive: false,
-        endDate: new Date(),
-      },
+      const completedSprint = await tx.sprint.update({
+        where: { id: sprintId },
+        data: { isActive: false, endDate: todayOnly },
+      });
+
+      const nextSprint = await tx.sprint.findFirst({
+        where: {
+          projectId,
+          id: { not: sprintId },
+          isActive: false,
+          startDate: { not: null },
+          endDate: { gt: todayOnly },
+        },
+        orderBy: { startDate: 'asc' },
+      });
+      const activatedSprint = nextSprint
+        ? await tx.sprint.update({ where: { id: nextSprint.id }, data: { isActive: true } })
+        : null;
+
+      return { sprint: completedSprint, nextSprint: activatedSprint, completedCount, incompleteCount };
     });
 
-    return { sprint: completedSprint, completedCount, incompleteCount };
+    if (result.nextSprint) {
+      emitProjectEvent(projectId, 'sprint:started', result.nextSprint);
+    }
+    return result;
   }
 
   // ── Helper — Require Admin Role ────────────────────────────
@@ -655,6 +709,18 @@ export class ProjectsService {
     if (member.role !== Role.ADMIN) {
       throw new Error('FORBIDDEN');
     }
+  }
+
+  private async ensureSprintDatesDoNotOverlap(projectId: string, startDate: Date, endDate: Date) {
+    const overlappingSprint = await prisma.sprint.findFirst({
+      where: {
+        projectId,
+        startDate: { lte: endDate },
+        endDate: { gte: startDate },
+      },
+      select: { id: true },
+    });
+    if (overlappingSprint) throw new Error('SPRINT_DATES_OVERLAP');
   }
 
   private async requireProjectMember(projectId: string, userId: string) {

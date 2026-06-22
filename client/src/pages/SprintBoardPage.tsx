@@ -15,9 +15,12 @@ import type { Task } from '../services/taskService';
 type Tab = 'board' | 'backlog';
 
 function daysRemaining(endDateStr?: string): number | null {
-  if (!endDateStr) return null;
-  const diff = new Date(endDateStr).getTime() - Date.now();
-  return Math.max(0, Math.ceil(diff / 86400000));
+  const match = endDateStr && /^(\d{4})-(\d{2})-(\d{2})/.exec(endDateStr);
+  if (!match) return null;
+  const endDate = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  return Math.max(0, Math.round((endDate.getTime() - today.getTime()) / 86400000));
 }
 
 export default function SprintBoardPage() {
