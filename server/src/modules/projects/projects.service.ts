@@ -1,8 +1,9 @@
-import { NotificationType, PrismaClient, Role } from '@prisma/client';
+import { NotificationType, PrismaClient, Role, Task } from '@prisma/client';
 import { sendProjectInvitationEmail } from '../../services/mail.service';
 import { createProjectActivity } from '../../services/activity.service';
 import { notifyProjectMembers } from '../../services/notification.service';
 import { emitProjectEvent } from '../../services/realtime.service';
+import { geminiService } from '../ai/gemini.service';
 
 const prisma = new PrismaClient();
 
@@ -23,6 +24,98 @@ function dateOnlyUtc(value: string) {
 function todayUtc() {
   const now = new Date();
   return new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()));
+}
+
+type DigestTask = Pick<Task, 'id' | 'title' | 'status' | 'priority' | 'dueDate' | 'updatedAt'> & {
+  assignee?: { name: string } | null;
+};
+
+function bulletList(items: string[]) {
+  return items.length ? items.map((item) => `- ${item}`).join('\n') : '- Nothing to report yet.';
+}
+
+function fallbackDigestSummary(projectName: string, completed: DigestTask[], inProgress: DigestTask[], blockers: DigestTask[]) {
+  return [
+    'Completed today:',
+    bulletList(completed.map((task) => task.title)),
+    '',
+    'In progress:',
+    bulletList(inProgress.map((task) => `${task.title}${task.assignee?.name ? ` (${task.assignee.name})` : ''}`)),
+    '',
+    'Blockers and risks:',
+    bulletList(blockers.map((task) => `${task.title} needs attention`)),
+    '',
+    `Next focus: keep ${projectName} moving by clearing the highest-priority open task first.`,
+  ].join('\n');
+}
+
+function buildDailyDigestPrompt(projectName: string, completed: DigestTask[], inProgress: DigestTask[], blockers: DigestTask[], activities: { action: string; target: string; details?: string | null }[]) {
+  return [
+    `Create a concise daily project digest for "${projectName}".`,
+    'Use short actionable bullet points. Include completed work, in-progress work, blockers, and next focus.',
+    'Do not invent tasks. If a section has no items, say "Nothing to report yet."',
+    '',
+    `Completed tasks: ${completed.map((task) => task.title).join(', ') || 'none'}`,
+    `In progress tasks: ${inProgress.map((task) => `${task.title}${task.assignee?.name ? ` assigned to ${task.assignee.name}` : ''}`).join(', ') || 'none'}`,
+    `Blockers: ${blockers.map((task) => task.title).join(', ') || 'none'}`,
+    `Recent activity: ${activities.map((activity) => `${activity.action} ${activity.target}${activity.details ? ` (${activity.details})` : ''}`).join('; ') || 'none'}`,
+  ].join('\n');
+}
+
+function fallbackRetroSections(sprintName: string, completedCount: number, totalCount: number, blockerCount: number) {
+  const completionRate = totalCount === 0 ? 0 : Math.round((completedCount / totalCount) * 100);
+  return {
+    whatWentWell: bulletList([
+      `${completedCount} of ${totalCount} sprint tasks reached Done (${completionRate}% completion).`,
+      completionRate >= 70 ? 'The sprint kept a healthy delivery rhythm.' : 'The sprint created useful visibility into remaining work.',
+    ]),
+    whatDidnt: bulletList([
+      blockerCount > 0 ? `${blockerCount} urgent or overdue task${blockerCount === 1 ? '' : 's'} still need attention.` : 'No major blocker pattern was detected.',
+      completionRate < 70 ? 'Completion rate shows the sprint may have been over-scoped.' : 'Keep watching task carry-over so the next sprint stays focused.',
+    ]),
+    actionItems: bulletList([
+      `Review unfinished work from ${sprintName} before planning the next sprint.`,
+      'Pull one clear priority into the next sprint goal.',
+      'Assign owners to any blocker before the next standup.',
+    ]),
+  };
+}
+
+function parseRetroResponse(text: string, fallback: ReturnType<typeof fallbackRetroSections>) {
+  const section = (label: string, nextLabel?: string) => {
+    const pattern = nextLabel
+      ? new RegExp(`${label}:([\\s\\S]*?)${nextLabel}:`, 'i')
+      : new RegExp(`${label}:([\\s\\S]*)`, 'i');
+    return text.match(pattern)?.[1]?.trim();
+  };
+
+  return {
+    whatWentWell: section('WHAT_WENT_WELL', 'WHAT_DIDNT') || fallback.whatWentWell,
+    whatDidnt: section('WHAT_DIDNT', 'ACTION_ITEMS') || fallback.whatDidnt,
+    actionItems: section('ACTION_ITEMS') || fallback.actionItems,
+  };
+}
+
+function isAiReportStorageError(error: unknown) {
+  const dbError = error as { code?: string; message?: string };
+  const message = dbError.message ?? '';
+
+  return (
+    dbError.code === 'P2021' ||
+    dbError.code === 'P2022' ||
+    message.includes('dailyDigest') ||
+    message.includes('sprintRetrospective') ||
+    message.includes('daily_digests') ||
+    message.includes('sprint_retrospectives')
+  );
+}
+
+function rethrowAiReportStorageError(error: unknown): never {
+  if (isAiReportStorageError(error)) {
+    throw new Error('AI_REPORT_STORAGE_NOT_READY');
+  }
+
+  throw error;
 }
 
 export class ProjectsService {
@@ -496,6 +589,206 @@ export class ProjectsService {
     }
 
     return this.createProjectDocument(projectId, userId, data);
+  }
+
+  async getProjectDigests(projectId: string, userId: string) {
+    await this.requireProjectMember(projectId, userId);
+
+    try {
+      return await prisma.dailyDigest.findMany({
+        where: { projectId },
+        include: { generatedBy: { select: { id: true, name: true, email: true } } },
+        orderBy: { createdAt: 'desc' },
+        take: 12,
+      });
+    } catch (error) {
+      rethrowAiReportStorageError(error);
+    }
+  }
+
+  async generateDailyDigest(projectId: string, userId: string, source: 'manual' | 'scheduled' = 'manual') {
+    await this.requireProjectMember(projectId, userId);
+
+    const since = todayUtc();
+    const now = new Date();
+    const project = await prisma.project.findFirst({
+      where: { id: projectId, members: { some: { userId } } },
+      include: {
+        tasks: {
+          include: { assignee: { select: { name: true } } },
+          orderBy: [{ updatedAt: 'desc' }, { createdAt: 'desc' }],
+        },
+        activities: {
+          where: { createdAt: { gte: since } },
+          orderBy: { createdAt: 'desc' },
+          take: 20,
+        },
+      },
+    });
+
+    if (!project) {
+      throw new Error('PROJECT_NOT_FOUND');
+    }
+
+    const completed = project.tasks.filter((task) => task.status === 'DONE' && task.updatedAt >= since);
+    const inProgress = project.tasks.filter((task) => ['TODO', 'IN_PROGRESS', 'IN_REVIEW'].includes(task.status)).slice(0, 8);
+    const blockers = project.tasks.filter((task) => task.status !== 'DONE' && (task.priority === 'URGENT' || Boolean(task.dueDate && task.dueDate < now))).slice(0, 8);
+    const fallbackSummary = fallbackDigestSummary(project.name, completed, inProgress, blockers);
+
+    let summary = fallbackSummary;
+    let summarySource: string = source;
+
+    try {
+      summary = await geminiService.generateText(buildDailyDigestPrompt(project.name, completed, inProgress, blockers, project.activities));
+      summarySource = 'ai';
+    } catch {
+      summary = fallbackSummary;
+    }
+
+    let digest;
+
+    try {
+      digest = await prisma.dailyDigest.create({
+        data: {
+          title: `${project.name} daily digest`,
+          summary,
+          completedCount: completed.length,
+          inProgressCount: inProgress.length,
+          blockerCount: blockers.length,
+          source: summarySource,
+          projectId,
+          generatedById: userId,
+        },
+        include: { generatedBy: { select: { id: true, name: true, email: true } } },
+      });
+    } catch (error) {
+      rethrowAiReportStorageError(error);
+    }
+
+    createProjectActivity({
+      projectId,
+      userId,
+      action: 'DAILY_DIGEST_GENERATED',
+      target: digest.title,
+      details: `${digest.completedCount} completed, ${digest.inProgressCount} in progress, ${digest.blockerCount} blockers`,
+    }).catch(() => undefined);
+
+    return digest;
+  }
+
+  async getSprintRetrospective(projectId: string, sprintId: string, userId: string) {
+    await this.requireSprintInProject(projectId, sprintId, userId);
+
+    try {
+      return await prisma.sprintRetrospective.findUnique({
+        where: { sprintId },
+        include: { generatedBy: { select: { id: true, name: true, email: true } } },
+      });
+    } catch (error) {
+      rethrowAiReportStorageError(error);
+    }
+  }
+
+  async generateSprintRetrospective(projectId: string, sprintId: string, userId: string) {
+    await this.requireSprintInProject(projectId, sprintId, userId);
+
+    const sprint = await prisma.sprint.findFirst({
+      where: { id: sprintId, projectId },
+      include: {
+        tasks: {
+          include: { assignee: { select: { name: true } } },
+          orderBy: [{ updatedAt: 'desc' }, { createdAt: 'desc' }],
+        },
+      },
+    });
+
+    if (!sprint) {
+      throw new Error('SPRINT_NOT_FOUND');
+    }
+
+    const completed = sprint.tasks.filter((task) => task.status === 'DONE');
+    const unfinished = sprint.tasks.filter((task) => task.status !== 'DONE');
+    const blockers = unfinished.filter((task) => task.priority === 'URGENT' || Boolean(task.dueDate && task.dueDate < new Date()));
+    const fallback = fallbackRetroSections(sprint.name, completed.length, sprint.tasks.length, blockers.length);
+
+    let sections = fallback;
+
+    try {
+      const response = await geminiService.generateText([
+        `Create a sprint retrospective for "${sprint.name}".`,
+        'Return exactly these headings: WHAT_WENT_WELL:, WHAT_DIDNT:, ACTION_ITEMS:.',
+        'Use short bullet points and do not invent work.',
+        `Completed tasks: ${completed.map((task) => task.title).join(', ') || 'none'}`,
+        `Unfinished tasks: ${unfinished.map((task) => task.title).join(', ') || 'none'}`,
+        `Urgent/overdue blockers: ${blockers.map((task) => task.title).join(', ') || 'none'}`,
+      ].join('\n'));
+      sections = parseRetroResponse(response, fallback);
+    } catch {
+      sections = fallback;
+    }
+
+    let retrospective;
+
+    try {
+      retrospective = await prisma.sprintRetrospective.upsert({
+        where: { sprintId },
+        update: {
+          whatWentWell: sections.whatWentWell,
+          whatDidnt: sections.whatDidnt,
+          actionItems: sections.actionItems,
+          generatedById: userId,
+        },
+        create: {
+          projectId,
+          sprintId,
+          generatedById: userId,
+          whatWentWell: sections.whatWentWell,
+          whatDidnt: sections.whatDidnt,
+          actionItems: sections.actionItems,
+        },
+        include: { generatedBy: { select: { id: true, name: true, email: true } } },
+      });
+    } catch (error) {
+      rethrowAiReportStorageError(error);
+    }
+
+    createProjectActivity({
+      projectId,
+      userId,
+      action: 'SPRINT_RETRO_GENERATED',
+      target: sprint.name,
+      details: 'AI retrospective report generated',
+    }).catch(() => undefined);
+
+    return retrospective;
+  }
+
+  async updateSprintRetrospectiveNotes(projectId: string, sprintId: string, userId: string, manualNotes: string) {
+    await this.requireSprintInProject(projectId, sprintId, userId);
+
+    let retrospective;
+
+    try {
+      retrospective = await prisma.sprintRetrospective.findUnique({
+        where: { sprintId },
+      });
+    } catch (error) {
+      rethrowAiReportStorageError(error);
+    }
+
+    if (!retrospective) {
+      throw new Error('RETROSPECTIVE_NOT_FOUND');
+    }
+
+    try {
+      return await prisma.sprintRetrospective.update({
+        where: { sprintId },
+        data: { manualNotes },
+        include: { generatedBy: { select: { id: true, name: true, email: true } } },
+      });
+    } catch (error) {
+      rethrowAiReportStorageError(error);
+    }
   }
 
   // ── Update Member Role ─────────────────────────────────────

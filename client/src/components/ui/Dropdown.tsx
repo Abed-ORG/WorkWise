@@ -5,6 +5,7 @@ export interface DropdownItem {
   label: string;
   onSelect: () => void;
   disabled?: boolean;
+  tone?: 'default' | 'danger';
 }
 
 export interface DropdownProps {
@@ -113,6 +114,8 @@ export default function Dropdown({ trigger, items, align = 'left' }: DropdownPro
               disabled={item.disabled}
               onClick={() => handleSelect(item)}
               className={`dropdown-item block w-full rounded-lg px-3 py-2.5 text-left text-sm transition-colors focus:outline-none ${
+                item.tone === 'danger' ? 'dropdown-item-danger ' : ''
+              }${
                 item.disabled ? 'cursor-not-allowed opacity-40' : ''
               }`}
             >

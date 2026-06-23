@@ -6,24 +6,9 @@ import Modal from './ui/Modal';
 import Icon from './Icon';
 import NotificationBell from './NotificationBell';
 import ThemeToggle from './ThemeToggle';
+import { Button } from './ui';
 
 interface HeaderProps { onMenuToggle: () => void; }
-
-const pageNames: Record<string, string> = {
-  '/dashboard': 'Overview',
-  '/projects': 'Projects',
-  '/projects/create': 'Create project',
-  '/tasks': 'My tasks',
-  '/profile': 'My profile',
-};
-
-const shortcuts = [
-  { key: '/', action: 'Focus search' },
-  { key: '?', action: 'Show shortcuts' },
-  { key: 'B', action: 'Go to board view' },
-  { key: 'C', action: 'Create task' },
-  { key: 'Esc', action: 'Close shortcuts' },
-];
 
 function isTypingTarget(target: EventTarget | null) {
   if (!(target instanceof HTMLElement)) return false;
@@ -43,9 +28,8 @@ export default function Header({ onMenuToggle }: HeaderProps) {
   const location = useLocation();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
-  const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  const [logoutOpen, setLogoutOpen] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
-  const pageTitle = pageNames[location.pathname] ?? (location.pathname.endsWith('/settings') ? 'Project settings' : 'Workspace');
   const search = searchParams.get('q') ?? '';
 
   useEffect(() => {
@@ -62,12 +46,11 @@ export default function Header({ onMenuToggle }: HeaderProps) {
 
       if (event.key === '?') {
         event.preventDefault();
-        setShortcutsOpen(true);
+        navigate('/profile?shortcuts=true');
         return;
       }
 
       if (event.key === 'Escape') {
-        setShortcutsOpen(false);
         return;
       }
 
@@ -91,12 +74,13 @@ export default function Header({ onMenuToggle }: HeaderProps) {
     if (location.pathname !== '/tasks') {
       navigate(value ? `/tasks?q=${encodeURIComponent(value)}` : '/tasks');
       return;
-     }
-      setSearchParams((current) => {
-        const next = new URLSearchParams(current);
-        if (value) next.set('q', value);
-        else next.delete('q');
-        return next;
+    }
+
+    setSearchParams((current) => {
+      const next = new URLSearchParams(current);
+      if (value) next.set('q', value);
+      else next.delete('q');
+      return next;
     });
   }
 
@@ -107,67 +91,57 @@ export default function Header({ onMenuToggle }: HeaderProps) {
           <button type="button" onClick={onMenuToggle} className="icon-button menu-button" aria-label="Open navigation">
             <Icon name="menu" size={19} />
           </button>
-          <div>
-            <div className="topbar-kicker">WorkWise workspace</div>
-            <div className="topbar-title">{pageTitle}</div>
-          </div>
         </div>
-      <div className="topbar-actions">
-        <label className="search-pill" aria-label="Workspace search">
-          <Icon name="search" size={16} />
-          <input
-            ref={searchInputRef}
-            type="search"
-            value={location.pathname === '/tasks' ? search : ''}
-            onChange={(event) => handleSearchChange(event.target.value)}
-            placeholder="Search anything..."
-          />
-          <kbd>/</kbd>
-        </label>
+        <div className="topbar-actions">
+          <label className="search-pill" aria-label="Workspace search">
+            <Icon name="search" size={16} />
+            <input
+              ref={searchInputRef}
+              type="search"
+              value={location.pathname === '/tasks' ? search : ''}
+              onChange={(event) => handleSearchChange(event.target.value)}
+              placeholder="Search anything..."
+            />
+            <kbd>/</kbd>
+          </label>
 
-        <button type="button" className="shortcuts-trigger" onClick={() => setShortcutsOpen(true)} aria-haspopup="dialog">
-          <span>Shortcuts</span>
-          <kbd>?</kbd>
-        </button>
-        <ThemeToggle />
-        <NotificationBell />
-        <Dropdown
-          align="right"
-          trigger={
-            <span className="profile-trigger">
-              <span className="avatar">{user.avatarUrl ? <img src={user.avatarUrl} alt="" /> : user.initials}</span>
-              <span className="profile-copy">
-                <span className="profile-name">{user.name}</span>
-                <span className="profile-role">Workspace member</span>
+          <ThemeToggle />
+          <NotificationBell />
+          <Dropdown
+            align="right"
+            trigger={
+              <span className="profile-trigger">
+                <span className="avatar">{user.avatarUrl ? <img src={user.avatarUrl} alt="" /> : user.initials}</span>
+                <span className="profile-copy">
+                  <span className="profile-name">{user.name}</span>
+                </span>
+                <Icon name="chevron-down" size={15} />
               </span>
-              <Icon name="chevron-down" size={15} />
-            </span>
-          }
+            }
             items={[
               { label: 'View profile', onSelect: () => navigate('/profile') },
-              { label: 'Sign out', onSelect: logout },
+              { label: 'Sign out', tone: 'danger', onSelect: () => setLogoutOpen(true) },
             ]}
           />
         </div>
       </header>
 
-      <Modal isOpen={shortcutsOpen} onClose={() => setShortcutsOpen(false)} className="shortcuts-modal">
+      <Modal isOpen={logoutOpen} onClose={() => setLogoutOpen(false)} className="confirm-modal">
         <div className="shortcuts-modal-header">
           <div>
-            <p className="section-kicker">Shortcuts</p>
-            <h2>Keyboard shortcuts</h2>
+            <p className="section-kicker">Sign out</p>
+            <h2>Leave WorkWise?</h2>
           </div>
-          <button type="button" className="icon-button" onClick={() => setShortcutsOpen(false)} aria-label="Close shortcuts">
+          <button type="button" className="icon-button" onClick={() => setLogoutOpen(false)} aria-label="Close logout confirmation">
             <Icon name="close" size={17} />
           </button>
         </div>
-        <div className="shortcuts-list">
-          {shortcuts.map((shortcut) => (
-            <div className="shortcuts-row" key={shortcut.key}>
-              <kbd>{shortcut.key}</kbd>
-              <span>{shortcut.action}</span>
-            </div>
-          ))}
+        <div className="confirm-modal-body">
+          <p>You will need to sign in again to access your workspace.</p>
+          <div className="confirm-modal-actions">
+            <Button variant="secondary" onClick={() => setLogoutOpen(false)}>Cancel</Button>
+            <Button variant="danger" onClick={logout}>Sign out</Button>
+          </div>
         </div>
       </Modal>
     </>

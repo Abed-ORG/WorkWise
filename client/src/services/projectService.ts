@@ -77,6 +77,32 @@ export interface SaveProjectDocumentDto {
 
 export type ProjectDocumentPayload = SaveProjectDocumentDto;
 
+export interface DailyDigest {
+  id: string;
+  title: string;
+  summary: string;
+  completedCount: number;
+  inProgressCount: number;
+  blockerCount: number;
+  source: string;
+  createdAt: string;
+  projectId: string;
+  generatedBy?: { id: string; name: string; email: string } | null;
+}
+
+export interface SprintRetrospective {
+  id: string;
+  whatWentWell: string;
+  whatDidnt: string;
+  actionItems: string;
+  manualNotes?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  projectId: string;
+  sprintId: string;
+  generatedBy?: { id: string; name: string; email: string } | null;
+}
+
 // ── Project CRUD ───────────────────────────────────────────
 
 export const createProject = async (data: CreateProjectDto): Promise<Project> => {
@@ -260,5 +286,40 @@ export const updateSprintDocuments = async (
   documentIds: string[]
 ): Promise<ProjectDocument[]> => {
   const response = await apiClient.put(`/api/projects/${projectId}/sprints/${sprintId}/documents`, { documentIds });
+  return response.data.data;
+};
+
+export const getProjectDigests = async (projectId: string): Promise<DailyDigest[]> => {
+  const response = await apiClient.get(`/api/projects/${projectId}/digests`);
+  return response.data.data;
+};
+
+export const generateDailyDigest = async (projectId: string): Promise<DailyDigest> => {
+  const response = await apiClient.post(`/api/projects/${projectId}/digests/generate`);
+  return response.data.data;
+};
+
+export const getSprintRetrospective = async (
+  projectId: string,
+  sprintId: string
+): Promise<SprintRetrospective | null> => {
+  const response = await apiClient.get(`/api/projects/${projectId}/sprints/${sprintId}/retrospective`);
+  return response.data.data;
+};
+
+export const generateSprintRetrospective = async (
+  projectId: string,
+  sprintId: string
+): Promise<SprintRetrospective> => {
+  const response = await apiClient.post(`/api/projects/${projectId}/sprints/${sprintId}/retrospective/generate`);
+  return response.data.data;
+};
+
+export const updateSprintRetrospectiveNotes = async (
+  projectId: string,
+  sprintId: string,
+  manualNotes: string
+): Promise<SprintRetrospective> => {
+  const response = await apiClient.patch(`/api/projects/${projectId}/sprints/${sprintId}/retrospective/notes`, { manualNotes });
   return response.data.data;
 };

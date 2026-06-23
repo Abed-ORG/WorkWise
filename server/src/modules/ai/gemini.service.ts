@@ -39,6 +39,34 @@ class GeminiService {
     return parseAcceptanceCriteriaResponse(responseText);
   }
 
+  async generateText(prompt: string): Promise<string> {
+    try {
+      const response = await this.withTimeout(
+        this.getClient().models.generateContent({
+          model: GEMINI_MODEL,
+          contents: prompt,
+          config: {
+            temperature: 0.3,
+          },
+        })
+      );
+
+      const text = response.text?.trim();
+
+      if (!text) {
+        throw new AppError("AI response was empty", 502);
+      }
+
+      return text;
+    } catch (error) {
+      if (error instanceof AppError) {
+        throw error;
+      }
+
+      throw this.toAppError(error);
+    }
+  }
+
   private getClient() {
     if (this.client) {
       return this.client;
