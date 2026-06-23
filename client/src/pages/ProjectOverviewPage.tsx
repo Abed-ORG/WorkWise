@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import BacklogList from '../components/BacklogList';
+import AITaskBreakdownModal from '../components/AITaskBreakdownModal';
 import CreateTaskModal from '../components/CreateTaskModal';
 import Icon from '../components/Icon';
 import KanbanBoard from '../components/KanbanBoard';
@@ -38,6 +39,7 @@ export default function ProjectOverviewPage() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
   const [createOpen, setCreateOpen] = useState(false);
+  const [breakdownOpen, setBreakdownOpen] = useState(false);
   const [documentLoading, setDocumentLoading] = useState(true);
   const [documentSaving, setDocumentSaving] = useState(false);
   const [documentDeleting, setDocumentDeleting] = useState(false);
@@ -227,6 +229,7 @@ export default function ProjectOverviewPage() {
         description={project.description || 'A shared workspace for planning, prioritizing, and delivering the next milestone.'}
         actions={<div className="page-actions">
           {isAdmin && <Button onClick={() => setCreateOpen(true)}><Icon name="plus" size={16} /> Create task</Button>}
+          {isAdmin && <Button variant="secondary" onClick={() => setBreakdownOpen(true)}><Icon name="sparkles" size={16} /> AI breakdown</Button>}
           <Button variant="secondary" onClick={() => navigate(`/projects/${project.id}/activity`)}><Icon name="activity" size={16} /> Activity feed</Button>
           <Button variant="secondary" onClick={() => navigate(`/projects/${project.id}/sprints`)}><Icon name="activity" size={16} /> Sprints</Button>
           {isAdmin && <Button variant="secondary" onClick={() => navigate(`/projects/${project.id}/settings`)}><Icon name="settings" size={16} /> Project settings</Button>}
@@ -328,6 +331,7 @@ export default function ProjectOverviewPage() {
       </section>
 
       <CreateTaskModal isOpen={createOpen} projectId={projectId} members={project.members ?? []} onClose={() => setCreateOpen(false)} onCreated={(task) => { setTasks((current) => [task, ...current]); toast.success('Task created successfully.'); }} />
+      <AITaskBreakdownModal isOpen={breakdownOpen} projectId={projectId} onClose={() => setBreakdownOpen(false)} onTasksCreated={(created) => setTasks((current) => [...created, ...current])} />
       <TaskDetailModal taskId={selectedTaskId} onClose={() => setSelectedTaskId(null)} onTaskUpdated={(task) => setTasks((current) => upsertTask(current, task))} />
     </>
   );
