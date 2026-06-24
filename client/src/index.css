@@ -684,6 +684,7 @@ textarea.field-control { resize: vertical; }
 .priority-high .task-priority-dot, .priority-badge.priority-high span { background: #e16a4f; }
 .priority-urgent .task-priority-dot, .priority-badge.priority-urgent span { background: var(--danger); box-shadow: 0 0 0 3px color-mix(in srgb, var(--danger) 13%, transparent); }
 .task-priority-label { color: var(--text-subtle); font-size: 9px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+.task-status-label { color: var(--text-muted); font-size: 9px; font-weight: 700; text-transform: capitalize; }
 .task-drag-handle { display: inline-flex; margin-left: auto; color: var(--text-subtle); opacity: .55; transform: rotate(90deg); }
 .task-card h3 { margin: 13px 0 17px; color: var(--text); font-size: 13px; font-weight: 730; line-height: 1.42; letter-spacing: -.015em; }
 .task-card-footer { position: relative; z-index: 1; display: flex; align-items: center; gap: 7px; }
