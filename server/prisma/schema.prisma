@@ -72,6 +72,8 @@ model User {
   documents           Document[]
   invitationsSent     Invitation[]         @relation("InvitationSender")
   passwordResetTokens PasswordResetToken[]
+  generatedDigests    DailyDigest[]        @relation("DailyDigestGenerator")
+  generatedRetros     SprintRetrospective[] @relation("SprintRetroGenerator")
 
   @@map("users")
 }
@@ -90,6 +92,8 @@ model Project {
   documents   Document[]
   invitations Invitation[]
   activities  ProjectActivity[]
+  dailyDigests DailyDigest[]
+  retrospectives SprintRetrospective[]
 
   @@map("projects")
 }
@@ -124,6 +128,7 @@ model Sprint {
   project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
   tasks   Task[]
   documents SprintDocument[]
+  retrospective SprintRetrospective?
 
   @@map("sprints")
 }
@@ -294,4 +299,52 @@ model ProjectActivity {
 
   @@index([projectId, createdAt])
   @@map("project_activities")
+}
+
+model DailyDigest {
+  id              String   @id @default(cuid())
+  title           String
+  summary         String
+  completedCount  Int      @default(0)
+  inProgressCount Int      @default(0)
+  blockerCount    Int      @default(0)
+  source          String   @default("manual")
+  createdAt       DateTime @default(now())
+
+  projectId     String
+  generatedById String?
+
+  project     Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  generatedBy User?   @relation("DailyDigestGenerator", fields: [generatedById], references: [id], onDelete: SetNull)
+
+  @@index([projectId, createdAt])
+  @@map("daily_digests")
+}
+
+model SprintRetrospective {
+  id          String   @id @default(cuid())
+  whatWentWell String
+  whatDidnt    String
+  actionItems  String
+  manualNotes  String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  projectId     String
+  sprintId      String   @unique
+  generatedById String?
+
+  project     Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  sprint      Sprint  @relation(fields: [sprintId], references: [id], onDelete: Cascade)
+  generatedBy User?   @relation("SprintRetroGenerator", fields: [generatedById], references: [id], onDelete: SetNull)
+
+  @@index([projectId, createdAt])
+  @@map("sprint_retrospectives")
+}
+
+model AiQuotaUsage {
+  date  String @id
+  count Int    @default(0)
+
+  @@map("ai_quota_usage")
 }

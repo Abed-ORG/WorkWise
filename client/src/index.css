@@ -105,6 +105,10 @@ button:disabled { cursor: not-allowed; }
 .shortcuts-trigger { display: inline-flex; min-height: 38px; align-items: center; gap: 8px; padding: 0 9px 0 11px; border: 1px solid var(--border); border-radius: 12px; color: var(--text-muted); background: var(--surface); font-size: 12px; font-weight: 700; transition: border-color .2s ease, color .2s ease, background .2s ease; }
 .shortcuts-trigger:hover { border-color: var(--primary-strong); color: var(--text); background: var(--surface-raised); }
 .shortcuts-trigger:focus-visible { outline: none; border-color: var(--primary-strong); box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 18%, transparent); }
+.ai-quota-badge { display: inline-flex; align-items: center; height: 28px; padding: 0 10px; border-radius: 20px; font-size: 11px; font-weight: 700; letter-spacing: .02em; white-space: nowrap; border: 1px solid transparent; cursor: default; }
+.ai-quota-badge--ok { color: var(--success); background: var(--success-soft); border-color: color-mix(in srgb, var(--success) 20%, transparent); }
+.ai-quota-badge--warning { color: var(--ink); background: var(--primary-soft); border-color: var(--primary-strong); }
+.ai-quota-badge--exhausted { color: var(--danger); background: var(--danger-soft); border-color: color-mix(in srgb, var(--danger) 30%, transparent); }
 .profile-trigger { gap: 10px; margin-left: 3px; padding-left: 10px; border-left: 1px solid var(--border); color: var(--text); }
 .avatar { display: inline-flex; width: 36px; height: 36px; flex: none; align-items: center; justify-content: center; overflow: hidden; border-radius: 50%; color: var(--ink); background: linear-gradient(145deg, var(--primary), var(--primary-strong)); font-size: 11px; font-weight: 800; }
 .avatar img { width: 100%; height: 100%; object-fit: cover; }

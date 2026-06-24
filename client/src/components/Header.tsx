@@ -6,6 +6,7 @@ import Modal from './ui/Modal';
 import Icon from './Icon';
 import NotificationBell from './NotificationBell';
 import ThemeToggle from './ThemeToggle';
+import AIQuotaBadge from './AIQuotaBadge';
 
 interface HeaderProps { onMenuToggle: () => void; }
 
@@ -129,6 +130,7 @@ export default function Header({ onMenuToggle }: HeaderProps) {
           <span>Shortcuts</span>
           <kbd>?</kbd>
         </button>
+        <AIQuotaBadge />
         <ThemeToggle />
         <NotificationBell />
         <Dropdown

@@ -36,3 +36,17 @@ export async function generateAcceptanceCriteria(
   const response = await apiClient.post('/api/ai/acceptance-criteria', { title, description });
   return response.data.data;
 }
+
+export interface AiQuotaStatus {
+  count: number;
+  limit: number;
+  remaining: number;
+  percentUsed: number;
+  warning: boolean;
+  resetAt: string;
+}
+
+export async function getAiQuotaStatus(): Promise<AiQuotaStatus> {
+  const response = await apiClient.get('/api/ai/status');
+  return response.data.data;
+}
