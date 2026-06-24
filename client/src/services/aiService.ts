@@ -24,3 +24,15 @@ export async function generateTaskBreakdown(
   });
   return response.data.data;
 }
+
+export interface AcceptanceCriteriaResult {
+  acceptanceCriteria: string[];
+}
+
+export async function generateAcceptanceCriteria(
+  title: string,
+  description: string,
+): Promise<AcceptanceCriteriaResult> {
+  const response = await apiClient.post('/api/ai/acceptance-criteria', { title, description });
+  return response.data.data;
+}
