@@ -6,8 +6,17 @@ import PageHeader from '../components/PageHeader';
 import { Button, Input, Modal, Spinner, Textarea } from '../components/ui';
 import { useAuth } from '../hooks/useAuth';
 import { useToast } from '../hooks/useToast';
-import { createSprint, deleteSprint, getProjectById, getProjectSprints, startSprint } from '../services/projectService';
-import type { Project, Sprint } from '../services/projectService';
+import {
+  createSprint,
+  deleteSprint,
+  generateSprintRetrospective,
+  getProjectById,
+  getProjectSprints,
+  getSprintRetrospective,
+  startSprint,
+  updateSprintRetrospectiveNotes,
+} from '../services/projectService';
+import type { Project, Sprint, SprintRetrospective } from '../services/projectService';
 
 function formatDate(dateStr?: string) {
   if (!dateStr) return '—';
@@ -30,6 +39,25 @@ function dateOnly(value?: string): Date | undefined {
   if (!match) return undefined;
 
   return new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+}
+
+function isPastSprintDate(sprint: Sprint) {
+  const endDateOnly = dateOnly(sprint.endDate);
+  const now = new Date();
+  const todayOnly = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  return Boolean(endDateOnly && endDateOnly <= todayOnly);
+}
+
+function renderLines(text: string) {
+  return text.split('\n').filter(Boolean).map((line, index) => (
+    <p key={`${line}-${index}`}>{line}</p>
+  ));
+}
+
+function getRequestMessage(error: unknown, fallback: string) {
+  return axios.isAxiosError<{ message?: string }>(error)
+    ? error.response?.data?.message || fallback
+    : fallback;
 }
 
 interface SprintCardProps {
@@ -101,25 +129,33 @@ export default function SprintPage() {
   const [formError, setFormError] = useState('');
   const [saving, setSaving] = useState(false);
   const [deletingSprintId, setDeletingSprintId] = useState<string | null>(null);
+  const [retrospectives, setRetrospectives] = useState<Record<string, SprintRetrospective | null>>({});
+  const [retroGeneratingId, setRetroGeneratingId] = useState<string | null>(null);
+  const [retroSavingId, setRetroSavingId] = useState<string | null>(null);
+  const [retroNotes, setRetroNotes] = useState<Record<string, string>>({});
 
   useEffect(() => {
     if (!projectId) return;
     Promise.all([getProjectById(projectId), getProjectSprints(projectId)])
-      .then(([projectData, sprintData]) => {
+      .then(async ([projectData, sprintData]) => {
         setProject(projectData);
         setSprints(sprintData);
+        const pastSprintData = sprintData.filter((sprint) => !sprint.isActive && isPastSprintDate(sprint));
+        const loadedRetros = await Promise.all(
+          pastSprintData.map(async (sprint) => {
+            const retro = await getSprintRetrospective(projectId, sprint.id).catch(() => null);
+            return [sprint.id, retro] as const;
+          })
+        );
+        setRetrospectives(Object.fromEntries(loadedRetros));
+        setRetroNotes(Object.fromEntries(loadedRetros.map(([sprintId, retro]) => [sprintId, retro?.manualNotes ?? ''])));
       })
       .catch(() => navigate('/projects', { replace: true }))
       .finally(() => setLoading(false));
   }, [projectId, navigate]);
 
-  const now = new Date();
-  const todayOnly = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   const activeSprints = sprints.filter((s) => s.isActive);
-  const isPastSprint = (sprint: Sprint) => {
-    const endDateOnly = dateOnly(sprint.endDate);
-    return Boolean(endDateOnly && endDateOnly <= todayOnly);
-  };
+  const isPastSprint = (sprint: Sprint) => isPastSprintDate(sprint);
   const pastSprints = sprints.filter((s) => !s.isActive && isPastSprint(s));
   const upcomingSprints = sprints.filter((s) => !s.isActive && !isPastSprint(s));
 
@@ -190,6 +226,37 @@ export default function SprintPage() {
       toast.error(message || 'Could not delete the sprint.');
     } finally {
       setDeletingSprintId(null);
+    }
+  }
+
+  async function handleGenerateRetro(sprint: Sprint) {
+    if (!projectId) return;
+
+    setRetroGeneratingId(sprint.id);
+    try {
+      const retrospective = await generateSprintRetrospective(projectId, sprint.id);
+      setRetrospectives((current) => ({ ...current, [sprint.id]: retrospective }));
+      setRetroNotes((current) => ({ ...current, [sprint.id]: retrospective.manualNotes ?? '' }));
+      toast.success('Retrospective report generated.');
+    } catch (error) {
+      toast.error(getRequestMessage(error, 'Retrospective report could not be generated.'));
+    } finally {
+      setRetroGeneratingId(null);
+    }
+  }
+
+  async function handleSaveRetroNotes(sprint: Sprint) {
+    if (!projectId) return;
+
+    setRetroSavingId(sprint.id);
+    try {
+      const retrospective = await updateSprintRetrospectiveNotes(projectId, sprint.id, retroNotes[sprint.id] ?? '');
+      setRetrospectives((current) => ({ ...current, [sprint.id]: retrospective }));
+      toast.success('Retrospective notes saved.');
+    } catch (error) {
+      toast.error(getRequestMessage(error, 'Retrospective notes could not be saved.'));
+    } finally {
+      setRetroSavingId(null);
     }
   }
 
@@ -266,7 +333,41 @@ export default function SprintPage() {
           {pastSprints.length > 0 ? (
             <div className="sprint-list">
               {pastSprints.map((sprint) => (
-                <SprintCard key={sprint.id} sprint={sprint} variant="past" onDelete={isAdmin ? () => handleDeleteSprint(sprint) : undefined} deleting={deletingSprintId === sprint.id} />
+                <div className="sprint-history-item" key={sprint.id}>
+                  <SprintCard sprint={sprint} variant="past" onDelete={isAdmin ? () => handleDeleteSprint(sprint) : undefined} deleting={deletingSprintId === sprint.id} />
+                  <div className="retro-panel">
+                    <div className="retro-panel-head">
+                      <div>
+                        <h3>AI retrospective assistant</h3>
+                        <p>Generate a structured report from this sprint&apos;s task outcomes.</p>
+                      </div>
+                      <Button onClick={() => handleGenerateRetro(sprint)} loading={retroGeneratingId === sprint.id}>
+                        <Icon name="sparkles" size={15} /> {retrospectives[sprint.id] ? 'Regenerate report' : 'Generate report'}
+                      </Button>
+                    </div>
+                    {retrospectives[sprint.id] ? (
+                      <div className="retro-grid">
+                        <article className="retro-section"><h4>What went well</h4>{renderLines(retrospectives[sprint.id]!.whatWentWell)}</article>
+                        <article className="retro-section"><h4>What didn&apos;t</h4>{renderLines(retrospectives[sprint.id]!.whatDidnt)}</article>
+                        <article className="retro-section"><h4>Action items</h4>{renderLines(retrospectives[sprint.id]!.actionItems)}</article>
+                        <label className="field retro-notes">
+                          <span className="field-label">Team notes</span>
+                          <Textarea
+                            rows={4}
+                            value={retroNotes[sprint.id] ?? ''}
+                            onChange={(event) => setRetroNotes((current) => ({ ...current, [sprint.id]: event.target.value }))}
+                            placeholder="Add manual observations, decisions, or follow-up notes..."
+                          />
+                          <Button onClick={() => handleSaveRetroNotes(sprint)} loading={retroSavingId === sprint.id}>
+                            <Icon name="check" size={15} /> Save notes
+                          </Button>
+                        </label>
+                      </div>
+                    ) : (
+                      <p className="field-help">No report yet. Generate one after closing the sprint to save it in history.</p>
+                    )}
+                  </div>
+                </div>
               ))}
             </div>
           ) : (

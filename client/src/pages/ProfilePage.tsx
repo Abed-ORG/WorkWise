@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import PageHeader from '../components/PageHeader';
 import Icon from '../components/Icon';
 import { Input, Button, Card, Spinner } from '../components/ui';
+import Modal from '../components/ui/Modal';
 import { getMyProfile, updateMyProfile } from '../services/userService';
 import type { UserProfile } from '../services/userService';
 import { useAuth } from '../hooks/useAuth';
@@ -12,6 +13,13 @@ interface FormState { name: string; avatarUrl: string; }
 
 const MAX_AVATAR_FILE_SIZE = 5 * 1024 * 1024;
 const AVATAR_SIZE = 256;
+const shortcuts = [
+  { key: '/', action: 'Focus workspace search' },
+  { key: '?', action: 'Open this shortcuts guide' },
+  { key: 'B', action: 'Go to overview' },
+  { key: 'C', action: 'Prepare task creation' },
+  { key: 'Esc', action: 'Close dialogs' },
+];
 
 function resizeAvatar(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -53,6 +61,7 @@ function getInitials(name: string): string {
 
 export default function ProfilePage() {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { user, updateUser } = useAuth();
   const toast = useToast();
   const [profile, setProfile] = useState<UserProfile | null>(null);
@@ -62,7 +71,12 @@ export default function ProfilePage() {
   const [form, setForm] = useState<FormState>({ name: '', avatarUrl: '' });
   const [nameError, setNameError] = useState('');
   const [avatarError, setAvatarError] = useState('');
+  const [shortcutsOpen, setShortcutsOpen] = useState(searchParams.get('shortcuts') === 'true');
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    setShortcutsOpen(searchParams.get('shortcuts') === 'true');
+  }, [searchParams]);
 
   useEffect(() => {
     getMyProfile()
@@ -98,6 +112,15 @@ export default function ProfilePage() {
     setNameError('');
     setAvatarError('');
     setEditing(false);
+  }
+
+  function closeShortcuts() {
+    setShortcutsOpen(false);
+    setSearchParams((current) => {
+      const next = new URLSearchParams(current);
+      next.delete('shortcuts');
+      return next;
+    }, { replace: true });
   }
 
   async function handleAvatarChange(file?: File) {
@@ -147,6 +170,12 @@ export default function ProfilePage() {
             <Button variant="secondary" onClick={() => navigate('/profile?onboarding=true')}>Open guide</Button>
           </div>
 
+          <div className="auth-note mt-0">
+            <Icon name="tasks" size={17} />
+            <span className="focus-copy"><strong>Keyboard shortcuts</strong><span>See the quick actions available across WorkWise.</span></span>
+            <Button variant="secondary" onClick={() => setShortcutsOpen(true)}>View shortcuts</Button>
+          </div>
+
           {editing ? (
             <div className="form-stack">
               <Input label="Full name" value={form.name} onChange={(event) => { setForm((current) => ({ ...current, name: event.target.value })); setNameError(''); }} error={nameError} autoFocus />
@@ -190,6 +219,26 @@ export default function ProfilePage() {
           </div>
         </Card>
       </div>
+
+      <Modal isOpen={shortcutsOpen} onClose={closeShortcuts} className="shortcuts-modal">
+        <div className="shortcuts-modal-header">
+          <div>
+            <p className="section-kicker">Shortcuts</p>
+            <h2>Keyboard shortcuts</h2>
+          </div>
+          <button type="button" className="icon-button" onClick={closeShortcuts} aria-label="Close shortcuts">
+            <Icon name="close" size={17} />
+          </button>
+        </div>
+        <div className="shortcuts-list">
+          {shortcuts.map((shortcut) => (
+            <div className="shortcuts-row" key={shortcut.key}>
+              <kbd>{shortcut.key}</kbd>
+              <span>{shortcut.action}</span>
+            </div>
+          ))}
+        </div>
+      </Modal>
     </>
   );
 }
