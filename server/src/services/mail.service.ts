@@ -35,9 +35,13 @@ const escapeHtml = (value: string) => value
   .replace(/"/g, "&quot;")
   .replace(/'/g, "&#039;");
 
+const getErrorMessage = (error: unknown) =>
+  error instanceof Error ? error.message : String(error);
+
 const sendMail = async ({ to, subject, text, html }: EmailMessage) => {
   const { resendApiKey, from, smtp } = env.email;
-  const smtpConfigured = Boolean(smtp.host && smtp.user && smtp.pass && smtp.from);
+  const smtpConfigured = Boolean(smtp.host && smtp.user && smtp.pass);
+  const sender = smtpConfigured ? smtp.from || from : from;
 
   if (!smtpConfigured && !resendApiKey) throw new Error("MAIL_NOT_CONFIGURED");
 
@@ -54,7 +58,7 @@ const sendMail = async ({ to, subject, text, html }: EmailMessage) => {
       });
 
       await transporter.sendMail({
-        from: smtp.from,
+        from: sender,
         to,
         subject,
         text,
@@ -72,9 +76,18 @@ const sendMail = async ({ to, subject, text, html }: EmailMessage) => {
       body: JSON.stringify({ from, to: [to], subject, text, html }),
     });
 
-    if (!response.ok) throw new Error("RESEND_REJECTED_MESSAGE");
+    if (!response.ok) {
+      const responseBody = await response.text().catch(() => "");
+      throw new Error(`RESEND_REJECTED_MESSAGE ${response.status} ${responseBody}`);
+    }
   } catch (error) {
     if (error instanceof Error && error.message === "MAIL_NOT_CONFIGURED") throw error;
+    console.error("[mail] Email delivery failed", {
+      provider: smtpConfigured ? "smtp" : "resend",
+      to,
+      subject,
+      error: getErrorMessage(error),
+    });
     throw new Error("EMAIL_DELIVERY_FAILED");
   }
 };

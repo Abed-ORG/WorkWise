@@ -4,6 +4,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import CreateTaskModal from '../components/CreateTaskModal';
 import Icon from '../components/Icon';
 import PageHeader from '../components/PageHeader';
+import { ProjectHealthOverview } from '../components/ProjectAnalyticsWidgets';
 import { Button, Spinner } from '../components/ui';
 import { useAuth } from '../hooks/useAuth';
 import { useToast } from '../hooks/useToast';
@@ -16,6 +17,7 @@ import type { DailyDigest, Project } from '../services/projectService';
 import { joinProjectRoom, leaveProjectRoom } from '../services/realtimeService';
 import { getProjectTasks } from '../services/taskService';
 import type { Task } from '../services/taskService';
+import { calculateProjectHealth } from '../utils/projectAnalytics';
 
 
 function upsertTask(tasks: Task[], nextTask: Task) {
@@ -122,6 +124,7 @@ export default function ProjectOverviewPage() {
   const currentMember = project.members?.find((member) => member.user.id === user.id);
   const isAdmin = currentMember?.role === 'ADMIN';
   const openTaskCount = tasks.filter((task) => task.status !== 'DONE').length;
+  const projectHealth = calculateProjectHealth(project, tasks);
 
   async function handleGenerateDigest() {
     if (!projectId) return;
@@ -151,7 +154,6 @@ export default function ProjectOverviewPage() {
         actions={<div className="page-actions">
           {isAdmin && <Button onClick={() => setCreateOpen(true)}><Icon name="plus" size={16} /> Create task</Button>}
           <Button variant="secondary" onClick={() => navigate(`/projects/${project.id}/activity`)}><Icon name="activity" size={16} /> Activity feed</Button>
-          {isAdmin && <Button variant="secondary" onClick={() => navigate(`/projects/${project.id}/settings`)}><Icon name="settings" size={16} /> Project settings</Button>}
         </div>}
       />
 
@@ -161,6 +163,8 @@ export default function ProjectOverviewPage() {
         <article className="app-card stat-card"><div className="stat-head"><span>Active sprints</span><span className="stat-icon"><Icon name="activity" size={18} /></span></div><p className="stat-value">{project.sprints?.length ?? 0}</p><p className="stat-label">Current delivery cycles</p></article>
         <article className="app-card stat-card"><div className="stat-head"><span>Project key</span><span className="stat-icon"><Icon name="board" size={18} /></span></div><p className="stat-value text-xl">{project.key}</p><p className="stat-label">Task identifier prefix</p></article>
       </section>
+
+      <ProjectHealthOverview health={projectHealth} />
 
       <section className="app-card card-padding animate-enter-delay digest-card">
         <div className="section-heading">

@@ -2,9 +2,10 @@ import { useEffect, useState } from 'react';
 import DocumentLinkPicker from './DocumentLinkPicker';
 import Icon from './Icon';
 import { Button, Modal, Select, Spinner } from './ui';
+import { getProjectById } from '../services/projectService';
 import { getTaskById, updateTask, updateTaskDocuments } from '../services/taskService';
 import type { Task, TaskStatus } from '../services/taskService';
-import type { ProjectDocument } from '../services/projectService';
+import type { ProjectDocument, ProjectMember } from '../services/projectService';
 
 interface TaskDetailModalProps {
   taskId: string | null;
@@ -21,6 +22,13 @@ interface AcceptanceCriterion {
 function formatDate(date?: string | null) {
   if (!date) return 'No due date';
   return new Intl.DateTimeFormat('en', { month: 'short', day: 'numeric', year: 'numeric' }).format(new Date(date));
+}
+
+function toDateInputValue(date?: string | null) {
+  if (!date) return '';
+  const parsed = new Date(date);
+  if (Number.isNaN(parsed.getTime())) return '';
+  return parsed.toISOString().slice(0, 10);
 }
 
 function createCriterion(text = '', done = false): AcceptanceCriterion {
@@ -64,6 +72,7 @@ const statusOptions = [
 export default function TaskDetailModal({ taskId, onClose, onTaskUpdated }: TaskDetailModalProps) {
   const [task, setTask] = useState<Task | null>(null);
   const [linkedDocuments, setLinkedDocuments] = useState<ProjectDocument[]>([]);
+  const [projectMembers, setProjectMembers] = useState<ProjectMember[]>([]);
   const [loading, setLoading] = useState(false);
   const [descriptionDraft, setDescriptionDraft] = useState('');
   const [savingDescription, setSavingDescription] = useState(false);
@@ -73,29 +82,43 @@ export default function TaskDetailModal({ taskId, onClose, onTaskUpdated }: Task
   const [acceptanceCriteriaMessage, setAcceptanceCriteriaMessage] = useState('');
   const [savingStatus, setSavingStatus] = useState(false);
   const [statusMessage, setStatusMessage] = useState('');
+  const [savingDetails, setSavingDetails] = useState(false);
+  const [detailsMessage, setDetailsMessage] = useState('');
   const [error, setError] = useState('');
 
   useEffect(() => {
     if (!taskId) {
       setTask(null);
       setLinkedDocuments([]);
+      setProjectMembers([]);
       return;
     }
 
+    let active = true;
     setLoading(true);
     setError('');
     getTaskById(taskId)
-      .then((taskData) => {
+      .then(async (taskData) => {
+        const projectData = await getProjectById(taskData.projectId).catch(() => null);
+        if (!active) return;
         setTask(taskData);
         setLinkedDocuments(taskData.documents ?? []);
+        setProjectMembers(projectData?.members ?? []);
         setDescriptionDraft(taskData.description ?? '');
         setDescriptionMessage('');
         setAcceptanceCriteriaItems(parseAcceptanceCriteria(taskData.acceptanceCriteria));
         setAcceptanceCriteriaMessage('');
         setStatusMessage('');
+        setDetailsMessage('');
       })
-      .catch(() => setError('Task details could not be loaded.'))
-      .finally(() => setLoading(false));
+      .catch(() => {
+        if (active) setError('Task details could not be loaded.');
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+
+    return () => { active = false; };
   }, [taskId]);
 
   async function handleDocumentChange(documentIds: string[]) {
@@ -156,6 +179,44 @@ export default function TaskDetailModal({ taskId, onClose, onTaskUpdated }: Task
       setStatusMessage('Could not save');
     } finally {
       setSavingStatus(false);
+    }
+  }
+
+  async function updateAssignee(assigneeId: string) {
+    if (!taskId || !task) return;
+    const nextAssigneeId = assigneeId || null;
+    if ((task.assignee?.id ?? null) === nextAssigneeId) return;
+
+    setSavingDetails(true);
+    setDetailsMessage('');
+    try {
+      const updatedTask = await updateTask(taskId, { assigneeId: nextAssigneeId });
+      setTask((current) => current ? { ...current, assignee: updatedTask.assignee ?? null } : current);
+      onTaskUpdated?.(updatedTask);
+      setDetailsMessage('Saved');
+    } catch {
+      setDetailsMessage('Could not save assignee');
+    } finally {
+      setSavingDetails(false);
+    }
+  }
+
+  async function updateDueDate(dueDate: string) {
+    if (!taskId || !task) return;
+    const nextDueDate = dueDate || null;
+    if ((toDateInputValue(task.dueDate) || null) === nextDueDate) return;
+
+    setSavingDetails(true);
+    setDetailsMessage('');
+    try {
+      const updatedTask = await updateTask(taskId, { dueDate: nextDueDate });
+      setTask((current) => current ? { ...current, dueDate: updatedTask.dueDate ?? null } : current);
+      onTaskUpdated?.(updatedTask);
+      setDetailsMessage('Saved');
+    } catch {
+      setDetailsMessage('Could not save due date');
+    } finally {
+      setSavingDetails(false);
     }
   }
 
@@ -264,7 +325,10 @@ export default function TaskDetailModal({ taskId, onClose, onTaskUpdated }: Task
 
             <aside className="task-detail-sidebar">
               <section className="task-detail-section">
-                <h3>Details</h3>
+                <div className="task-detail-section-heading">
+                  <h3>Details</h3>
+                  <span>{savingDetails ? 'Saving...' : detailsMessage}</span>
+                </div>
                 <div className="task-detail-meta">
                   <span className={`priority-badge priority-${task.priority.toLowerCase()}`}><span />{task.priority.toLowerCase()}</span>
                   <span className="due-date"><Icon name="calendar" size={14} />{formatDate(task.dueDate)}</span>
@@ -278,8 +342,29 @@ export default function TaskDetailModal({ taskId, onClose, onTaskUpdated }: Task
                   disabled={savingStatus}
                   helperText={savingStatus ? 'Saving status...' : statusMessage || 'Changes update the project board immediately.'}
                 />
+                <Select
+                  label="Assignee"
+                  value={task.assignee?.id ?? ''}
+                  options={[
+                    { value: '', label: 'Unassigned' },
+                    ...projectMembers.map((member) => ({ value: member.user.id, label: `${member.user.name} (${member.role.toLowerCase()})` })),
+                  ]}
+                  onChange={(event) => updateAssignee(event.target.value)}
+                  disabled={savingDetails}
+                  helperText="Assign this task to a project member."
+                />
+                <label className="field">
+                  <span className="field-label">Due date</span>
+                  <input
+                    className="field-control"
+                    type="date"
+                    value={toDateInputValue(task.dueDate)}
+                    onChange={(event) => updateDueDate(event.target.value)}
+                    disabled={savingDetails}
+                  />
+                  <span className="field-help">Leave empty to remove the due date.</span>
+                </label>
                 <div className="task-detail-fields">
-                  <div><span>Assignee</span><strong>{task.assignee?.name ?? 'Unassigned'}</strong></div>
                   <div><span>Reporter</span><strong>{task.creator?.name ?? 'Unknown'}</strong></div>
                   <div><span>Project</span><strong>{task.project?.name ?? 'Unknown'}</strong></div>
                 </div>
