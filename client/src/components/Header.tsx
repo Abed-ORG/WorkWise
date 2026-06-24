@@ -113,7 +113,7 @@ export default function Header({ onMenuToggle }: HeaderProps) {
           </div>
         </div>
       <div className="topbar-actions">
-        <label className="search-pill" aria-label="Workspace search">
+        <label className="search-pill" aria-label="Workspace search" onClick={() => searchInputRef.current?.focus()}>
           <Icon name="search" size={16} />
           <input
             ref={searchInputRef}

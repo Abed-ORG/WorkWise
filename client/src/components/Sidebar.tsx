@@ -1,6 +1,7 @@
 import { NavLink } from 'react-router-dom';
 import Brand from './Brand';
 import Icon from './Icon';
+import ThemeToggle from './ThemeToggle';
 import type { IconName } from './Icon';
 
 interface SidebarProps {
@@ -23,9 +24,12 @@ const navItems: NavItem[] = [
 export default function Sidebar({ isOpen, onClose }: SidebarProps) {
   return (
     <>
-      {isOpen && <button className="sidebar-overlay md:hidden" type="button" onClick={onClose} aria-label="Close navigation" />}
+      {isOpen && <button className="sidebar-overlay" type="button" onClick={onClose} aria-label="Close navigation" />}
       <aside className={`sidebar ${isOpen ? 'open' : ''}`}>
-        <div className="sidebar-brand"><Brand /></div>
+        <div className="sidebar-brand">
+          <Brand />
+          <ThemeToggle className="sidebar-theme-toggle" />
+        </div>
 
         <div className="sidebar-workspace">
           <span className="workspace-label">Workspace</span>

@@ -69,7 +69,7 @@ export default function Modal({ isOpen, onClose, title, children, className = ''
   if (!isOpen) return null;
 
   return createPortal(
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div className="modal-root fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="modal-backdrop absolute inset-0" aria-hidden="true" onClick={onClose} />
       <div
         ref={dialogRef}
