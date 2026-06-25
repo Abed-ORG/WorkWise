@@ -1,4 +1,4 @@
-import { NotificationType, PrismaClient, Role, Task } from '@prisma/client';
+import { NotificationType, Prisma, PrismaClient, Role, Task } from '@prisma/client';
 import { sendProjectInvitationEmail } from '../../services/mail.service';
 import { createProjectActivity } from '../../services/activity.service';
 import { notifyProjectMembers } from '../../services/notification.service';
@@ -424,15 +424,19 @@ export class ProjectsService {
 
     await this.ensureSprintDatesDoNotOverlap(projectId, resolvedStart, resolvedEnd);
 
-    const sprint = await prisma.sprint.create({
-      data: {
-        name: data.name.trim(),
-        goal: data.goal?.trim() || undefined,
-        startDate: resolvedStart,
-        endDate: resolvedEnd,
-        isActive: true,
-        projectId,
-      },
+    const sprint = await prisma.$transaction(async (tx) => {
+      const createdSprint = await tx.sprint.create({
+        data: {
+          name: data.name.trim(),
+          goal: data.goal?.trim() || undefined,
+          startDate: resolvedStart,
+          endDate: resolvedEnd,
+          isActive: true,
+          projectId,
+        },
+      });
+      await this.promoteSprintBacklogTasksToTodo(tx, createdSprint.id);
+      return createdSprint;
     });
 
     await createProjectActivity({
@@ -917,9 +921,10 @@ export class ProjectsService {
         },
         orderBy: { startDate: 'asc' },
       });
-      return nextSprint
-        ? tx.sprint.update({ where: { id: nextSprint.id }, data: { isActive: true } })
-        : null;
+      if (!nextSprint) return null;
+      const activated = await tx.sprint.update({ where: { id: nextSprint.id }, data: { isActive: true } });
+      await this.promoteSprintBacklogTasksToTodo(tx, activated.id);
+      return activated;
     });
 
     if (activatedSprint) emitProjectEvent(projectId, 'sprint:started', activatedSprint);
@@ -979,6 +984,7 @@ export class ProjectsService {
       const activatedSprint = nextSprint
         ? await tx.sprint.update({ where: { id: nextSprint.id }, data: { isActive: true } })
         : null;
+      if (activatedSprint) await this.promoteSprintBacklogTasksToTodo(tx, activatedSprint.id);
 
       return { sprint: completedSprint, nextSprint: activatedSprint, completedCount, incompleteCount };
     });
@@ -1041,6 +1047,13 @@ export class ProjectsService {
     }
 
     return sprint;
+  }
+
+  private async promoteSprintBacklogTasksToTodo(tx: Prisma.TransactionClient, sprintId: string) {
+    await tx.task.updateMany({
+      where: { sprintId, status: 'BACKLOG' },
+      data: { status: 'TODO' },
+    });
   }
 }
 

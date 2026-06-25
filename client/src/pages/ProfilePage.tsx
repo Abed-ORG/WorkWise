@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import PageHeader from '../components/PageHeader';
 import Icon from '../components/Icon';
 import { Input, Button, Card, Spinner } from '../components/ui';
@@ -8,6 +9,7 @@ import { getMyProfile, updateMyProfile } from '../services/userService';
 import type { UserProfile } from '../services/userService';
 import { useAuth } from '../hooks/useAuth';
 import { useToast } from '../hooks/useToast';
+import { queryKeys, queryTimes } from '../services/queryOptions';
 
 interface FormState { name: string; avatarUrl: string; }
 
@@ -64,8 +66,7 @@ export default function ProfilePage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const { user, updateUser } = useAuth();
   const toast = useToast();
-  const [profile, setProfile] = useState<UserProfile | null>(null);
-  const [loading, setLoading] = useState(true);
+  const queryClient = useQueryClient();
   const [saving, setSaving] = useState(false);
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState<FormState>({ name: '', avatarUrl: '' });
@@ -73,20 +74,21 @@ export default function ProfilePage() {
   const [avatarError, setAvatarError] = useState('');
   const [shortcutsOpen, setShortcutsOpen] = useState(searchParams.get('shortcuts') === 'true');
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const profileQuery = useQuery({
+    queryKey: queryKeys.profile,
+    queryFn: getMyProfile,
+    staleTime: queryTimes.profile,
+  });
+  const profile = profileQuery.data ?? null;
 
   useEffect(() => {
     setShortcutsOpen(searchParams.get('shortcuts') === 'true');
   }, [searchParams]);
 
   useEffect(() => {
-    getMyProfile()
-      .then((data) => {
-        setProfile(data);
-        setForm({ name: data.name, avatarUrl: data.avatarUrl ?? '' });
-      })
-      .catch(() => toast.error('Failed to load profile.'))
-      .finally(() => setLoading(false));
-  }, [toast]);
+    if (profileQuery.data) setForm({ name: profileQuery.data.name, avatarUrl: profileQuery.data.avatarUrl ?? '' });
+    if (profileQuery.isError) toast.error('Failed to load profile.');
+  }, [profileQuery.data, profileQuery.isError, toast]);
 
   async function handleSave() {
     if (!form.name.trim()) {
@@ -94,13 +96,17 @@ export default function ProfilePage() {
       return;
     }
     setSaving(true);
+    const previousProfile = profile;
+    const optimisticProfile = profile ? { ...profile, name: form.name.trim(), avatarUrl: form.avatarUrl.trim() || undefined } : null;
+    if (optimisticProfile) queryClient.setQueryData(queryKeys.profile, optimisticProfile);
     try {
       const updated = await updateMyProfile({ name: form.name.trim(), avatarUrl: form.avatarUrl.trim() || undefined });
-      setProfile((current) => current ? { ...current, ...updated } : current);
+      queryClient.setQueryData<UserProfile | undefined>(queryKeys.profile, (current) => current ? { ...current, ...updated } : current);
       updateUser(updated);
       setEditing(false);
       toast.success('Profile updated successfully.');
     } catch {
+      queryClient.setQueryData(queryKeys.profile, previousProfile);
       toast.error('Failed to update profile.');
     } finally {
       setSaving(false);
@@ -143,7 +149,7 @@ export default function ProfilePage() {
     }
   }
 
-  if (loading) return <div className="empty-panel"><Spinner size="lg" /><p className="mt-4">Loading your profile...</p></div>;
+  if (profileQuery.isLoading) return <div className="empty-panel"><Spinner size="lg" /><p className="mt-4">Loading your profile...</p></div>;
   if (!profile) return <div className="app-card empty-panel"><h3>Profile unavailable</h3><p>We could not load your account details right now.</p></div>;
 
   return (

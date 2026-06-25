@@ -1,39 +1,71 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import PageHeader from '../components/PageHeader';
 import Icon from '../components/Icon';
 import { Button, Spinner } from '../components/ui';
 import { getUserProjects, getUserInvitations, acceptInvitation, declineInvitation } from '../services/projectService';
 import type { Project, Invitation } from '../services/projectService';
+import { queryKeys, queryTimes } from '../services/queryOptions';
 
 export default function ProjectsPage() {
   const navigate = useNavigate();
-  const [projects, setProjects] = useState<Project[]>([]);
-  const [invitations, setInvitations] = useState<Invitation[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
+  const queryClient = useQueryClient();
+  const [mutationError, setMutationError] = useState('');
 
-  useEffect(() => {
-    Promise.all([getUserProjects(), getUserInvitations()])
-      .then(([projectData, invitationData]) => {
-        setProjects(Array.isArray(projectData) ? projectData : []);
-        setInvitations(Array.isArray(invitationData) ? invitationData : []);
-      })
-      .catch(() => setError('We could not load your projects. Check the connection and try again.'))
-      .finally(() => setLoading(false));
-  }, []);
+  const projectsQuery = useQuery({
+    queryKey: queryKeys.projects,
+    queryFn: getUserProjects,
+    staleTime: queryTimes.projects,
+  });
+  const invitationsQuery = useQuery({
+    queryKey: queryKeys.invitations,
+    queryFn: getUserInvitations,
+    staleTime: queryTimes.activity,
+  });
 
-  async function handleAccept(invitationId: string) {
-    await acceptInvitation(invitationId);
-    setInvitations((current) => current.filter((invitation) => invitation.id !== invitationId));
-    const updated = await getUserProjects();
-    setProjects(Array.isArray(updated) ? updated : []);
-  }
+  const acceptInvitationMutation = useMutation({
+    mutationFn: acceptInvitation,
+    onMutate: async (invitationId) => {
+      setMutationError('');
+      await queryClient.cancelQueries({ queryKey: queryKeys.invitations });
+      const previousInvitations = queryClient.getQueryData<Invitation[]>(queryKeys.invitations);
+      queryClient.setQueryData<Invitation[]>(queryKeys.invitations, (current = []) => current.filter((invitation) => invitation.id !== invitationId));
+      return { previousInvitations };
+    },
+    onSuccess: (project) => {
+      queryClient.setQueryData<Project[]>(queryKeys.projects, (current = []) => {
+        const projects = Array.isArray(current) ? current : [];
+        return projects.some((item) => item.id === project.id) ? projects : [project, ...projects];
+      });
+    },
+    onError: (_error, _invitationId, context) => {
+      queryClient.setQueryData(queryKeys.invitations, context?.previousInvitations);
+      setMutationError('Invitation could not be accepted.');
+    },
+  });
 
-  async function handleDecline(invitationId: string) {
-    await declineInvitation(invitationId);
-    setInvitations((current) => current.filter((invitation) => invitation.id !== invitationId));
-  }
+  const declineInvitationMutation = useMutation({
+    mutationFn: declineInvitation,
+    onMutate: async (invitationId) => {
+      setMutationError('');
+      await queryClient.cancelQueries({ queryKey: queryKeys.invitations });
+      const previousInvitations = queryClient.getQueryData<Invitation[]>(queryKeys.invitations);
+      queryClient.setQueryData<Invitation[]>(queryKeys.invitations, (current = []) => current.filter((invitation) => invitation.id !== invitationId));
+      return { previousInvitations };
+    },
+    onError: (_error, _invitationId, context) => {
+      queryClient.setQueryData(queryKeys.invitations, context?.previousInvitations);
+      setMutationError('Invitation could not be declined.');
+    },
+  });
+
+  const projects = Array.isArray(projectsQuery.data) ? projectsQuery.data : [];
+  const invitations = Array.isArray(invitationsQuery.data) ? invitationsQuery.data : [];
+  const loading = projectsQuery.isLoading || invitationsQuery.isLoading;
+  const error = projectsQuery.isError || invitationsQuery.isError
+    ? 'We could not load your projects. Check the connection and try again.'
+    : mutationError;
 
   if (loading) return <div className="empty-panel"><Spinner size="lg" /><p className="mt-4">Loading your workspace...</p></div>;
 
@@ -41,14 +73,14 @@ export default function ProjectsPage() {
     <>
       <PageHeader eyebrow="Project portfolio" title="Projects" description="Organize goals, tasks, and people into focused spaces that are easy to navigate." actions={<Button onClick={() => navigate('/projects/create')}><Icon name="plus" size={16} /> New project</Button>} />
 
-      {error && <div className="alert alert-error mb-5">{error} <button className="text-link ml-2" onClick={() => window.location.reload()}>Retry</button></div>}
+      {error && <div className="alert alert-error mb-5">{error} <button className="text-link ml-2" onClick={() => { projectsQuery.refetch(); invitationsQuery.refetch(); }}>Retry</button></div>}
 
       {invitations.length > 0 && (
         <section className="invitation-stack animate-enter-delay" aria-label="Pending invitations">
           {invitations.map((invitation) => (
             <article className="invitation-card" key={invitation.id}>
               <div><strong>You&apos;re invited to {invitation.project?.name}</strong><p>{invitation.sender?.name} invited you as {invitation.role.toLowerCase()}.</p></div>
-              <div className="flex gap-2"><Button onClick={() => handleAccept(invitation.id)}>Accept</Button><Button variant="secondary" onClick={() => handleDecline(invitation.id)}>Decline</Button></div>
+              <div className="flex gap-2"><Button onClick={() => acceptInvitationMutation.mutate(invitation.id)}>Accept</Button><Button variant="secondary" onClick={() => declineInvitationMutation.mutate(invitation.id)}>Decline</Button></div>
             </article>
           ))}
         </section>

@@ -1,241 +1,200 @@
-# Workwise
+# WorkWise
 
-An AI-powered project management platform built for small development teams. Workwise replaces the fragmented workflow of juggling multiple tools by combining task tracking, sprint planning, kanban boards, and documentation in one place — with AI deeply integrated into the core workflow.
+WorkWise is an AI-assisted project management workspace for small development teams. It brings project planning, sprint execution, kanban task tracking, documentation, notifications, and AI-generated planning support into one full-stack application.
+
+## Documentation
+
+- [API documentation](docs/API.md)
+- [Deployment guide](docs/DEPLOYMENT.md)
+- [Architecture overview](docs/ARCHITECTURE.md)
+- [Mermaid architecture diagram](docs/architecture-diagram.mmd)
+
+## Key Features
+
+- JWT authentication with refresh tokens and password reset email flow
+- Project workspaces with members, invitations, and role-based permissions
+- Task backlog, kanban board, assignment, labels, priority, due dates, comments, and linked documents
+- Sprint creation, activation, completion, document linking, and retrospective generation
+- Project documentation with rich text content and searchable documents
+- Activity feed for project-level changes
+- Notification center with user notification preferences
+- Socket.io realtime updates for project rooms and user notifications
+- Gemini AI integration for task breakdown, acceptance criteria, daily digests, and sprint retrospectives
 
 ## Tech Stack
 
 | Layer | Technology |
-|-------|-----------|
-| Frontend | React (Vite) + TailwindCSS |
-| Backend | Node.js / Express |
-| Database | PostgreSQL on Supabase |
+| --- | --- |
+| Frontend | React, Vite, TypeScript, React Router, TanStack Query, Tailwind CSS |
+| Backend | Node.js, Express, TypeScript |
+| Database | PostgreSQL, typically hosted on Supabase |
 | ORM | Prisma |
-| AI | Google Gemini API |
-| Real-Time | Socket.io |
-| Auth | JWT |
-| Hosting | Vercel (frontend) + Render (backend) |
+| Realtime | Socket.io |
+| AI | Google Gemini via `@google/genai` |
+| Auth | JWT access and refresh tokens, bcrypt password hashing |
+| Email | SMTP with optional Resend fallback |
+| Testing | Vitest, Testing Library, Supertest |
+| Hosting | Vercel for frontend, Render for backend |
 
-## Project Structure
+## Prerequisites
 
-```
-workwise/
-├── client/          # React frontend
-├── server/          # Node.js/Express backend
-├── .gitignore
-└── README.md
-```
-
-## Team
-
-| Name | Role |
-|------|------|
-| Taimour Shmait | Developer |
-| Yehia Fayyad | Developer |
-| Hadi Wehbe | Developer |
-
-## Getting Started
-
-### Prerequisites
-
-- Node.js 18+
+- Node.js 18 or newer
 - npm
 - Git
-- VS Code (recommended)
-- PostgreSQL client (for connecting to Supabase)
+- A PostgreSQL database, such as Supabase
+- Optional: Google Gemini API key for AI features
+- Optional: SMTP or Resend credentials for password reset and invitation emails
 
-### Setup
+## Local Setup
 
-1. Clone the repo:
-   ```bash
-   git clone <repo-url>
-   cd workwise
-   ```
+Clone the repository and install dependencies separately for the client and server.
 
-2. Switch to the `develop` branch:
-   ```bash
-   git checkout develop
-   ```
+```bash
+git clone <repo-url>
+cd WorkWise
 
-3. Install frontend dependencies:
-   ```bash
-   cd client
-   npm install
-   ```
+npm install --prefix client
+npm install --prefix server
+```
 
-4. Install backend dependencies:
-   ```bash
-   cd ../server
-   npm install
-   ```
+Create environment files from the examples.
 
-5. Set up environment variables:
-   ```bash
-   cp server/.env.example server/.env
-   cp client/.env.example client/.env
-   ```
-   Fill in real values — see the [Environment Variables](#environment-variables) section below for what each variable does and where to obtain it.
+```bash
+cp client/.env.example client/.env
+cp server/.env.example server/.env
+```
 
-6. Activate the pre-commit hook (one-time per clone — keeps secrets out of git):
-   ```bash
-   git config core.hooksPath .githooks
-   ```
+Edit the copied `.env` files with local or development credentials. Do not commit real secrets.
 
-7. Run Prisma migrations:
-   ```bash
-   npx prisma migrate dev
-   ```
+Run Prisma generation and migrations from the server directory.
 
-7. Start the development servers:
-   ```bash
-   # Terminal 1 — backend
-   cd server
-   npm run dev
+```bash
+cd server
+npx prisma generate
+npm run db:migrate
+```
 
-   # Terminal 2 — frontend
-   cd client
-   npm run dev
-   ```
+Start the backend and frontend in separate terminals.
+
+```bash
+cd server
+npm run dev
+```
+
+```bash
+cd client
+npm run dev
+```
+
+Default local URLs:
+
+- Frontend: `http://localhost:5173`
+- Backend: http://localhost:<PORT> (defaults to 5000 unless overridden).
 
 ## Environment Variables
 
-> **Never commit `.env` files.** The pre-commit hook blocks this automatically once you run `git config core.hooksPath .githooks`. Production values (Render / Vercel) are set via each platform's dashboard — never in code.
+### Client
 
-### Server (`server/.env`)
+Defined in [client/.env.example](client/.env.example).
 
-Copy the template: `cp server/.env.example server/.env`
+| Variable | Required | Purpose |
+| --- | --- | --- |
+| `VITE_API_BASE_URL` | Yes | Backend API origin used by the Vite frontend, for example `http://localhost:3000` or a Render URL. |
 
-#### Database — Supabase / PostgreSQL
+Only variables prefixed with `VITE_` are exposed to browser code.
 
-| Variable | Purpose | Where to get it |
-|---|---|---|
-| `DATABASE_URL` | Runtime DB connection via pgBouncer transaction-mode pooler (port 6543). Must end with `?pgbouncer=true`. | Supabase dashboard → Settings → Database → Connection string → **Transaction mode** |
-| `DIRECT_URL` | Prisma CLI connection (migrations, Studio) via session-mode pooler (port 5432). | Supabase dashboard → Settings → Database → Connection string → **Session mode** |
+### Server
 
-#### Supabase (optional — only needed for direct Supabase API calls)
+Defined in [server/.env.example](server/.env.example).
 
-| Variable | Purpose | Where to get it |
-|---|---|---|
-| `SUPABASE_URL` | Project REST API base URL. | Supabase dashboard → Settings → API → Project URL |
-| `SUPABASE_PUBLISHABLE_KEY` | Anon/public key — safe for client-side use. | Supabase dashboard → Settings → API → `anon` key |
-| `SUPABASE_SECRET_KEY` | Service role key — **server-side only, never expose to the browser.** | Supabase dashboard → Settings → API → `service_role` key |
+| Variable | Required | Purpose |
+| --- | --- | --- |
+| `DATABASE_URL` | Yes | Runtime PostgreSQL connection string. For Supabase pooler transaction mode, include `?pgbouncer=true`. |
+| `DIRECT_URL` | Yes | Direct/session PostgreSQL connection string used by Prisma migrations and generation. |
+| `JWT_SECRET` | Yes | Secret for signing access tokens. |
+| `JWT_REFRESH_SECRET` | Yes | Secret for signing refresh tokens. Use a different value from `JWT_SECRET`. |
+| `PORT` | No | Express server port. Render provides this automatically in production. |
+| `NODE_ENV` | No | Runtime environment, usually `development` or `production`. |
+| `FRONTEND_URL` | No | Allowed CORS origin and frontend URL used in email links. |
+| `GEMINI_API_KEY` | Required for AI | Google Gemini API key for AI generation features. |
+| `DAILY_DIGEST_SCHEDULER_ENABLED` | No | Enables scheduled daily digest generation when set for the scheduler. |
+| `DAILY_DIGEST_HOUR_UTC` | No | UTC hour used by the daily digest scheduler. |
+| `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASS`, `MAIL_FROM` | Required for SMTP email | SMTP credentials and sender metadata for password reset and invitations. |
+| `RESEND_API_KEY`, `EMAIL_FROM` | Optional | Optional transactional email fallback. |
+| `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`, `SUPABASE_SECRET_KEY` | Optional | Supabase API values if direct Supabase REST/Auth calls are added or enabled. |
 
-#### Authentication
+## Build and Test Commands
 
-| Variable | Purpose | Where to get it |
-|---|---|---|
-| `JWT_SECRET` | Signs access tokens (short-lived). Must be long and random. | Generate: `openssl rand -hex 64` |
-| `JWT_REFRESH_SECRET` | Signs refresh tokens. Must differ from `JWT_SECRET`. | Generate: `openssl rand -hex 64` |
+Run commands from the relevant package directory.
 
-#### AI
+### Client
 
-| Variable | Purpose | Where to get it |
-|---|---|---|
-| `GEMINI_API_KEY` | Google Gemini API key for AI task breakdown and sprint planning features. | [Google AI Studio](https://aistudio.google.com/app/apikey) → Get API key |
+| Command | Purpose |
+| --- | --- |
+| `npm run dev` | Start the Vite development server. |
+| `npm run build` | Type-check and build the production frontend. |
+| `npm run preview` | Preview the built frontend locally. |
+| `npm run test` | Run client tests with Vitest. |
+| `npm run test:coverage` | Run client tests with coverage. |
+| `npm run lint` | Run ESLint. |
 
-#### App
+### Server
 
-| Variable | Purpose | Default |
-|---|---|---|
-| `PORT` | Port the Express server listens on. Render overrides this automatically. | `3000` |
-| `NODE_ENV` | Runtime environment. Use `development` locally, `production` on Render. | `development` |
-| `FRONTEND_URL` | Allowed CORS origin and base URL for password-reset email links. | `http://localhost:5173` |
+| Command | Purpose |
+| --- | --- |
+| `npm run dev` | Start Express with `ts-node-dev`. |
+| `npm run build` | Compile TypeScript into `dist/`. |
+| `npm start` | Run the compiled backend from `dist/server.js`. |
+| `npm run test` | Run server tests with Vitest. |
+| `npm run test:coverage` | Run server tests with coverage. |
+| `npm run db:migrate` | Run `prisma migrate dev`. |
+| `npm run db:seed` | Seed the database with `prisma/seed.js`. |
+| `npm run db:reset` | Reset the database with Prisma. |
+| `npx prisma generate` | Generate the Prisma client after schema or dependency changes. |
 
-#### Email — SMTP (primary)
+## Basic Project Structure
 
-Uses the team's Gmail mailbox via a Google App Password. Requires 2-Step Verification to be enabled on the Gmail account.
-
-| Variable | Purpose | Where to get it |
-|---|---|---|
-| `SMTP_HOST` | SMTP server hostname. | `smtp.gmail.com` for Gmail |
-| `SMTP_PORT` | SMTP port. `587` for STARTTLS (recommended). | `587` |
-| `SMTP_SECURE` | Set to `true` only for port 465 (SSL). Leave `false` for port 587. | `false` |
-| `SMTP_USER` | Gmail address used as sender. | The Gmail account address |
-| `SMTP_PASS` | Google App Password — **not** your regular Gmail password. | Google Account → Security → 2-Step Verification → App Passwords |
-| `MAIL_FROM` | Display name + address in the `From:` header. | Match `SMTP_USER`, e.g. `WorkWise <you@gmail.com>` |
-
-#### Email — Resend (optional fallback)
-
-| Variable | Purpose | Where to get it |
-|---|---|---|
-| `RESEND_API_KEY` | Resend transactional email API key. Leave empty to use SMTP instead. | [resend.com/api-keys](https://resend.com/api-keys) |
-| `EMAIL_FROM` | Sender address for Resend-delivered emails. | Must be a verified domain in your Resend account |
-
----
-
-### Client (`client/.env`)
-
-Copy the template: `cp client/.env.example client/.env`
-
-Only variables prefixed with `VITE_` are embedded into the browser bundle by Vite.
-
-| Variable | Purpose | Default |
-|---|---|---|
-| `VITE_API_BASE_URL` | Base URL of the backend API. Every HTTP request in `src/services/apiClient.ts` is sent to this origin. Set to your Render URL in production. | `http://localhost:3000` |
-
----
+```text
+WorkWise/
+  client/
+    src/
+      components/       Reusable UI and app components
+      context/          React context providers
+      hooks/            Shared React hooks
+      pages/            Route-level screens
+      routes/           React Router setup
+      services/         API, auth, realtime, and domain clients
+    vercel.json         Vercel SPA rewrite configuration
+  server/
+    prisma/
+      schema.prisma     Database models and enums
+      migrations/       Prisma migration history
+      seed.js           Seed script
+    src/
+      controllers/      Express request handlers
+      middleware/       Auth, validation, rate limit, and error middleware
+      modules/          Feature modules such as projects, users, and AI
+      routes/           REST route definitions
+      services/         Business logic and integrations
+      validators/       Zod and express-validator schemas
+      app.ts            Express app configuration and route mounting
+      server.ts         HTTP and Socket.io server bootstrap
+  docs/                 API, deployment, and architecture documentation
+```
 
 ## Git Workflow
 
-This project uses a **two-branch model** with `main` and `develop`.
+This project uses a two-branch model with `main` and `develop`.
 
-### Branches
+- `main`: production-ready code.
+- `develop`: active development branch.
+- Feature branches should use the Jira ticket number, for example `feature/SCRUM-179-project-documentation`.
+- Open pull requests into `develop` and keep branches focused on one task.
 
-- **`main`** — Production-ready code. Only updated at the end of a sprint before deployment. Never push directly to main.
-- **`develop`** — Active development branch. All feature work merges here first.
+## Development Notes
 
-### How to Work on a Task
-
-1. **Pull the latest from develop:**
-   ```bash
-   git checkout develop
-   git pull origin develop
-   ```
-
-2. **Create a feature branch from develop:**
-   ```bash
-   git checkout -b feature/SCRUM-XX-short-description
-   ```
-   Use the Jira ticket number in the branch name (e.g., `feature/SCRUM-42-login-page`).
-
-3. **Work on your task.** Commit often with clear messages:
-   ```bash
-   git add .
-   git commit -m "SCRUM-42: Add login form with validation"
-   ```
-
-4. **Push your branch:**
-   ```bash
-   git push origin feature/SCRUM-XX-short-description
-   ```
-
-5. **Open a Pull Request (PR) into `develop`:**
-   - Go to GitHub and create a PR from your branch into `develop`
-   - Add a clear title and description of what you did
-   - Request a review from at least one teammate
-   - Link the Jira ticket in the PR description
-
-6. **After review and approval**, merge the PR into `develop`.
-
-7. **Delete your feature branch** after merging (GitHub can do this automatically).
-
-### Rules
-
-- Never push directly to `main` or `develop` — always use pull requests
-- Keep your feature branches small and focused on one task
-- Pull from `develop` frequently to avoid merge conflicts
-- Write meaningful commit messages that reference the Jira ticket
-- Review your teammates' PRs — everyone reviews, everyone learns
-
-## Key Features
-
-- User authentication with role-based access (Admin, Developer, Viewer)
-- Project and workspace management with team invitations
-- Kanban board with drag-and-drop task management
-- Sprint management with backlog grooming and planning
-- Real-time updates across the board via WebSockets
-- Integrated documentation wiki with rich text editing
-- AI Task Breakdown: paste a feature, AI splits it into subtasks
-- AI Sprint Planner: suggests optimal sprint scope
-- AI Daily Digest: auto-generated summary of progress and blockers
-- AI Retrospective Assistant: generates structured retro reports
-- Analytics dashboard with burndown charts and velocity tracking
+- All protected HTTP endpoints expect `Authorization: Bearer <accessToken>`.
+- Socket.io clients authenticate with the same access token in `handshake.auth.token`.
+- The backend CORS origin is controlled by `FRONTEND_URL`.
+- Prisma uses `DATABASE_URL` at runtime and `DIRECT_URL` for migrations.
+- Keep generated secrets, API keys, database passwords, and SMTP credentials out of git.

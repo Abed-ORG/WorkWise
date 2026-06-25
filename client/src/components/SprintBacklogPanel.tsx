@@ -1,6 +1,7 @@
-import { useState, type DragEvent } from 'react';
+import { useEffect, useMemo, useState, type DragEvent } from 'react';
 import Icon from './Icon';
 import { Button, Spinner } from './ui';
+import { useToast } from '../hooks/useToast';
 import { moveTaskToSprint, reorderTask } from '../services/taskService';
 import type { Task } from '../services/taskService';
 import { getSprintSuggestion } from '../services/aiService';
@@ -30,17 +31,36 @@ export default function SprintBacklogPanel({
   allTasks,
   onTasksChange,
 }: SprintBacklogPanelProps) {
+  const toast = useToast();
   const [draggedId, setDraggedId] = useState<string | null>(null);
   const [dropIndex, setDropIndex] = useState<number | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [suggesting, setSuggesting] = useState(false);
   const [suggestion, setSuggestion] = useState<SprintSuggestionResult | null>(null);
   const [suggestError, setSuggestError] = useState<string | null>(null);
+  const [bulkAction, setBulkAction] = useState<'add' | 'remove' | null>(null);
+  const [backlogSelectionMode, setBacklogSelectionMode] = useState(false);
+  const [sprintSelectionMode, setSprintSelectionMode] = useState(false);
+  const [selectedBacklogIds, setSelectedBacklogIds] = useState<string[]>([]);
+  const [selectedSprintIds, setSelectedSprintIds] = useState<string[]>([]);
+  const [backlogSearch, setBacklogSearch] = useState('');
+  const [sprintSearch, setSprintSearch] = useState('');
 
-  const sprintTasks = [...allTasks.filter((t) => t.sprintId === sprintId)]
-    .sort((a, b) => a.order - b.order);
-  const backlogTasks = [...allTasks.filter((t) => !t.sprintId)]
-    .sort((a, b) => (PRIORITY_ORDER[a.priority] ?? 2) - (PRIORITY_ORDER[b.priority] ?? 2));
+  const sprintTasks = useMemo(() => [...allTasks.filter((t) => t.sprintId === sprintId)]
+    .sort((a, b) => a.order - b.order), [allTasks, sprintId]);
+  const backlogTasks = useMemo(() => [...allTasks.filter((t) => !t.sprintId)]
+    .sort((a, b) => (PRIORITY_ORDER[a.priority] ?? 2) - (PRIORITY_ORDER[b.priority] ?? 2)), [allTasks]);
+  const filteredBacklogTasks = useMemo(() => filterTasks(backlogTasks, backlogSearch), [backlogSearch, backlogTasks]);
+  const filteredSprintTasks = useMemo(() => filterTasks(sprintTasks, sprintSearch), [sprintSearch, sprintTasks]);
+  const isProcessing = Boolean(busy || bulkAction || suggesting);
+  const allBacklogSelected = filteredBacklogTasks.length > 0 && filteredBacklogTasks.every((task) => selectedBacklogIds.includes(task.id));
+  const allSprintSelected = filteredSprintTasks.length > 0 && filteredSprintTasks.every((task) => selectedSprintIds.includes(task.id));
+  const selectionModeActive = backlogSelectionMode || sprintSelectionMode;
+
+  useEffect(() => {
+    setSelectedBacklogIds((current) => current.filter((taskId) => backlogTasks.some((task) => task.id === taskId)));
+    setSelectedSprintIds((current) => current.filter((taskId) => sprintTasks.some((task) => task.id === taskId)));
+  }, [backlogTasks, sprintTasks]);
 
   async function handleSuggest() {
     if (suggesting) return;
@@ -68,8 +88,10 @@ export default function SprintBacklogPanel({
     try {
       const updated = await moveTaskToSprint(task.id, sprintId);
       onTasksChange(allTasks.map((t) => t.id === updated.id ? updated : t));
+      setSelectedBacklogIds((current) => current.filter((taskId) => taskId !== task.id));
     } catch {
       onTasksChange(allTasks);
+      toast.error('Task could not be added to the sprint.');
     } finally {
       setBusy(null);
     }
@@ -82,10 +104,106 @@ export default function SprintBacklogPanel({
     try {
       const updated = await moveTaskToSprint(task.id, null);
       onTasksChange(allTasks.map((t) => t.id === updated.id ? updated : t));
+      setSelectedSprintIds((current) => current.filter((taskId) => taskId !== task.id));
     } catch {
       onTasksChange(allTasks);
+      toast.error('Task could not be removed from the sprint.');
     } finally {
       setBusy(null);
+    }
+  }
+
+  function toggleBacklogTask(taskId: string) {
+    if (isProcessing || !backlogSelectionMode) return;
+    setSelectedBacklogIds((current) => current.includes(taskId) ? current.filter((id) => id !== taskId) : [...current, taskId]);
+  }
+
+  function toggleSprintTask(taskId: string) {
+    if (isProcessing || !sprintSelectionMode) return;
+    setSelectedSprintIds((current) => current.includes(taskId) ? current.filter((id) => id !== taskId) : [...current, taskId]);
+  }
+
+  function toggleAllBacklogTasks() {
+    if (isProcessing || !backlogSelectionMode) return;
+    setSelectedBacklogIds((current) => (
+      filteredBacklogTasks.every((task) => current.includes(task.id))
+        ? current.filter((taskId) => !filteredBacklogTasks.some((task) => task.id === taskId))
+        : Array.from(new Set([...current, ...filteredBacklogTasks.map((task) => task.id)]))
+    ));
+  }
+
+  function toggleAllSprintTasks() {
+    if (isProcessing || !sprintSelectionMode) return;
+    setSelectedSprintIds((current) => (
+      filteredSprintTasks.every((task) => current.includes(task.id))
+        ? current.filter((taskId) => !filteredSprintTasks.some((task) => task.id === taskId))
+        : Array.from(new Set([...current, ...filteredSprintTasks.map((task) => task.id)]))
+    ));
+  }
+
+  function startBacklogSelection() {
+    setBacklogSelectionMode(true);
+    setSprintSelectionMode(false);
+    setSelectedSprintIds([]);
+  }
+
+  function cancelBacklogSelection() {
+    setBacklogSelectionMode(false);
+    setSelectedBacklogIds([]);
+  }
+
+  function startSprintSelection() {
+    setSprintSelectionMode(true);
+    setBacklogSelectionMode(false);
+    setSelectedBacklogIds([]);
+  }
+
+  function cancelSprintSelection() {
+    setSprintSelectionMode(false);
+    setSelectedSprintIds([]);
+  }
+
+  async function handleBulkAddToSprint() {
+    const selectedIds = selectedBacklogIds.filter((taskId) => backlogTasks.some((task) => task.id === taskId));
+    if (!selectedIds.length) return;
+
+    setBulkAction('add');
+    const previousTasks = allTasks;
+    onTasksChange(allTasks.map((task) => selectedIds.includes(task.id) ? { ...task, sprintId } : task));
+
+    try {
+      const updatedTasks = await Promise.all(selectedIds.map((taskId) => moveTaskToSprint(taskId, sprintId)));
+      onTasksChange(previousTasks.map((task) => updatedTasks.find((updated) => updated.id === task.id) ?? task));
+      setSelectedBacklogIds([]);
+      setBacklogSelectionMode(false);
+      toast.success(`${updatedTasks.length} task${updatedTasks.length === 1 ? '' : 's'} added to the sprint.`);
+    } catch {
+      onTasksChange(previousTasks);
+      toast.error('One or more tasks could not be added to the sprint.');
+    } finally {
+      setBulkAction(null);
+    }
+  }
+
+  async function handleBulkRemoveFromSprint() {
+    const selectedIds = selectedSprintIds.filter((taskId) => sprintTasks.some((task) => task.id === taskId));
+    if (!selectedIds.length) return;
+
+    setBulkAction('remove');
+    const previousTasks = allTasks;
+    onTasksChange(allTasks.map((task) => selectedIds.includes(task.id) ? { ...task, sprintId: null } : task));
+
+    try {
+      const updatedTasks = await Promise.all(selectedIds.map((taskId) => moveTaskToSprint(taskId, null)));
+      onTasksChange(previousTasks.map((task) => updatedTasks.find((updated) => updated.id === task.id) ?? task));
+      setSelectedSprintIds([]);
+      setSprintSelectionMode(false);
+      toast.success(`${updatedTasks.length} task${updatedTasks.length === 1 ? '' : 's'} removed from the sprint.`);
+    } catch {
+      onTasksChange(previousTasks);
+      toast.error('One or more tasks could not be removed from the sprint.');
+    } finally {
+      setBulkAction(null);
     }
   }
 
@@ -102,12 +220,15 @@ export default function SprintBacklogPanel({
 
   async function handleDrop(event: DragEvent<HTMLElement>, targetIndex: number) {
     event.preventDefault();
+    if (isProcessing || selectionModeActive) return;
     if (!draggedId) return;
     const sourceTask = sprintTasks.find((t) => t.id === draggedId);
     if (!sourceTask) return;
 
+    const targetTask = filteredSprintTasks[targetIndex];
+    const resolvedTargetIndex = targetTask ? sprintTasks.findIndex((task) => task.id === targetTask.id) : targetIndex;
     const reordered = sprintTasks.filter((t) => t.id !== draggedId);
-    reordered.splice(targetIndex, 0, sourceTask);
+    reordered.splice(Math.max(0, resolvedTargetIndex), 0, sourceTask);
 
     // Assign order values 0, 1, 2… — global order field, no migration needed
     const updated = reordered.map((t, i) => ({ ...t, order: i }));
@@ -136,7 +257,17 @@ export default function SprintBacklogPanel({
               <h2>Available tasks</h2>
               <p>Unassigned tasks sorted by priority. Click <strong>+</strong> to add to the sprint.</p>
             </div>
-            <div className="sprint-backlog-col-head-actions">
+            <div className="sprint-backlog-head-actions">
+              {backlogTasks.length > 0 && (
+                <Button
+                  variant={backlogSelectionMode ? 'ghost' : 'secondary'}
+                  className="sprint-select-toggle"
+                  disabled={isProcessing}
+                  onClick={backlogSelectionMode ? cancelBacklogSelection : startBacklogSelection}
+                >
+                  {backlogSelectionMode ? 'Cancel' : 'Select'}
+                </Button>
+              )}
               <span className="kanban-summary">
                 <Icon name="tasks" size={14} />
                 {backlogTasks.length}
@@ -161,30 +292,78 @@ export default function SprintBacklogPanel({
               <p>All tasks are in a sprint or the project has no backlog tasks yet.</p>
             </div>
           ) : (
-            <ul className="sprint-task-list">
-              {backlogTasks.map((task) => (
-                <li key={task.id} className="sprint-task-row">
-                  <span className={`task-priority-dot priority-${task.priority.toLowerCase()}`} />
-                  <span className="sprint-task-info">
-                    <span className="sprint-task-title">{task.title}</span>
-                    <span className="sprint-task-meta">
-                      <span className={`status-badge status-${task.status.toLowerCase()}`}>{formatStatus(task.status)}</span>
-                      <span className="sprint-task-priority">{priorityLabel(task.priority)}</span>
-                      {task.assignee && <span className="sprint-task-assignee">{task.assignee.name}</span>}
-                    </span>
-                  </span>
-                  <Button
-                    variant="secondary"
-                    className="sprint-task-action"
-                    disabled={busy === task.id}
-                    onClick={() => handleAddToSprint(task)}
-                    title="Add to sprint"
-                  >
-                    <Icon name="plus" size={14} />
+            <>
+              <label className="sprint-task-search" aria-label="Search product backlog tasks">
+                <Icon name="search" size={14} />
+                <input
+                  type="search"
+                  value={backlogSearch}
+                  onChange={(event) => setBacklogSearch(event.target.value)}
+                  placeholder="Search tasks..."
+                />
+              </label>
+              {backlogSelectionMode && (
+                <label className="sprint-task-select-all">
+                  <input
+                    className="themed-checkbox"
+                    type="checkbox"
+                    checked={allBacklogSelected}
+                    disabled={isProcessing}
+                    onChange={toggleAllBacklogTasks}
+                  />
+                  <span>Select all tasks</span>
+                </label>
+              )}
+              {backlogSelectionMode && (
+                <div className="sprint-bulk-actions" aria-label="Selected product backlog task actions">
+                  <span className="selection-count is-visible">{selectedBacklogIds.length} selected</span>
+                  <Button variant="secondary" className="bulk-action-button" loading={bulkAction === 'add'} disabled={bulkAction === 'remove' || selectedBacklogIds.length === 0} onClick={handleBulkAddToSprint}>
+                    <Icon name="plus" size={15} /> Add to sprint
                   </Button>
-                </li>
-              ))}
-            </ul>
+                  <Button variant="ghost" className="bulk-action-button" disabled={isProcessing} onClick={() => setSelectedBacklogIds([])}>Clear</Button>
+                </div>
+              )}
+              <ul className="sprint-task-list">
+                {filteredBacklogTasks.map((task) => (
+                  <li key={task.id} className={`sprint-task-row${selectedBacklogIds.includes(task.id) ? ' is-selected' : ''}`}>
+                    {backlogSelectionMode && (
+                      <input
+                        className="themed-checkbox"
+                        type="checkbox"
+                        checked={selectedBacklogIds.includes(task.id)}
+                        disabled={isProcessing}
+                        onChange={() => toggleBacklogTask(task.id)}
+                        aria-label={`Select ${task.title}`}
+                      />
+                    )}
+                    <span className={`task-priority-dot priority-${task.priority.toLowerCase()}`} />
+                    <span className="sprint-task-info">
+                      <span className="sprint-task-title">{task.title}</span>
+                      <span className="sprint-task-meta">
+                        <span className={`status-badge status-${task.status.toLowerCase()}`}>{formatStatus(task.status)}</span>
+                        <span className="sprint-task-priority">{priorityLabel(task.priority)}</span>
+                        {task.assignee && <span className="sprint-task-assignee">{task.assignee.name}</span>}
+                      </span>
+                    </span>
+                    {!backlogSelectionMode && (
+                      <Button
+                        variant="secondary"
+                        className="sprint-task-action"
+                        loading={busy === task.id}
+                        disabled={isProcessing && busy !== task.id}
+                        onClick={() => handleAddToSprint(task)}
+                        title="Add to sprint"
+                      >
+                        <Icon name="plus" size={14} />
+                      </Button>
+                    )}
+                  </li>
+                ))}
+                {filteredBacklogTasks.length === 0 && (
+                  <li className="sprint-task-empty-row">No product backlog tasks match your search.</li>
+                )}
+              </ul>
+            </>
           )}
         </div>
 
@@ -196,10 +375,22 @@ export default function SprintBacklogPanel({
               <h2>In this sprint</h2>
               <p>Drag to reorder. Click <strong>←</strong> to return a task to the backlog.</p>
             </div>
-            <span className="kanban-summary">
-              <Icon name="tasks" size={14} />
-              {sprintTasks.length}
-            </span>
+            <div className="sprint-backlog-head-actions">
+              {sprintTasks.length > 0 && (
+                <Button
+                  variant={sprintSelectionMode ? 'ghost' : 'secondary'}
+                  className="sprint-select-toggle"
+                  disabled={isProcessing}
+                  onClick={sprintSelectionMode ? cancelSprintSelection : startSprintSelection}
+                >
+                  {sprintSelectionMode ? 'Cancel' : 'Select'}
+                </Button>
+              )}
+              <span className="kanban-summary">
+                <Icon name="tasks" size={14} />
+                {sprintTasks.length}
+              </span>
+            </div>
           </div>
 
           {sprintTasks.length === 0 ? (
@@ -208,41 +399,91 @@ export default function SprintBacklogPanel({
               <p>No tasks in this sprint yet. Add tasks from the product backlog on the left.</p>
             </div>
           ) : (
-            <ul className="sprint-task-list">
-              {sprintTasks.map((task, index) => (
-                <li
-                  key={task.id}
-                  className={`sprint-task-row${draggedId === task.id ? ' is-dragging' : ''}${dropIndex === index && draggedId !== task.id ? ' is-drop-target' : ''}`}
-                  draggable
-                  onDragStart={(e) => handleDragStart(e, task.id)}
-                  onDragEnd={() => { setDraggedId(null); setDropIndex(null); }}
-                  onDragOver={(e) => handleDragOver(e, index)}
-                  onDrop={(e) => handleDrop(e, index)}
-                >
-                  <span className="sprint-task-drag-handle" aria-hidden="true">
-                    <Icon name="menu" size={14} />
-                  </span>
-                  <span className={`task-priority-dot priority-${task.priority.toLowerCase()}`} />
-                  <span className="sprint-task-info">
-                    <span className="sprint-task-title">{task.title}</span>
-                    <span className="sprint-task-meta">
-                      <span className={`status-badge status-${task.status.toLowerCase()}`}>{formatStatus(task.status)}</span>
-                      <span className="sprint-task-priority">{priorityLabel(task.priority)}</span>
-                      {task.assignee && <span className="sprint-task-assignee">{task.assignee.name}</span>}
-                    </span>
-                  </span>
-                  <Button
-                    variant="secondary"
-                    className="sprint-task-action"
-                    disabled={busy === task.id}
-                    onClick={() => handleRemoveFromSprint(task)}
-                    title="Remove from sprint"
-                  >
-                    <Icon name="arrow-left" size={14} />
+            <>
+              <label className="sprint-task-search" aria-label="Search sprint backlog tasks">
+                <Icon name="search" size={14} />
+                <input
+                  type="search"
+                  value={sprintSearch}
+                  onChange={(event) => setSprintSearch(event.target.value)}
+                  placeholder="Search tasks..."
+                />
+              </label>
+              {sprintSelectionMode && (
+                <label className="sprint-task-select-all">
+                  <input
+                    className="themed-checkbox"
+                    type="checkbox"
+                    checked={allSprintSelected}
+                    disabled={isProcessing}
+                    onChange={toggleAllSprintTasks}
+                  />
+                  <span>Select all tasks</span>
+                </label>
+              )}
+              {sprintSelectionMode && (
+                <div className="sprint-bulk-actions" aria-label="Selected sprint task actions">
+                  <span className="selection-count is-visible">{selectedSprintIds.length} selected</span>
+                  <Button variant="secondary" className="bulk-action-button" loading={bulkAction === 'remove'} disabled={bulkAction === 'add' || selectedSprintIds.length === 0} onClick={handleBulkRemoveFromSprint}>
+                    <Icon name="arrow-left" size={15} /> Remove from sprint
                   </Button>
-                </li>
-              ))}
-            </ul>
+                  <Button variant="ghost" className="bulk-action-button" disabled={isProcessing} onClick={() => setSelectedSprintIds([])}>Clear</Button>
+                </div>
+              )}
+              <ul className="sprint-task-list">
+                {filteredSprintTasks.map((task, index) => (
+                  <li
+                    key={task.id}
+                    className={`sprint-task-row${draggedId === task.id ? ' is-dragging' : ''}${dropIndex === index && draggedId !== task.id ? ' is-drop-target' : ''}${selectedSprintIds.includes(task.id) ? ' is-selected' : ''}${selectionModeActive ? ' is-selection-mode' : ''}`}
+                    draggable={!isProcessing && !selectionModeActive}
+                    onDragStart={(e) => handleDragStart(e, task.id)}
+                    onDragEnd={() => { setDraggedId(null); setDropIndex(null); }}
+                    onDragOver={(e) => handleDragOver(e, index)}
+                    onDrop={(e) => handleDrop(e, index)}
+                  >
+                    {sprintSelectionMode && (
+                      <input
+                        className="themed-checkbox"
+                        type="checkbox"
+                        checked={selectedSprintIds.includes(task.id)}
+                        disabled={isProcessing}
+                        onChange={() => toggleSprintTask(task.id)}
+                        aria-label={`Select ${task.title}`}
+                      />
+                    )}
+                    {!sprintSelectionMode && (
+                      <span className="sprint-task-drag-handle" aria-hidden="true">
+                        <Icon name="menu" size={14} />
+                      </span>
+                    )}
+                    <span className={`task-priority-dot priority-${task.priority.toLowerCase()}`} />
+                    <span className="sprint-task-info">
+                      <span className="sprint-task-title">{task.title}</span>
+                      <span className="sprint-task-meta">
+                        <span className={`status-badge status-${task.status.toLowerCase()}`}>{formatStatus(task.status)}</span>
+                        <span className="sprint-task-priority">{priorityLabel(task.priority)}</span>
+                        {task.assignee && <span className="sprint-task-assignee">{task.assignee.name}</span>}
+                      </span>
+                    </span>
+                    {!sprintSelectionMode && (
+                      <Button
+                        variant="secondary"
+                        className="sprint-task-action"
+                        loading={busy === task.id}
+                        disabled={isProcessing && busy !== task.id}
+                        onClick={() => handleRemoveFromSprint(task)}
+                        title="Remove from sprint"
+                      >
+                        <Icon name="arrow-left" size={14} />
+                      </Button>
+                    )}
+                  </li>
+                ))}
+                {filteredSprintTasks.length === 0 && (
+                  <li className="sprint-task-empty-row">No sprint tasks match your search.</li>
+                )}
+              </ul>
+            </>
           )}
         </div>
       </div>
@@ -259,4 +500,19 @@ export default function SprintBacklogPanel({
       )}
     </div>
   );
+}
+
+function filterTasks(tasks: Task[], search: string) {
+  const query = search.toLowerCase().trim();
+  if (!query) return tasks;
+
+  return tasks.filter((task) => [
+    task.title,
+    formatStatus(task.status),
+    task.status,
+    priorityLabel(task.priority),
+    task.priority,
+    task.assignee?.name,
+    ...(task.labels ?? []),
+  ].filter(Boolean).join(' ').toLowerCase().includes(query));
 }
