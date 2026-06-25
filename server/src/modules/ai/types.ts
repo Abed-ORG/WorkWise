@@ -48,3 +48,8 @@ export interface SprintRiskResult {
   suggestions: string[];
 }
 
+export interface SprintSuggestionResult {
+  reasoning: string;
+  suggestions: Array<{ taskId: string; reason: string }>;
+}
+

@@ -37,6 +37,24 @@ export async function generateAcceptanceCriteria(
   return response.data.data;
 }
 
+export interface SprintSuggestionItem {
+  taskId: string;
+  reason: string;
+}
+
+export interface SprintSuggestionResult {
+  reasoning: string;
+  suggestions: SprintSuggestionItem[];
+}
+
+export async function getSprintSuggestion(
+  projectId: string,
+  sprintId: string,
+): Promise<SprintSuggestionResult> {
+  const response = await apiClient.post('/api/ai/sprint-suggestion', { projectId, sprintId });
+  return response.data.data;
+}
+
 export interface SprintRiskResult {
   riskLevel: 'low' | 'medium' | 'high';
   summary: string;

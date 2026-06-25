@@ -14,6 +14,17 @@ export const taskBreakdownValidation = [
     .withMessage("Project context must be under 4000 characters"),
 ];
 
+export const sprintSuggestionValidation = [
+  body("sprintId")
+    .trim()
+    .notEmpty()
+    .withMessage("Sprint ID is required"),
+  body("projectId")
+    .trim()
+    .notEmpty()
+    .withMessage("Project ID is required"),
+];
+
 export const sprintRiskValidation = [
   body("sprintId")
     .trim()

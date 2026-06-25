@@ -5,6 +5,7 @@ import { aiController } from "./ai.controller";
 import {
   acceptanceCriteriaValidation,
   sprintRiskValidation,
+  sprintSuggestionValidation,
   taskBreakdownValidation,
   taskSearchValidation,
 } from "./ai.validation";
@@ -42,6 +43,14 @@ router.post(
   taskSearchValidation,
   (req: Request, res: Response, next: NextFunction) =>
     aiController.parseTaskQuery(req, res, next)
+);
+
+router.post(
+  "/sprint-suggestion",
+  aiDailyRateLimit,
+  sprintSuggestionValidation,
+  (req: Request, res: Response, next: NextFunction) =>
+    aiController.suggestSprintTasks(req, res, next)
 );
 
 router.post(

@@ -1,8 +1,11 @@
 import { useState, type DragEvent } from 'react';
 import Icon from './Icon';
-import { Button } from './ui';
+import { Button, Spinner } from './ui';
 import { moveTaskToSprint, reorderTask } from '../services/taskService';
 import type { Task } from '../services/taskService';
+import { getSprintSuggestion } from '../services/aiService';
+import type { SprintSuggestionResult } from '../services/aiService';
+import SprintSuggestionModal from './SprintSuggestionModal';
 
 interface SprintBacklogPanelProps {
   sprintId: string;
@@ -23,17 +26,40 @@ function formatStatus(s: string) {
 
 export default function SprintBacklogPanel({
   sprintId,
+  projectId,
   allTasks,
   onTasksChange,
 }: SprintBacklogPanelProps) {
   const [draggedId, setDraggedId] = useState<string | null>(null);
   const [dropIndex, setDropIndex] = useState<number | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
+  const [suggesting, setSuggesting] = useState(false);
+  const [suggestion, setSuggestion] = useState<SprintSuggestionResult | null>(null);
+  const [suggestError, setSuggestError] = useState<string | null>(null);
 
   const sprintTasks = [...allTasks.filter((t) => t.sprintId === sprintId)]
     .sort((a, b) => a.order - b.order);
   const backlogTasks = [...allTasks.filter((t) => !t.sprintId)]
     .sort((a, b) => (PRIORITY_ORDER[a.priority] ?? 2) - (PRIORITY_ORDER[b.priority] ?? 2));
+
+  async function handleSuggest() {
+    if (suggesting) return;
+    setSuggesting(true);
+    setSuggestError(null);
+    try {
+      const result = await getSprintSuggestion(projectId, sprintId);
+      setSuggestion(result);
+    } catch {
+      setSuggestError('Could not generate suggestions. Please try again.');
+    } finally {
+      setSuggesting(false);
+    }
+  }
+
+  function handleSuggestionAccepted(updatedTasks: Task[]) {
+    // Merge the newly sprint-assigned tasks back into allTasks
+    onTasksChange(allTasks.map((t) => updatedTasks.find((u) => u.id === t.id) ?? t));
+  }
 
   async function handleAddToSprint(task: Task) {
     setBusy(task.id);
@@ -110,11 +136,24 @@ export default function SprintBacklogPanel({
               <h2>Available tasks</h2>
               <p>Unassigned tasks sorted by priority. Click <strong>+</strong> to add to the sprint.</p>
             </div>
-            <span className="kanban-summary">
-              <Icon name="tasks" size={14} />
-              {backlogTasks.length}
-            </span>
+            <div className="sprint-backlog-col-head-actions">
+              <span className="kanban-summary">
+                <Icon name="tasks" size={14} />
+                {backlogTasks.length}
+              </span>
+              <Button
+                variant="secondary"
+                className="sprint-suggest-btn"
+                disabled={suggesting || backlogTasks.length === 0}
+                onClick={handleSuggest}
+                title="Ask AI to suggest tasks for this sprint"
+              >
+                {suggesting ? <Spinner size="sm" /> : <Icon name="sparkles" size={14} />}
+                {suggesting ? 'Suggesting…' : 'Suggest tasks'}
+              </Button>
+            </div>
           </div>
+          {suggestError && <p className="sprint-suggest-error">{suggestError}</p>}
 
           {backlogTasks.length === 0 ? (
             <div className="sprint-backlog-empty">
@@ -207,6 +246,17 @@ export default function SprintBacklogPanel({
           )}
         </div>
       </div>
+
+      {suggestion && (
+        <SprintSuggestionModal
+          isOpen
+          suggestion={suggestion}
+          backlogTasks={backlogTasks}
+          sprintId={sprintId}
+          onClose={() => setSuggestion(null)}
+          onAccepted={handleSuggestionAccepted}
+        />
+      )}
     </div>
   );
 }

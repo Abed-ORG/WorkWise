@@ -61,6 +61,68 @@ class AiController {
     }
   }
 
+  async suggestSprintTasks(req: Request, res: Response, next: NextFunction) {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return next(new ValidationError("Validation failed", errors.array()));
+    }
+
+    try {
+      const userId = (req as any).user?.userId as string;
+      const { sprintId, projectId } = req.body as { sprintId: string; projectId: string };
+
+      const member = await prisma.projectMember.findUnique({
+        where: { userId_projectId: { userId, projectId } },
+      });
+      if (!member) return next(new NotFoundError("Project not found"));
+
+      const sprint = await prisma.sprint.findUnique({ where: { id: sprintId } });
+      if (!sprint || sprint.projectId !== projectId) {
+        return next(new NotFoundError("Sprint not found"));
+      }
+
+      const [backlogTasks, sprintTasks, projectMembers] = await Promise.all([
+        prisma.task.findMany({
+          where: { projectId, sprintId: null },
+          include: { assignee: { select: { name: true } } },
+          orderBy: [{ createdAt: "asc" }],
+        }),
+        prisma.task.findMany({ where: { sprintId }, select: { id: true } }),
+        prisma.projectMember.findMany({
+          where: { projectId },
+          include: { user: { select: { name: true } } },
+        }),
+      ]);
+
+      const backlogSet = new Set(backlogTasks.map((t) => t.id));
+
+      const result = await geminiService.suggestSprintTasks({
+        sprintName: sprint.name,
+        currentSprintTaskCount: sprintTasks.length,
+        memberNames: projectMembers.map((m) => m.user.name).filter(Boolean),
+        backlogTasks: backlogTasks.map((t) => ({
+          id: t.id,
+          title: t.title,
+          priority: t.priority,
+          status: t.status,
+          dueDate: t.dueDate ? t.dueDate.toISOString().slice(0, 10) : null,
+          assigneeName: t.assignee?.name ?? null,
+        })),
+      });
+
+      // Discard any task IDs the AI hallucinated — only keep real backlog IDs
+      const filteredSuggestions = result.suggestions.filter((s) => backlogSet.has(s.taskId));
+
+      return res.status(200).json({
+        success: true,
+        data: { reasoning: result.reasoning, suggestions: filteredSuggestions },
+        ...(res.locals.aiQuotaWarning ? { quotaWarning: res.locals.aiQuotaWarning } : {}),
+      });
+    } catch (error) {
+      return next(error);
+    }
+  }
+
   async analyzeSprintRisk(req: Request, res: Response, next: NextFunction) {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
