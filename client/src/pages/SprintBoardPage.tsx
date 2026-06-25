@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import CompleteSprintModal from '../components/CompleteSprintModal';
 import Icon from '../components/Icon';
 import KanbanBoard from '../components/KanbanBoard';
+import { BurndownChart } from '../components/ProjectAnalyticsWidgets';
 import SprintBacklogPanel from '../components/SprintBacklogPanel';
 import { Button, Spinner } from '../components/ui';
 import { useAuth } from '../hooks/useAuth';
@@ -11,6 +12,7 @@ import { getProjectById, getSprintById } from '../services/projectService';
 import type { Project, SprintWithCount } from '../services/projectService';
 import { getProjectTasks } from '../services/taskService';
 import type { Task } from '../services/taskService';
+import { buildBurndownData } from '../utils/projectAnalytics';
 
 type Tab = 'board' | 'backlog';
 
@@ -62,6 +64,7 @@ export default function SprintBoardPage() {
 
   const sprintTasks = allTasks.filter((t) => t.sprintId === sprintId);
   const days = daysRemaining(sprint.endDate);
+  const burndownPoints = buildBurndownData(sprint, allTasks);
 
   function handleSprintCompleted() {
     setCompleteOpen(false);
@@ -103,6 +106,20 @@ export default function SprintBoardPage() {
           </div>
         )}
       </div>
+
+      <section className="app-card card-padding sprint-burndown-card">
+        <div className="section-heading">
+          <div>
+            <p className="section-kicker">Sprint burndown</p>
+            <h2>Ideal pace vs actual work</h2>
+            <p>Remaining tasks across the sprint timeline. This updates when tasks move to done.</p>
+          </div>
+          <Button variant="secondary" onClick={() => navigate(`/projects/${projectId}/analytics`)}>
+            <Icon name="activity" size={15} /> Analytics
+          </Button>
+        </div>
+        <BurndownChart points={burndownPoints} />
+      </section>
 
       {/* Tab bar */}
       <div className="sprint-board-tabs">

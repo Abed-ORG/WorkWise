@@ -16,6 +16,23 @@ requiredEnvVars.forEach((envVar) => {
   }
 });
 
+const optionalEnv = (value?: string) => {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : undefined;
+};
+
+const smtpHost = optionalEnv(process.env.SMTP_HOST);
+const smtpUser = optionalEnv(process.env.SMTP_USER);
+const smtpPassword = smtpHost?.includes("gmail.com")
+  ? process.env.SMTP_PASS?.replace(/\s+/g, "")
+  : optionalEnv(process.env.SMTP_PASS);
+const smtpFrom = optionalEnv(process.env.MAIL_FROM)
+  || optionalEnv(process.env.EMAIL_FROM)
+  || (smtpUser ? `WorkWise <${smtpUser}>` : undefined);
+const emailFrom = optionalEnv(process.env.EMAIL_FROM)
+  || smtpFrom
+  || "WorkWise <onboarding@resend.dev>";
+
 export const env = {
   port: process.env.PORT || "5000",
   nodeEnv: process.env.NODE_ENV || "development",
@@ -25,15 +42,15 @@ export const env = {
   jwtSecret: process.env.JWT_SECRET,
   jwtRefreshSecret: process.env.JWT_REFRESH_SECRET,
   email: {
-    resendApiKey: process.env.RESEND_API_KEY?.trim(),
-    from: process.env.EMAIL_FROM || "WorkWise <onboarding@resend.dev>",
+    resendApiKey: optionalEnv(process.env.RESEND_API_KEY),
+    from: emailFrom,
     smtp: {
-      host: process.env.SMTP_HOST?.trim(),
+      host: smtpHost,
       port: Number(process.env.SMTP_PORT || 587),
       secure: process.env.SMTP_SECURE === "true",
-      user: process.env.SMTP_USER?.trim(),
-      pass: process.env.SMTP_PASS?.trim(),
-      from: process.env.MAIL_FROM?.trim() || process.env.EMAIL_FROM?.trim(),
+      user: smtpUser,
+      pass: smtpPassword,
+      from: smtpFrom,
     },
   },
 };

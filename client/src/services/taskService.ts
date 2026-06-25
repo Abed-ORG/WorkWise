@@ -23,6 +23,8 @@ export interface Task {
   order: number;
   projectId: string;
   sprintId?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
   project?: { id: string; name: string; key: string };
   assignee?: TaskUser | null;
   creator?: TaskUser;

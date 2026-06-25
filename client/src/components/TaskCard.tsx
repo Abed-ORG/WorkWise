@@ -35,6 +35,7 @@ export default function TaskCard({ task, dragging = false, onDragStart, onDragEn
       <div className="task-card-topline">
         <span className="task-priority-dot" aria-hidden="true" />
         <span className="task-priority-label">{task.priority.toLowerCase()}</span>
+        <span className="task-status-label">{task.status.toLowerCase().replaceAll('_', ' ')}</span>
         <span className="task-drag-handle" aria-hidden="true"><Icon name="menu" size={15} /></span>
       </div>
 

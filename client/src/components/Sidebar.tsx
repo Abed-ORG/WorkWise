@@ -1,6 +1,9 @@
-import { NavLink } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { NavLink, useLocation } from 'react-router-dom';
 import Brand from './Brand';
 import Icon from './Icon';
+import ThemeToggle from './ThemeToggle';
+import { getProjectById } from '../services/projectService';
 import type { IconName } from './Icon';
 
 interface SidebarProps {
@@ -21,33 +24,76 @@ const navItems: NavItem[] = [
 ];
 
 export default function Sidebar({ isOpen, onClose }: SidebarProps) {
+  const location = useLocation();
+  const projectMatch = location.pathname.match(/^\/projects\/([^/]+)/);
+  const projectId = projectMatch && projectMatch[1] !== 'create' ? projectMatch[1] : null;
+  const [currentProjectName, setCurrentProjectName] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!projectId) {
+      setCurrentProjectName(null);
+      return;
+    }
+
+    let active = true;
+    getProjectById(projectId)
+      .then((project) => {
+        if (active) setCurrentProjectName(project.name);
+      })
+      .catch(() => {
+        if (active) setCurrentProjectName(null);
+      });
+
+    return () => { active = false; };
+  }, [projectId]);
+
+  const projectNavItems: NavItem[] = projectId ? [
+    { label: 'Board', to: `/projects/${projectId}/board`, icon: 'board' },
+    { label: 'Backlog', to: `/projects/${projectId}/backlog`, icon: 'tasks' },
+    { label: 'Docs', to: `/projects/${projectId}/docs`, icon: 'document' },
+    { label: 'Sprints', to: `/projects/${projectId}/sprints`, icon: 'activity' },
+    { label: 'Analytics', to: `/projects/${projectId}/analytics`, icon: 'activity' },
+    { label: 'Project settings', to: `/projects/${projectId}/settings`, icon: 'settings' },
+  ] : [];
+
   return (
     <>
-      {isOpen && <button className="sidebar-overlay md:hidden" type="button" onClick={onClose} aria-label="Close navigation" />}
+      {isOpen && <button className="sidebar-overlay" type="button" onClick={onClose} aria-label="Close navigation" />}
       <aside className={`sidebar ${isOpen ? 'open' : ''}`}>
-        <div className="sidebar-brand"><Brand /></div>
-
-        <div className="sidebar-workspace">
-          <span className="workspace-label">Workspace</span>
-          <div className="workspace-name">
-            Product team
-            <Icon name="chevron-down" size={15} />
-          </div>
+        <div className="sidebar-brand">
+          <Brand />
+          <ThemeToggle className="sidebar-theme-toggle" />
         </div>
 
         <nav className="sidebar-nav" aria-label="Primary navigation">
           <p className="nav-label">Workspace</p>
           {navItems.map((item) => (
-            <NavLink
-              key={item.to}
-              to={item.to}
-              end={item.to === '/dashboard'}
-              onClick={onClose}
-              className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
-            >
-              <Icon name={item.icon} size={19} />
-              {item.label}
-            </NavLink>
+            <div key={item.to}>
+              <NavLink
+                to={item.to}
+                end={item.to === '/dashboard'}
+                onClick={onClose}
+                className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
+              >
+                <Icon name={item.icon} size={19} />
+                {item.to === '/projects' && projectId ? currentProjectName ?? 'Projects' : item.label}
+              </NavLink>
+              {item.to === '/projects' && projectNavItems.length > 0 && (
+                <div className="project-subnav" aria-label="Project navigation">
+                  {projectNavItems.map((projectItem) => (
+                    <NavLink
+                      key={projectItem.to}
+                      to={projectItem.to}
+                      onClick={onClose}
+                      className={({ isActive }) => `nav-link nav-link-sub ${isActive ? 'active' : ''}`}
+                    >
+                      <Icon name={projectItem.icon} size={17} />
+                      {projectItem.label}
+                    </NavLink>
+                  ))}
+                </div>
+              )}
+            </div>
           ))}
         </nav>
 

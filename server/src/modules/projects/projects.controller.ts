@@ -3,6 +3,8 @@ import { validationResult } from 'express-validator';
 import { projectsService } from './projects.service';
 import { Role } from '@prisma/client';
 
+const aiReportStorageMessage = 'AI report storage is not ready yet. Run the latest Prisma migration, then restart the server.';
+
 export class ProjectsController {
 
   // ── Create Project ─────────────────────────────────────────
@@ -492,6 +494,111 @@ export class ProjectsController {
     } catch (error: any) {
       if (error.message === 'PROJECT_NOT_FOUND') {
         return res.status(404).json({ success: false, message: 'Project not found' });
+      }
+      return res.status(500).json({ success: false, message: 'Internal server error' });
+    }
+  }
+
+  async getProjectDigests(req: Request, res: Response) {
+    try {
+      const projectId = String(req.params['projectId']);
+      const userId = String((req as any).user?.userId);
+      const digests = await projectsService.getProjectDigests(projectId, userId);
+      return res.status(200).json({ success: true, data: digests });
+    } catch (error: any) {
+      if (error.message === 'PROJECT_NOT_FOUND') {
+        return res.status(404).json({ success: false, message: 'Project not found' });
+      }
+      if (error.message === 'AI_REPORT_STORAGE_NOT_READY') {
+        return res.status(409).json({ success: false, message: aiReportStorageMessage });
+      }
+      return res.status(500).json({ success: false, message: 'Internal server error' });
+    }
+  }
+
+  async generateDailyDigest(req: Request, res: Response) {
+    try {
+      const projectId = String(req.params['projectId']);
+      const userId = String((req as any).user?.userId);
+      const digest = await projectsService.generateDailyDigest(projectId, userId);
+      return res.status(201).json({ success: true, data: digest });
+    } catch (error: any) {
+      if (error.message === 'PROJECT_NOT_FOUND') {
+        return res.status(404).json({ success: false, message: 'Project not found' });
+      }
+      if (error.message === 'AI_REPORT_STORAGE_NOT_READY') {
+        return res.status(409).json({ success: false, message: aiReportStorageMessage });
+      }
+      return res.status(500).json({ success: false, message: 'Internal server error' });
+    }
+  }
+
+  async getSprintRetrospective(req: Request, res: Response) {
+    try {
+      const projectId = String(req.params['projectId']);
+      const sprintId = String(req.params['sprintId']);
+      const userId = String((req as any).user?.userId);
+      const retrospective = await projectsService.getSprintRetrospective(projectId, sprintId, userId);
+      return res.status(200).json({ success: true, data: retrospective });
+    } catch (error: any) {
+      if (error.message === 'PROJECT_NOT_FOUND') {
+        return res.status(404).json({ success: false, message: 'Project not found' });
+      }
+      if (error.message === 'SPRINT_NOT_FOUND') {
+        return res.status(404).json({ success: false, message: 'Sprint not found' });
+      }
+      if (error.message === 'AI_REPORT_STORAGE_NOT_READY') {
+        return res.status(409).json({ success: false, message: aiReportStorageMessage });
+      }
+      return res.status(500).json({ success: false, message: 'Internal server error' });
+    }
+  }
+
+  async generateSprintRetrospective(req: Request, res: Response) {
+    try {
+      const projectId = String(req.params['projectId']);
+      const sprintId = String(req.params['sprintId']);
+      const userId = String((req as any).user?.userId);
+      const retrospective = await projectsService.generateSprintRetrospective(projectId, sprintId, userId);
+      return res.status(201).json({ success: true, data: retrospective });
+    } catch (error: any) {
+      if (error.message === 'PROJECT_NOT_FOUND') {
+        return res.status(404).json({ success: false, message: 'Project not found' });
+      }
+      if (error.message === 'SPRINT_NOT_FOUND') {
+        return res.status(404).json({ success: false, message: 'Sprint not found' });
+      }
+      if (error.message === 'AI_REPORT_STORAGE_NOT_READY') {
+        return res.status(409).json({ success: false, message: aiReportStorageMessage });
+      }
+      return res.status(500).json({ success: false, message: 'Internal server error' });
+    }
+  }
+
+  async updateSprintRetrospectiveNotes(req: Request, res: Response) {
+    try {
+      const projectId = String(req.params['projectId']);
+      const sprintId = String(req.params['sprintId']);
+      const userId = String((req as any).user?.userId);
+      const retrospective = await projectsService.updateSprintRetrospectiveNotes(
+        projectId,
+        sprintId,
+        userId,
+        String(req.body.manualNotes ?? ''),
+      );
+      return res.status(200).json({ success: true, data: retrospective });
+    } catch (error: any) {
+      if (error.message === 'PROJECT_NOT_FOUND') {
+        return res.status(404).json({ success: false, message: 'Project not found' });
+      }
+      if (error.message === 'SPRINT_NOT_FOUND') {
+        return res.status(404).json({ success: false, message: 'Sprint not found' });
+      }
+      if (error.message === 'RETROSPECTIVE_NOT_FOUND') {
+        return res.status(404).json({ success: false, message: 'Generate the retrospective first' });
+      }
+      if (error.message === 'AI_REPORT_STORAGE_NOT_READY') {
+        return res.status(409).json({ success: false, message: aiReportStorageMessage });
       }
       return res.status(500).json({ success: false, message: 'Internal server error' });
     }

@@ -9,7 +9,7 @@ const message = {
 
 export const passwordResetEmailLimiter = rateLimit({
   windowMs: 60 * 60 * 1000,
-  limit: 3,
+  limit: 10,
   standardHeaders: true,
   legacyHeaders: false,
   message,

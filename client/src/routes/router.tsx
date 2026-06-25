@@ -11,7 +11,11 @@ import ProjectsPage from '../pages/projectPage';
 import CreateProjectPage from '../pages/createProjectPage';
 import ProjectSettingsPage from '../pages/projectSettingPage';
 import ProfilePage from '../pages/ProfilePage';
+import ProjectBacklogPage from '../pages/ProjectBacklogPage';
+import ProjectBoardPage from '../pages/ProjectBoardPage';
+import ProjectDocsPage from '../pages/ProjectDocsPage';
 import ProjectOverviewPage from '../pages/ProjectOverviewPage';
+import ProjectAnalyticsPage from '../pages/ProjectAnalyticsPage';
 import TasksPage from '../pages/TasksPage';
 import SprintPage from '../pages/SprintPage';
 import SprintBoardPage from '../pages/SprintBoardPage';
@@ -40,7 +44,11 @@ const router = createBrowserRouter([
           { path: '/projects', element: <ProjectsPage /> },
           { path: '/projects/create', element: <CreateProjectPage /> },
           { path: '/projects/:projectId', element: <ProjectOverviewPage /> },
+          { path: '/projects/:projectId/board', element: <ProjectBoardPage /> },
+          { path: '/projects/:projectId/backlog', element: <ProjectBacklogPage /> },
+          { path: '/projects/:projectId/docs', element: <ProjectDocsPage /> },
           { path: '/projects/:projectId/activity', element: <ActivityFeedPage /> },
+          { path: '/projects/:projectId/analytics', element: <ProjectAnalyticsPage /> },
           { path: '/projects/:projectId/sprints', element: <SprintPage /> },
           { path: '/projects/:projectId/sprints/:sprintId/board', element: <SprintBoardPage /> },
           { path: '/projects/:projectId/settings', element: <ProjectSettingsPage /> },

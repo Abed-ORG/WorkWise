@@ -10,12 +10,13 @@ import {
 import { authenticate } from "../middleware/auth.middleware";
 import { authorize } from "../middleware/role.middleware";
 import { Role } from "@prisma/client";
+import { authLimiter } from "../middleware/auth-rate-limit.middleware";
 import { passwordResetEmailLimiter } from "../middleware/email-rate-limit.middleware";
 
 const router = Router();
 
-router.post("/register", register);
-router.post("/login", login);
+router.post("/register", authLimiter, register);
+router.post("/login", authLimiter, login);
 router.post("/forgot-password", passwordResetEmailLimiter, forgotPassword);
 router.post("/reset-password", updatePassword);
 router.post("/logout", authenticate, logout);
