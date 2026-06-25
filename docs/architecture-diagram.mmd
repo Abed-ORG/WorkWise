@@ -1,0 +1,27 @@
+flowchart LR
+  User[User Browser]
+
+  subgraph Vercel[Vercel Frontend Hosting]
+    Client[React + Vite App]
+  end
+
+  subgraph Render[Render Backend Hosting]
+    Express[Express API]
+    Socket[Socket.io Realtime Layer]
+    Prisma[Prisma ORM]
+    Gemini[Gemini AI Integration]
+    Email[SMTP / Resend Email]
+  end
+
+  subgraph Supabase[Supabase]
+    Postgres[(PostgreSQL Database)]
+  end
+
+  User --> Client
+  Client -- REST / JSON --> Express
+  Client -- WebSocket auth token --> Socket
+  Express --> Prisma
+  Socket --> Prisma
+  Prisma --> Postgres
+  Express --> Gemini
+  Express --> Email
