@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import CompleteSprintModal from '../components/CompleteSprintModal';
 import Icon from '../components/Icon';
 import KanbanBoard from '../components/KanbanBoard';
@@ -9,9 +10,9 @@ import { Button, Spinner } from '../components/ui';
 import { useAuth } from '../hooks/useAuth';
 import { useToast } from '../hooks/useToast';
 import { getProjectById, getSprintById } from '../services/projectService';
-import type { Project, SprintWithCount } from '../services/projectService';
 import { getProjectTasks } from '../services/taskService';
 import type { Task } from '../services/taskService';
+import { queryKeys, queryTimes } from '../services/queryOptions';
 import { buildBurndownData } from '../utils/projectAnalytics';
 
 type Tab = 'board' | 'backlog';
@@ -30,29 +31,45 @@ export default function SprintBoardPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const toast = useToast();
+  const queryClient = useQueryClient();
 
-  const [project, setProject] = useState<Project | null>(null);
-  const [sprint, setSprint] = useState<SprintWithCount | null>(null);
-  const [allTasks, setAllTasks] = useState<Task[]>([]);
-  const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<Tab>('board');
   const [completeOpen, setCompleteOpen] = useState(false);
 
+  const projectQuery = useQuery({
+    queryKey: queryKeys.project(projectId ?? ''),
+    queryFn: () => getProjectById(projectId!),
+    enabled: Boolean(projectId),
+    staleTime: queryTimes.projectDetail,
+  });
+  const sprintQuery = useQuery({
+    queryKey: queryKeys.sprint(projectId ?? '', sprintId ?? ''),
+    queryFn: () => getSprintById(projectId!, sprintId!),
+    enabled: Boolean(projectId && sprintId),
+    staleTime: queryTimes.sprints,
+  });
+  const tasksQuery = useQuery({
+    queryKey: queryKeys.projectTasks(projectId ?? ''),
+    queryFn: () => getProjectTasks(projectId!),
+    enabled: Boolean(projectId),
+    staleTime: queryTimes.tasks,
+  });
+
   useEffect(() => {
-    if (!projectId || !sprintId) return;
-    Promise.all([
-      getProjectById(projectId),
-      getSprintById(projectId, sprintId),
-      getProjectTasks(projectId),
-    ])
-      .then(([projectData, sprintData, taskData]) => {
-        setProject(projectData);
-        setSprint(sprintData);
-        setAllTasks(taskData);
-      })
-      .catch(() => navigate(`/projects/${projectId}/sprints`, { replace: true }))
-      .finally(() => setLoading(false));
-  }, [projectId, sprintId, navigate]);
+    if (projectQuery.isError || sprintQuery.isError || tasksQuery.isError) navigate(`/projects/${projectId}/sprints`, { replace: true });
+  }, [navigate, projectId, projectQuery.isError, sprintQuery.isError, tasksQuery.isError]);
+
+  const project = projectQuery.data ?? null;
+  const sprint = sprintQuery.data ?? null;
+  const allTasks = Array.isArray(tasksQuery.data) ? tasksQuery.data : [];
+  const loading = projectQuery.isLoading || sprintQuery.isLoading || tasksQuery.isLoading;
+
+  function setAllTasks(nextTasks: Task[] | ((current: Task[]) => Task[])) {
+    if (!projectId) return;
+    queryClient.setQueryData<Task[]>(queryKeys.projectTasks(projectId), (current = []) => (
+      typeof nextTasks === 'function' ? nextTasks(current) : nextTasks
+    ));
+  }
 
   if (loading) {
     return <div className="empty-panel"><Spinner size="lg" /><p className="mt-4">Loading sprint board...</p></div>;

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import DocumentLinkPicker from './DocumentLinkPicker';
 import Icon from './Icon';
 import { Button, Modal, Select, Spinner } from './ui';
@@ -7,6 +8,7 @@ import { getTaskById, updateTask, updateTaskDocuments } from '../services/taskSe
 import type { Task, TaskStatus } from '../services/taskService';
 import { generateAcceptanceCriteria } from '../services/aiService';
 import type { ProjectDocument, ProjectMember } from '../services/projectService';
+import { queryKeys, queryTimes } from '../services/queryOptions';
 
 interface TaskDetailModalProps {
   taskId: string | null;
@@ -71,10 +73,10 @@ const statusOptions = [
 ];
 
 export default function TaskDetailModal({ taskId, onClose, onTaskUpdated }: TaskDetailModalProps) {
+  const queryClient = useQueryClient();
   const [task, setTask] = useState<Task | null>(null);
   const [linkedDocuments, setLinkedDocuments] = useState<ProjectDocument[]>([]);
   const [projectMembers, setProjectMembers] = useState<ProjectMember[]>([]);
-  const [loading, setLoading] = useState(false);
   const [descriptionDraft, setDescriptionDraft] = useState('');
   const [savingDescription, setSavingDescription] = useState(false);
   const [descriptionMessage, setDescriptionMessage] = useState('');
@@ -88,6 +90,19 @@ export default function TaskDetailModal({ taskId, onClose, onTaskUpdated }: Task
   const [detailsMessage, setDetailsMessage] = useState('');
   const [error, setError] = useState('');
 
+  const taskQuery = useQuery({
+    queryKey: queryKeys.task(taskId ?? ''),
+    queryFn: () => getTaskById(taskId!),
+    enabled: Boolean(taskId),
+    staleTime: queryTimes.tasks,
+  });
+  const projectQuery = useQuery({
+    queryKey: queryKeys.project(taskQuery.data?.projectId ?? ''),
+    queryFn: () => getProjectById(taskQuery.data!.projectId),
+    enabled: Boolean(taskQuery.data?.projectId),
+    staleTime: queryTimes.projectDetail,
+  });
+
   useEffect(() => {
     if (!taskId) {
       setTask(null);
@@ -95,40 +110,57 @@ export default function TaskDetailModal({ taskId, onClose, onTaskUpdated }: Task
       setProjectMembers([]);
       return;
     }
-
-    let active = true;
-    setLoading(true);
     setError('');
-    getTaskById(taskId)
-      .then(async (taskData) => {
-        const projectData = await getProjectById(taskData.projectId).catch(() => null);
-        if (!active) return;
-        setTask(taskData);
-        setLinkedDocuments(taskData.documents ?? []);
-        setProjectMembers(projectData?.members ?? []);
-        setDescriptionDraft(taskData.description ?? '');
-        setDescriptionMessage('');
-        setAcceptanceCriteriaItems(parseAcceptanceCriteria(taskData.acceptanceCriteria));
-        setAcceptanceCriteriaMessage('');
-        setStatusMessage('');
-        setDetailsMessage('');
-      })
-      .catch(() => {
-        if (active) setError('Task details could not be loaded.');
-      })
-      .finally(() => {
-        if (active) setLoading(false);
-      });
-
-    return () => { active = false; };
   }, [taskId]);
+
+  useEffect(() => {
+    if (!taskQuery.data) return;
+    setTask(taskQuery.data);
+    setLinkedDocuments(taskQuery.data.documents ?? []);
+    setDescriptionDraft(taskQuery.data.description ?? '');
+    setDescriptionMessage('');
+    setAcceptanceCriteriaItems(parseAcceptanceCriteria(taskQuery.data.acceptanceCriteria));
+    setAcceptanceCriteriaMessage('');
+    setStatusMessage('');
+    setDetailsMessage('');
+  }, [taskQuery.data]);
+
+  useEffect(() => {
+    if (projectQuery.data?.members) setProjectMembers(projectQuery.data.members);
+  }, [projectQuery.data]);
+
+  useEffect(() => {
+    if (taskQuery.isError || projectQuery.isError) setError('Task details could not be loaded.');
+  }, [projectQuery.isError, taskQuery.isError]);
+
+  function cacheTask(nextTask: Task) {
+    setTask(nextTask);
+    queryClient.setQueryData(queryKeys.task(nextTask.id), nextTask);
+    queryClient.setQueryData<Task[]>(queryKeys.projectTasks(nextTask.projectId), (current) => {
+      if (!current) return current;
+      return current.map((item) => (item.id === nextTask.id ? { ...item, ...nextTask } : item));
+    });
+    onTaskUpdated?.(nextTask);
+  }
 
   async function handleDocumentChange(documentIds: string[]) {
     if (!taskId) return linkedDocuments;
-    const documents = await updateTaskDocuments(taskId, documentIds);
-    setLinkedDocuments(documents);
-    setTask((current) => current ? { ...current, documents } : current);
-    return documents;
+    const previousDocuments = linkedDocuments;
+    setLinkedDocuments((current) => current.filter((document) => documentIds.includes(document.id)));
+    try {
+      const documents = await updateTaskDocuments(taskId, documentIds);
+      setLinkedDocuments(documents);
+      setTask((current) => {
+        if (!current) return current;
+        const nextTask = { ...current, documents };
+        queryClient.setQueryData(queryKeys.task(current.id), nextTask);
+        return nextTask;
+      });
+      return documents;
+    } catch (error) {
+      setLinkedDocuments(previousDocuments);
+      throw error;
+    }
   }
 
   async function saveDescription() {
@@ -136,11 +168,15 @@ export default function TaskDetailModal({ taskId, onClose, onTaskUpdated }: Task
 
     setSavingDescription(true);
     setDescriptionMessage('');
+    const previousTask = task;
+    const optimisticTask = { ...task, description: descriptionDraft };
+    cacheTask(optimisticTask);
     try {
       const updatedTask = await updateTask(taskId, { description: descriptionDraft });
-      setTask((current) => current ? { ...current, description: updatedTask.description ?? '' } : current);
+      cacheTask({ ...optimisticTask, ...updatedTask });
       setDescriptionMessage('Saved');
     } catch {
+      cacheTask(previousTask);
       setDescriptionMessage('Could not save');
     } finally {
       setSavingDescription(false);
@@ -155,12 +191,19 @@ export default function TaskDetailModal({ taskId, onClose, onTaskUpdated }: Task
 
     setSavingAcceptanceCriteria(true);
     setAcceptanceCriteriaMessage('');
+    const previousTask = task;
+    const previousItems = acceptanceCriteriaItems;
+    const optimisticTask = { ...task, acceptanceCriteria: nextValue };
+    cacheTask(optimisticTask);
+    setAcceptanceCriteriaItems(nextItems);
     try {
       const updatedTask = await updateTask(taskId, { acceptanceCriteria: nextValue });
-      setTask((current) => current ? { ...current, acceptanceCriteria: updatedTask.acceptanceCriteria ?? '' } : current);
+      cacheTask({ ...optimisticTask, ...updatedTask });
       setAcceptanceCriteriaItems(parseAcceptanceCriteria(updatedTask.acceptanceCriteria));
       setAcceptanceCriteriaMessage('Saved');
     } catch {
+      cacheTask(previousTask);
+      setAcceptanceCriteriaItems(previousItems);
       setAcceptanceCriteriaMessage('Could not save');
     } finally {
       setSavingAcceptanceCriteria(false);
@@ -172,12 +215,14 @@ export default function TaskDetailModal({ taskId, onClose, onTaskUpdated }: Task
 
     setSavingStatus(true);
     setStatusMessage('');
+    const previousTask = task;
+    cacheTask({ ...task, status });
     try {
       const updatedTask = await updateTask(taskId, { status });
-      setTask((current) => current ? { ...current, status: updatedTask.status } : current);
-      onTaskUpdated?.(updatedTask);
+      cacheTask({ ...task, ...updatedTask });
       setStatusMessage('Saved');
     } catch {
+      cacheTask(previousTask);
       setStatusMessage('Could not save');
     } finally {
       setSavingStatus(false);
@@ -191,12 +236,15 @@ export default function TaskDetailModal({ taskId, onClose, onTaskUpdated }: Task
 
     setSavingDetails(true);
     setDetailsMessage('');
+    const previousTask = task;
+    const nextAssignee = projectMembers.find((member) => member.user.id === nextAssigneeId)?.user ?? null;
+    cacheTask({ ...task, assignee: nextAssignee });
     try {
       const updatedTask = await updateTask(taskId, { assigneeId: nextAssigneeId });
-      setTask((current) => current ? { ...current, assignee: updatedTask.assignee ?? null } : current);
-      onTaskUpdated?.(updatedTask);
+      cacheTask({ ...task, ...updatedTask });
       setDetailsMessage('Saved');
     } catch {
+      cacheTask(previousTask);
       setDetailsMessage('Could not save assignee');
     } finally {
       setSavingDetails(false);
@@ -210,12 +258,14 @@ export default function TaskDetailModal({ taskId, onClose, onTaskUpdated }: Task
 
     setSavingDetails(true);
     setDetailsMessage('');
+    const previousTask = task;
+    cacheTask({ ...task, dueDate: nextDueDate });
     try {
       const updatedTask = await updateTask(taskId, { dueDate: nextDueDate });
-      setTask((current) => current ? { ...current, dueDate: updatedTask.dueDate ?? null } : current);
-      onTaskUpdated?.(updatedTask);
+      cacheTask({ ...task, ...updatedTask });
       setDetailsMessage('Saved');
     } catch {
+      cacheTask(previousTask);
       setDetailsMessage('Could not save due date');
     } finally {
       setSavingDetails(false);
@@ -256,7 +306,7 @@ export default function TaskDetailModal({ taskId, onClose, onTaskUpdated }: Task
 
   return (
     <Modal isOpen={Boolean(taskId)} onClose={onClose} className="task-detail-modal">
-      {loading ? (
+      {taskQuery.isLoading || projectQuery.isLoading ? (
         <div className="task-detail-loading"><Spinner /><span>Loading task details...</span></div>
       ) : error ? (
         <div className="empty-panel"><p>{error}</p></div>

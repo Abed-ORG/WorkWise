@@ -1,40 +1,38 @@
-import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
 import PageHeader from '../components/PageHeader';
 import Icon from '../components/Icon';
 import { Button } from '../components/ui';
 import { useAuth } from '../hooks/useAuth';
 import { getUserInvitations, getUserProjects } from '../services/projectService';
-import type { Project } from '../services/projectService';
-
-interface DashboardData { projects: Project[]; invitationCount: number; }
+import { queryKeys, queryTimes } from '../services/queryOptions';
 
 export default function DashboardPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
-  const [data, setData] = useState<DashboardData>({ projects: [], invitationCount: 0 });
-  const [loading, setLoading] = useState(true);
+  const projectsQuery = useQuery({
+    queryKey: queryKeys.projects,
+    queryFn: getUserProjects,
+    staleTime: queryTimes.projects,
+  });
+  const invitationsQuery = useQuery({
+    queryKey: queryKeys.invitations,
+    queryFn: getUserInvitations,
+    staleTime: queryTimes.activity,
+  });
+  const projects = Array.isArray(projectsQuery.data) ? projectsQuery.data : [];
+  const invitations = Array.isArray(invitationsQuery.data) ? invitationsQuery.data : [];
+  const loading = projectsQuery.isLoading || invitationsQuery.isLoading;
 
-  useEffect(() => {
-    let active = true;
-    Promise.all([getUserProjects(), getUserInvitations()])
-      .then(([projects, invitations]) => {
-        if (active) setData({ projects: Array.isArray(projects) ? projects : [], invitationCount: Array.isArray(invitations) ? invitations.length : 0 });
-      })
-      .catch(() => undefined)
-      .finally(() => { if (active) setLoading(false); });
-    return () => { active = false; };
-  }, []);
-
-  const openTasks = data.projects.reduce((total, project) => total + (project._count?.tasks ?? 0), 0);
-  const memberCount = new Set(data.projects.flatMap((project) => project.members?.map((member) => member.user.id) ?? [])).size;
+  const openTasks = projects.reduce((total, project) => total + (project._count?.tasks ?? 0), 0);
+  const memberCount = new Set(projects.flatMap((project) => project.members?.map((member) => member.user.id) ?? [])).size;
   const firstName = user.name.split(' ')[0] || 'there';
 
   const stats = [
-    { label: 'Active projects', value: data.projects.length, icon: 'folder' as const },
+    { label: 'Active projects', value: projects.length, icon: 'folder' as const },
     { label: 'Open tasks', value: openTasks, icon: 'tasks' as const },
     { label: 'Team members', value: memberCount, icon: 'team' as const },
-    { label: 'Invitations', value: data.invitationCount, icon: 'bell' as const },
+    { label: 'Invitations', value: invitations.length, icon: 'bell' as const },
   ];
 
   return (
@@ -62,9 +60,9 @@ export default function DashboardPage() {
             <div><h2>Your projects</h2><p>Every project where you are currently a member.</p></div>
             <Button variant="ghost" onClick={() => navigate('/projects')}>View all <Icon name="arrow-right" size={15} /></Button>
           </div>
-          {data.projects.length ? (
+          {projects.length ? (
             <div className="focus-list">
-              {data.projects.map((project) => (
+              {projects.map((project) => (
                 <button className="focus-item text-left" type="button" key={project.id} onClick={() => navigate(`/projects/${project.id}`)}>
                   <span className="project-key">{project.key}</span>
                   <span className="focus-copy">

@@ -1,37 +1,53 @@
+import { lazy, Suspense, type ReactNode } from 'react';
 import { createBrowserRouter } from 'react-router-dom';
 import AppShell from '../components/AppShell';
 import ProtectedRoute from '../components/ProtectedRoute';
 import PublicRoute from '../components/PublicRoute';
-import DashboardPage from '../pages/DashboardPage';
-import LandingPage from '../pages/LandingPage';
-import LoginPage from '../pages/LoginPage';
-import NotFoundPage from '../pages/NotFoundPage';
-import RegisterPage from '../pages/RegisterPage';
-import ProjectsPage from '../pages/projectPage';
-import CreateProjectPage from '../pages/createProjectPage';
-import ProjectSettingsPage from '../pages/projectSettingPage';
-import ProfilePage from '../pages/ProfilePage';
-import ProjectBacklogPage from '../pages/ProjectBacklogPage';
-import ProjectBoardPage from '../pages/ProjectBoardPage';
-import ProjectDocsPage from '../pages/ProjectDocsPage';
-import ProjectOverviewPage from '../pages/ProjectOverviewPage';
-import ProjectAnalyticsPage from '../pages/ProjectAnalyticsPage';
-import TasksPage from '../pages/TasksPage';
-import SprintPage from '../pages/SprintPage';
-import SprintBoardPage from '../pages/SprintBoardPage';
-import ForgotPasswordPage from '../pages/ForgotPasswordPage';
-import ResetPasswordPage from '../pages/ResetPasswordPage';
-import ActivityFeedPage from '../pages/ActivityFeedPage';
+import { Spinner } from '../components/ui';
+
+const ActivityFeedPage = lazy(() => import('../pages/ActivityFeedPage'));
+const CreateProjectPage = lazy(() => import('../pages/createProjectPage'));
+const DashboardPage = lazy(() => import('../pages/DashboardPage'));
+const ForgotPasswordPage = lazy(() => import('../pages/ForgotPasswordPage'));
+const LandingPage = lazy(() => import('../pages/LandingPage'));
+const LoginPage = lazy(() => import('../pages/LoginPage'));
+const NotFoundPage = lazy(() => import('../pages/NotFoundPage'));
+const ProfilePage = lazy(() => import('../pages/ProfilePage'));
+const ProjectAnalyticsPage = lazy(() => import('../pages/ProjectAnalyticsPage'));
+const ProjectBacklogPage = lazy(() => import('../pages/ProjectBacklogPage'));
+const ProjectBoardPage = lazy(() => import('../pages/ProjectBoardPage'));
+const ProjectDocsPage = lazy(() => import('../pages/ProjectDocsPage'));
+const ProjectOverviewPage = lazy(() => import('../pages/ProjectOverviewPage'));
+const ProjectsPage = lazy(() => import('../pages/projectPage'));
+const ProjectSettingsPage = lazy(() => import('../pages/projectSettingPage'));
+const RegisterPage = lazy(() => import('../pages/RegisterPage'));
+const ResetPasswordPage = lazy(() => import('../pages/ResetPasswordPage'));
+const SprintBoardPage = lazy(() => import('../pages/SprintBoardPage'));
+const SprintPage = lazy(() => import('../pages/SprintPage'));
+const TasksPage = lazy(() => import('../pages/TasksPage'));
+
+function RouteFallback() {
+  return (
+    <div className="empty-panel min-h-screen">
+      <Spinner size="lg" />
+      <p className="mt-4">Loading workspace...</p>
+    </div>
+  );
+}
+
+function lazyRoute(element: ReactNode) {
+  return <Suspense fallback={<RouteFallback />}>{element}</Suspense>;
+}
 
 const router = createBrowserRouter([
   {
     element: <PublicRoute />,
     children: [
-      { path: '/', element: <LandingPage /> },
-      { path: '/login', element: <LoginPage /> },
-      { path: '/register', element: <RegisterPage /> },
-      { path: '/forgot-password', element: <ForgotPasswordPage /> },
-      { path: '/reset-password', element: <ResetPasswordPage /> },
+      { path: '/', element: lazyRoute(<LandingPage />) },
+      { path: '/login', element: lazyRoute(<LoginPage />) },
+      { path: '/register', element: lazyRoute(<RegisterPage />) },
+      { path: '/forgot-password', element: lazyRoute(<ForgotPasswordPage />) },
+      { path: '/reset-password', element: lazyRoute(<ResetPasswordPage />) },
     ],
   },
   {
@@ -40,27 +56,27 @@ const router = createBrowserRouter([
       {
         element: <AppShell />,
         children: [
-          { path: '/dashboard', element: <DashboardPage /> },
-          { path: '/projects', element: <ProjectsPage /> },
-          { path: '/projects/create', element: <CreateProjectPage /> },
-          { path: '/projects/:projectId', element: <ProjectOverviewPage /> },
-          { path: '/projects/:projectId/board', element: <ProjectBoardPage /> },
-          { path: '/projects/:projectId/backlog', element: <ProjectBacklogPage /> },
-          { path: '/projects/:projectId/docs', element: <ProjectDocsPage /> },
-          { path: '/projects/:projectId/activity', element: <ActivityFeedPage /> },
-          { path: '/projects/:projectId/analytics', element: <ProjectAnalyticsPage /> },
-          { path: '/projects/:projectId/sprints', element: <SprintPage /> },
-          { path: '/projects/:projectId/sprints/:sprintId/board', element: <SprintBoardPage /> },
-          { path: '/projects/:projectId/settings', element: <ProjectSettingsPage /> },
-          { path: '/tasks', element: <TasksPage /> },
-          { path: '/profile', element: <ProfilePage /> },
+          { path: '/dashboard', element: lazyRoute(<DashboardPage />) },
+          { path: '/projects', element: lazyRoute(<ProjectsPage />) },
+          { path: '/projects/create', element: lazyRoute(<CreateProjectPage />) },
+          { path: '/projects/:projectId', element: lazyRoute(<ProjectOverviewPage />) },
+          { path: '/projects/:projectId/board', element: lazyRoute(<ProjectBoardPage />) },
+          { path: '/projects/:projectId/backlog', element: lazyRoute(<ProjectBacklogPage />) },
+          { path: '/projects/:projectId/docs', element: lazyRoute(<ProjectDocsPage />) },
+          { path: '/projects/:projectId/activity', element: lazyRoute(<ActivityFeedPage />) },
+          { path: '/projects/:projectId/analytics', element: lazyRoute(<ProjectAnalyticsPage />) },
+          { path: '/projects/:projectId/sprints', element: lazyRoute(<SprintPage />) },
+          { path: '/projects/:projectId/sprints/:sprintId/board', element: lazyRoute(<SprintBoardPage />) },
+          { path: '/projects/:projectId/settings', element: lazyRoute(<ProjectSettingsPage />) },
+          { path: '/tasks', element: lazyRoute(<TasksPage />) },
+          { path: '/profile', element: lazyRoute(<ProfilePage />) },
         ],
       },
     ],
   },
   {
     path: '*',
-    element: <NotFoundPage />,
+    element: lazyRoute(<NotFoundPage />),
   },
 ]);
 

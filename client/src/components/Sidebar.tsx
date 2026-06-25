@@ -51,8 +51,8 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
     { label: 'Board', to: `/projects/${projectId}/board`, icon: 'board' },
     { label: 'Backlog', to: `/projects/${projectId}/backlog`, icon: 'tasks' },
     { label: 'Docs', to: `/projects/${projectId}/docs`, icon: 'document' },
-    { label: 'Sprints', to: `/projects/${projectId}/sprints`, icon: 'activity' },
-    { label: 'Analytics', to: `/projects/${projectId}/analytics`, icon: 'activity' },
+    { label: 'Sprints', to: `/projects/${projectId}/sprints`, icon: 'flag' },
+    { label: 'Analytics', to: `/projects/${projectId}/analytics`, icon: 'bar-chart' },
     { label: 'Project settings', to: `/projects/${projectId}/settings`, icon: 'settings' },
   ] : [];
 

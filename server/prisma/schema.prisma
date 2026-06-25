@@ -95,6 +95,7 @@ model Project {
   dailyDigests DailyDigest[]
   retrospectives SprintRetrospective[]
 
+  @@index([updatedAt])
   @@map("projects")
 }
 
@@ -110,6 +111,8 @@ model ProjectMember {
   project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   @@unique([userId, projectId])
+  @@index([projectId])
+  @@index([userId, role])
   @@map("project_members")
 }
 
@@ -130,6 +133,9 @@ model Sprint {
   documents SprintDocument[]
   retrospective SprintRetrospective?
 
+  @@index([projectId, isActive])
+  @@index([projectId, startDate])
+  @@index([projectId, endDate])
   @@map("sprints")
 }
 
@@ -159,6 +165,13 @@ model Task {
   activities TaskActivity[]
   documents  TaskDocument[]
 
+  @@index([projectId, status])
+  @@index([projectId, sprintId])
+  @@index([projectId, updatedAt])
+  @@index([projectId, createdAt])
+  @@index([sprintId, status])
+  @@index([assigneeId, status])
+  @@index([assigneeId, updatedAt])
   @@map("tasks")
 }
 
@@ -189,6 +202,8 @@ model TaskActivity {
   task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  @@index([taskId, createdAt])
+  @@index([userId, createdAt])
   @@map("task_activities")
 }
 
@@ -207,6 +222,9 @@ model Document {
   tasks   TaskDocument[]
   sprints SprintDocument[]
 
+  @@index([projectId, updatedAt])
+  @@index([projectId, createdAt])
+  @@index([authorId, updatedAt])
   @@map("documents")
 }
 
@@ -251,6 +269,8 @@ model Notification {
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  @@index([userId, isRead, createdAt])
+  @@index([userId, createdAt])
   @@map("notifications")
 }
 
@@ -268,6 +288,9 @@ model Invitation {
   project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
   sender  User    @relation("InvitationSender", fields: [senderId], references: [id])
 
+  @@index([email, status])
+  @@index([projectId, status])
+  @@index([senderId, createdAt])
   @@map("invitations")
 }
 

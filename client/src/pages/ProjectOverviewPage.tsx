@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import axios from 'axios';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useParams } from 'react-router-dom';
 import AITaskBreakdownModal from '../components/AITaskBreakdownModal';
 import CreateTaskModal from '../components/CreateTaskModal';
@@ -18,6 +19,7 @@ import type { DailyDigest, Project } from '../services/projectService';
 import { joinProjectRoom, leaveProjectRoom } from '../services/realtimeService';
 import { getProjectTasks } from '../services/taskService';
 import type { Task } from '../services/taskService';
+import { queryKeys, queryTimes } from '../services/queryOptions';
 import { calculateProjectHealth } from '../utils/projectAnalytics';
 
 
@@ -42,68 +44,60 @@ export default function ProjectOverviewPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const toast = useToast();
-  const [project, setProject] = useState<Project | null>(null);
-  const [tasks, setTasks] = useState<Task[]>([]);
-  const [digests, setDigests] = useState<DailyDigest[]>([]);
-  const [digestLoading, setDigestLoading] = useState(true);
+  const queryClient = useQueryClient();
   const [digestGenerating, setDigestGenerating] = useState(false);
   const [digestError, setDigestError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
   const [createOpen, setCreateOpen] = useState(false);
   const [breakdownOpen, setBreakdownOpen] = useState(false);
 
-  useEffect(() => {
-    if (!projectId) return;
-    Promise.all([getProjectById(projectId), getProjectTasks(projectId)])
-      .then(([projectData, taskData]) => { setProject(projectData); setTasks(taskData); })
-      .catch(() => navigate('/projects', { replace: true }))
-      .finally(() => setLoading(false));
-  }, [projectId, navigate]);
+  const projectQuery = useQuery({
+    queryKey: queryKeys.project(projectId ?? ''),
+    queryFn: () => getProjectById(projectId!),
+    enabled: Boolean(projectId),
+    staleTime: queryTimes.projectDetail,
+  });
+  const tasksQuery = useQuery({
+    queryKey: queryKeys.projectTasks(projectId ?? ''),
+    queryFn: () => getProjectTasks(projectId!),
+    enabled: Boolean(projectId),
+    staleTime: queryTimes.tasks,
+  });
+  const digestsQuery = useQuery({
+    queryKey: queryKeys.projectDigests(projectId ?? ''),
+    queryFn: () => getProjectDigests(projectId!),
+    enabled: Boolean(projectId),
+    staleTime: queryTimes.ai,
+  });
 
   useEffect(() => {
-    if (!projectId) return;
-    let active = true;
-
-    setDigestLoading(true);
-    setDigestError(null);
-    getProjectDigests(projectId)
-      .then((projectDigests) => {
-        if (active) setDigests(Array.isArray(projectDigests) ? projectDigests : []);
-      })
-      .catch((error) => {
-        if (active) {
-          setDigests([]);
-          setDigestError(getRequestMessage(error, 'Digest history could not be loaded.'));
-        }
-      })
-      .finally(() => {
-        if (active) setDigestLoading(false);
-      });
-
-    return () => { active = false; };
-  }, [projectId]);
+    if (projectQuery.isError || tasksQuery.isError) navigate('/projects', { replace: true });
+    if (digestsQuery.isError) setDigestError(getRequestMessage(digestsQuery.error, 'Digest history could not be loaded.'));
+  }, [digestsQuery.error, digestsQuery.isError, navigate, projectQuery.isError, tasksQuery.isError]);
 
   useEffect(() => {
     if (!projectId) return undefined;
+    const activeProjectId = projectId;
 
-    const activeSocket = joinProjectRoom(projectId);
+    const activeSocket = joinProjectRoom(activeProjectId);
     if (!activeSocket) return undefined;
 
     function handleTaskCreated(task: Task) {
-      if (task.projectId === projectId) {
-        setTasks((current) => upsertTask(current, task));
+      if (task.projectId === activeProjectId) {
+        queryClient.setQueryData<Task[]>(queryKeys.projectTasks(activeProjectId), (current = []) => upsertTask(current, task));
+        queryClient.setQueryData(queryKeys.task(task.id), task);
       }
     }
 
     function handleTaskUpdated(task: Task) {
-      if (task.projectId === projectId) {
-        setTasks((current) => upsertTask(current, task));
+      if (task.projectId === activeProjectId) {
+        queryClient.setQueryData<Task[]>(queryKeys.projectTasks(activeProjectId), (current = []) => upsertTask(current, task));
+        queryClient.setQueryData(queryKeys.task(task.id), task);
       }
     }
 
     function handleSprintStarted(sprint: NonNullable<Project['sprints']>[number]) {
-      setProject((current) => {
-        if (!current || current.id !== projectId) return current;
+      queryClient.setQueryData<Project>(queryKeys.project(activeProjectId), (current) => {
+        if (!current || current.id !== activeProjectId) return current;
         return { ...current, sprints: [sprint, ...(current.sprints ?? []).filter((item) => item.id !== sprint.id)] };
       });
     }
@@ -116,9 +110,14 @@ export default function ProjectOverviewPage() {
       activeSocket.off('task:created', handleTaskCreated);
       activeSocket.off('task:updated', handleTaskUpdated);
       activeSocket.off('sprint:started', handleSprintStarted);
-      leaveProjectRoom(projectId);
+      leaveProjectRoom(activeProjectId);
     };
-  }, [projectId]);
+  }, [projectId, queryClient]);
+
+  const project = projectQuery.data ?? null;
+  const tasks = Array.isArray(tasksQuery.data) ? tasksQuery.data : [];
+  const digests = Array.isArray(digestsQuery.data) ? digestsQuery.data : [];
+  const loading = projectQuery.isLoading || tasksQuery.isLoading;
 
   if (loading) return <div className="empty-panel"><Spinner size="lg" /><p className="mt-4">Opening project...</p></div>;
   if (!project || !projectId) return null;
@@ -135,7 +134,7 @@ export default function ProjectOverviewPage() {
     setDigestError(null);
     try {
       const digest = await generateDailyDigest(projectId);
-      setDigests((current) => [digest, ...current.filter((item) => item.id !== digest.id)]);
+      queryClient.setQueryData<DailyDigest[]>(queryKeys.projectDigests(projectId), (current = []) => [digest, ...current.filter((item) => item.id !== digest.id)]);
       toast.success('Daily digest generated.');
     } catch (error) {
       const message = getRequestMessage(error, 'Daily digest could not be generated.');
@@ -182,7 +181,7 @@ export default function ProjectOverviewPage() {
 
         {digestError && <p className="digest-alert">{digestError}</p>}
 
-        {digestLoading ? (
+        {digestsQuery.isLoading ? (
           <div className="document-loading"><Spinner /><span>Loading digest history...</span></div>
         ) : digests.length > 0 ? (
           <div className="digest-layout">
@@ -230,8 +229,18 @@ export default function ProjectOverviewPage() {
         <div className="focus-list">{project.members?.map((member) => <div className="focus-item" key={member.id}><span className="avatar">{member.user.name.slice(0, 2).toUpperCase()}</span><span className="focus-copy"><strong>{member.user.name}</strong><span>{member.role.toLowerCase()}</span></span></div>)}</div>
       </section>
 
-      <CreateTaskModal isOpen={createOpen} projectId={projectId} members={project.members ?? []} onClose={() => setCreateOpen(false)} onCreated={(task) => { setTasks((current) => upsertTask(current, task)); toast.success('Task created successfully.'); }} />
-      <AITaskBreakdownModal isOpen={breakdownOpen} projectId={projectId} onClose={() => setBreakdownOpen(false)} onTasksCreated={(created) => setTasks((current) => [...created, ...current])} />
+<CreateTaskModal isOpen={createOpen} projectId={projectId} members={project.members ?? []} onClose={() => setCreateOpen(false)} onCreated={(task) => {
+        queryClient.setQueryData<Task[]>(queryKeys.projectTasks(projectId), (current = []) => upsertTask(current, task));
+        queryClient.setQueryData(queryKeys.task(task.id), task);
+        toast.success('Task created successfully.');
+      }} />
+      <AITaskBreakdownModal isOpen={breakdownOpen} projectId={projectId} onClose={() => setBreakdownOpen(false)} onTasksCreated={(created) => {
+        queryClient.setQueryData<Task[]>(queryKeys.projectTasks(projectId), (current = []) => {
+          let next = current;
+          for (const task of created) next = upsertTask(next, task);
+          return next;
+        });
+      }} />
     </>
   );
 }
