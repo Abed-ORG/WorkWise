@@ -14,6 +14,30 @@ export const taskBreakdownValidation = [
     .withMessage("Project context must be under 4000 characters"),
 ];
 
+export const sprintRiskValidation = [
+  body("sprintId")
+    .trim()
+    .notEmpty()
+    .withMessage("Sprint ID is required"),
+  body("projectId")
+    .trim()
+    .notEmpty()
+    .withMessage("Project ID is required"),
+];
+
+export const taskSearchValidation = [
+  body("query")
+    .trim()
+    .notEmpty()
+    .withMessage("Search query is required")
+    .isLength({ max: 500 })
+    .withMessage("Query must be under 500 characters"),
+  body("projectId")
+    .trim()
+    .notEmpty()
+    .withMessage("Project ID is required"),
+];
+
 export const acceptanceCriteriaValidation = [
   body("title")
     .trim()

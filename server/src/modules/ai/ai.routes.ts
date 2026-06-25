@@ -4,7 +4,9 @@ import { aiDailyRateLimit } from "../../middleware/ai-rate-limit.middleware";
 import { aiController } from "./ai.controller";
 import {
   acceptanceCriteriaValidation,
+  sprintRiskValidation,
   taskBreakdownValidation,
+  taskSearchValidation,
 } from "./ai.validation";
 
 const router = Router();
@@ -32,6 +34,22 @@ router.post(
   acceptanceCriteriaValidation,
   (req: Request, res: Response, next: NextFunction) =>
     aiController.generateAcceptanceCriteria(req, res, next)
+);
+
+router.post(
+  "/task-search",
+  aiDailyRateLimit,
+  taskSearchValidation,
+  (req: Request, res: Response, next: NextFunction) =>
+    aiController.parseTaskQuery(req, res, next)
+);
+
+router.post(
+  "/sprint-risk",
+  aiDailyRateLimit,
+  sprintRiskValidation,
+  (req: Request, res: Response, next: NextFunction) =>
+    aiController.analyzeSprintRisk(req, res, next)
 );
 
 export default router;

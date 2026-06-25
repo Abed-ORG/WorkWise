@@ -3,6 +3,8 @@ import { useSearchParams } from 'react-router-dom';
 import Icon from './Icon';
 import { Button } from './ui';
 import type { Task } from '../services/taskService';
+import { parseTaskQuery } from '../services/aiService';
+import type { TaskSearchFilters } from '../services/aiService';
 
 type SortKey = 'title' | 'status' | 'priority' | 'assignee' | 'project';
 type SortDirection = 'asc' | 'desc';
@@ -17,6 +19,7 @@ interface BacklogListProps {
   canDelete?: boolean;
   onDeleteSelected?: (taskIds: string[]) => Promise<void>;
   onTaskClick?: (task: Task) => void;
+  projectId?: string;
 }
 
 const pageSize = 8;
@@ -35,6 +38,10 @@ function formatDate(date?: string | null) {
   return new Intl.DateTimeFormat('en', { month: 'short', day: 'numeric', year: 'numeric' }).format(new Date(date));
 }
 
+function hasAnyFilter(filters: TaskSearchFilters): boolean {
+  return Object.values(filters).some((v) => v !== null);
+}
+
 export default function BacklogList({
   tasks,
   title = 'Work queue',
@@ -43,6 +50,7 @@ export default function BacklogList({
   canDelete = false,
   onDeleteSelected,
   onTaskClick,
+  projectId,
 }: BacklogListProps) {
   const [searchParams, setSearchParams] = useSearchParams();
   const [selectedTaskIds, setSelectedTaskIds] = useState<string[]>([]);
@@ -52,8 +60,16 @@ export default function BacklogList({
   const [priorityFilter, setPriorityFilter] = useState('');
   const [assigneeFilter, setAssigneeFilter] = useState('');
   const [labelFilter, setLabelFilter] = useState('');
+  const [dueBefore, setDueBefore] = useState<string | null>(null);
   const [page, setPage] = useState(1);
   const [deleting, setDeleting] = useState(false);
+
+  // NL search state
+  const [nlInput, setNlInput] = useState('');
+  const [isAiSearching, setIsAiSearching] = useState(false);
+  const [aiSearchLabel, setAiSearchLabel] = useState<string | null>(null);
+  const [aiError, setAiError] = useState<string | null>(null);
+
   const search = searchParams.get('q') ?? '';
 
   const assignees = Array.from(new Set(tasks.map((task) => task.assignee?.name).filter((name): name is string => Boolean(name))));
@@ -73,12 +89,14 @@ export default function BacklogList({
   const filteredTasks = useMemo(() => tasks.filter((task) => {
     const query = search.toLowerCase().trim();
     const matchesSearch = !query || task.title.toLowerCase().includes(query) || task.description?.toLowerCase().includes(query);
+    const matchesDueBefore = !dueBefore || (task.dueDate != null && new Date(task.dueDate) < new Date(dueBefore));
     return matchesSearch
+      && matchesDueBefore
       && (!statusFilter || task.status === statusFilter)
       && (!priorityFilter || task.priority === priorityFilter)
       && (!assigneeFilter || task.assignee?.name === assigneeFilter)
       && (!labelFilter || task.labels?.includes(labelFilter));
-  }), [tasks, search, statusFilter, priorityFilter, assigneeFilter, labelFilter]);
+  }), [tasks, search, statusFilter, priorityFilter, assigneeFilter, labelFilter, dueBefore]);
 
   const sortedTasks = useMemo(() => [...filteredTasks].sort((a, b) => {
     const comparison = getSortValue(a, sortKey).localeCompare(getSortValue(b, sortKey));
@@ -88,7 +106,7 @@ export default function BacklogList({
   const totalPages = Math.max(1, Math.ceil(sortedTasks.length / pageSize));
   const safePage = Math.min(page, totalPages);
   const paginatedTasks = sortedTasks.slice((safePage - 1) * pageSize, safePage * pageSize);
-  const hasActiveFilters = Boolean(search || statusFilter || priorityFilter || assigneeFilter || labelFilter);
+  const hasActiveFilters = Boolean(search || statusFilter || priorityFilter || assigneeFilter || labelFilter || dueBefore || aiSearchLabel);
   const currentPageAllSelected = paginatedTasks.length > 0 && paginatedTasks.every((task) => selectedTaskIds.includes(task.id));
 
   function resetPage() { setPage(1); }
@@ -108,6 +126,13 @@ export default function BacklogList({
   function clearFilters() {
     setSearchParams({});
     setStatusFilter(''); setPriorityFilter(''); setAssigneeFilter(''); setLabelFilter('');
+    setDueBefore(null); setAiSearchLabel(null); setAiError(null);
+    resetPage();
+  }
+  function clearAiFilters() {
+    setSearchParams({});
+    setStatusFilter(''); setPriorityFilter(''); setAssigneeFilter(''); setLabelFilter('');
+    setDueBefore(null); setAiSearchLabel(null); setAiError(null);
     resetPage();
   }
   async function handleDelete() {
@@ -115,6 +140,47 @@ export default function BacklogList({
     setDeleting(true);
     try { await onDeleteSelected(selectedTaskIds); setSelectedTaskIds([]); }
     finally { setDeleting(false); }
+  }
+
+  async function handleNlSearch(e: React.FormEvent) {
+    e.preventDefault();
+    const query = nlInput.trim();
+    if (!query || !projectId) return;
+
+    setIsAiSearching(true);
+    setAiError(null);
+
+    try {
+      const filters = await parseTaskQuery(query, projectId);
+
+      if (!hasAnyFilter(filters)) {
+        // AI found nothing useful — fall back to text search
+        setSearchParams({ q: query });
+        setAiSearchLabel(null);
+      } else {
+        // Apply AI-derived filters, replacing any manually set ones
+        setStatusFilter(filters.status ?? '');
+        setPriorityFilter(filters.priority ?? '');
+        setAssigneeFilter(filters.assigneeName ?? '');
+        setLabelFilter(filters.label ?? '');
+        setDueBefore(filters.dueBefore ?? null);
+        if (filters.titleKeyword) {
+          setSearchParams({ q: filters.titleKeyword });
+        } else {
+          setSearchParams({});
+        }
+        setAiSearchLabel(query);
+      }
+      resetPage();
+    } catch {
+      // On error, fall back to text search silently
+      setSearchParams({ q: query });
+      setAiSearchLabel(null);
+      setAiError('AI search unavailable — showing text results.');
+      resetPage();
+    } finally {
+      setIsAiSearching(false);
+    }
   }
 
   return (
@@ -127,6 +193,30 @@ export default function BacklogList({
         </div>}
       </div>
 
+      {projectId && (
+        <form className="nl-search-form" onSubmit={handleNlSearch} role="search">
+          <div className="nl-search-wrap">
+            <Icon name="sparkles" size={16} className="nl-search-icon" />
+            <input
+              className="nl-search-input"
+              type="text"
+              placeholder='Search with AI — try "overdue tasks assigned to John" or "high priority bugs"'
+              value={nlInput}
+              onChange={(e) => setNlInput(e.target.value)}
+              disabled={isAiSearching}
+              aria-label="Natural language task search"
+            />
+            {isAiSearching
+              ? <span className="nl-search-spinner" aria-label="Searching…" />
+              : <button type="submit" className="nl-search-btn" disabled={!nlInput.trim()} aria-label="Run AI search">
+                  <Icon name="arrow-right" size={14} />
+                </button>
+            }
+          </div>
+          {aiError && <p className="nl-search-error">{aiError}</p>}
+        </form>
+      )}
+
       <div className="backlog-filters">
         <FilterDropdown label="Status" value={statusFilter} options={statusOptions} onChange={(value) => { setStatusFilter(value); resetPage(); }} />
         <FilterDropdown label="Priority" value={priorityFilter} options={priorityOptions} onChange={(value) => { setPriorityFilter(value); resetPage(); }} />
@@ -135,11 +225,13 @@ export default function BacklogList({
       </div>
 
       {hasActiveFilters && <div className="filter-chips">
-        {search && <FilterChip label={`Search: ${search}`} onRemove={() => setSearchParams({})} />}
-        {statusFilter && <FilterChip label={`Status: ${formatStatus(statusFilter)}`} onRemove={() => setStatusFilter('')} />}
-        {priorityFilter && <FilterChip label={`Priority: ${priorityFilter.toLowerCase()}`} onRemove={() => setPriorityFilter('')} />}
-        {assigneeFilter && <FilterChip label={`Assignee: ${assigneeFilter}`} onRemove={() => setAssigneeFilter('')} />}
-        {labelFilter && <FilterChip label={`Label: ${labelFilter}`} onRemove={() => setLabelFilter('')} />}
+        {aiSearchLabel && <FilterChip label={`AI: ${aiSearchLabel}`} isAi onRemove={clearAiFilters} />}
+        {!aiSearchLabel && search && <FilterChip label={`Search: ${search}`} onRemove={() => setSearchParams({})} />}
+        {!aiSearchLabel && statusFilter && <FilterChip label={`Status: ${formatStatus(statusFilter)}`} onRemove={() => setStatusFilter('')} />}
+        {!aiSearchLabel && priorityFilter && <FilterChip label={`Priority: ${priorityFilter.toLowerCase()}`} onRemove={() => setPriorityFilter('')} />}
+        {!aiSearchLabel && assigneeFilter && <FilterChip label={`Assignee: ${assigneeFilter}`} onRemove={() => setAssigneeFilter('')} />}
+        {!aiSearchLabel && labelFilter && <FilterChip label={`Label: ${labelFilter}`} onRemove={() => setLabelFilter('')} />}
+        {!aiSearchLabel && dueBefore && <FilterChip label={`Due before: ${dueBefore}`} onRemove={() => setDueBefore(null)} />}
         <button type="button" className="clear-filters-button" onClick={clearFilters}>Clear all</button>
       </div>}
 
@@ -183,8 +275,15 @@ function getSortValue(task: Task, key: SortKey): string {
   return String(task[key] ?? '');
 }
 
-function FilterChip({ label, onRemove }: { label: string; onRemove: () => void }) {
-  return <span className="filter-chip">{label}<button type="button" onClick={onRemove} aria-label={`Remove ${label} filter`}>&times;</button></span>;
+interface FilterChipProps { label: string; onRemove: () => void; isAi?: boolean; }
+function FilterChip({ label, onRemove, isAi }: FilterChipProps) {
+  return (
+    <span className={`filter-chip${isAi ? ' filter-chip--ai' : ''}`}>
+      {isAi && <Icon name="sparkles" size={12} />}
+      {label}
+      <button type="button" onClick={onRemove} aria-label={`Remove ${label} filter`}>&times;</button>
+    </span>
+  );
 }
 
 interface FilterDropdownProps { label: string; value: string; options: FilterOption[]; onChange: (value: string) => void; }
