@@ -9,6 +9,7 @@ export interface GeneratedTask {
   title: string;
   description: string;
   priority: AiTaskPriority;
+  estimatedHours: number;
   acceptanceCriteria: string[];
 }
 

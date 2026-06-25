@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import axios from 'axios';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useParams } from 'react-router-dom';
+import AITaskBreakdownModal from '../components/AITaskBreakdownModal';
 import CreateTaskModal from '../components/CreateTaskModal';
 import Icon from '../components/Icon';
 import PageHeader from '../components/PageHeader';
@@ -47,6 +48,7 @@ export default function ProjectOverviewPage() {
   const [digestGenerating, setDigestGenerating] = useState(false);
   const [digestError, setDigestError] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
+  const [breakdownOpen, setBreakdownOpen] = useState(false);
 
   const projectQuery = useQuery({
     queryKey: queryKeys.project(projectId ?? ''),
@@ -152,6 +154,7 @@ export default function ProjectOverviewPage() {
         description={project.description || 'A shared workspace for planning, prioritizing, and delivering the next milestone.'}
         actions={<div className="page-actions">
           {isAdmin && <Button onClick={() => setCreateOpen(true)}><Icon name="plus" size={16} /> Create task</Button>}
+          {isAdmin && <Button variant="secondary" onClick={() => setBreakdownOpen(true)}><Icon name="sparkles" size={16} /> AI breakdown</Button>}
           <Button variant="secondary" onClick={() => navigate(`/projects/${project.id}/activity`)}><Icon name="activity" size={16} /> Activity feed</Button>
         </div>}
       />
@@ -226,10 +229,17 @@ export default function ProjectOverviewPage() {
         <div className="focus-list">{project.members?.map((member) => <div className="focus-item" key={member.id}><span className="avatar">{member.user.name.slice(0, 2).toUpperCase()}</span><span className="focus-copy"><strong>{member.user.name}</strong><span>{member.role.toLowerCase()}</span></span></div>)}</div>
       </section>
 
-      <CreateTaskModal isOpen={createOpen} projectId={projectId} members={project.members ?? []} onClose={() => setCreateOpen(false)} onCreated={(task) => {
+<CreateTaskModal isOpen={createOpen} projectId={projectId} members={project.members ?? []} onClose={() => setCreateOpen(false)} onCreated={(task) => {
         queryClient.setQueryData<Task[]>(queryKeys.projectTasks(projectId), (current = []) => upsertTask(current, task));
         queryClient.setQueryData(queryKeys.task(task.id), task);
         toast.success('Task created successfully.');
+      }} />
+      <AITaskBreakdownModal isOpen={breakdownOpen} projectId={projectId} onClose={() => setBreakdownOpen(false)} onTasksCreated={(created) => {
+        queryClient.setQueryData<Task[]>(queryKeys.projectTasks(projectId), (current = []) => {
+          let next = current;
+          for (const task of created) next = upsertTask(next, task);
+          return next;
+        });
       }} />
     </>
   );

@@ -6,6 +6,7 @@ import { Button, Modal, Select, Spinner } from './ui';
 import { getProjectById } from '../services/projectService';
 import { getTaskById, updateTask, updateTaskDocuments } from '../services/taskService';
 import type { Task, TaskStatus } from '../services/taskService';
+import { generateAcceptanceCriteria } from '../services/aiService';
 import type { ProjectDocument, ProjectMember } from '../services/projectService';
 import { queryKeys, queryTimes } from '../services/queryOptions';
 
@@ -81,6 +82,7 @@ export default function TaskDetailModal({ taskId, onClose, onTaskUpdated }: Task
   const [descriptionMessage, setDescriptionMessage] = useState('');
   const [acceptanceCriteriaItems, setAcceptanceCriteriaItems] = useState<AcceptanceCriterion[]>([]);
   const [savingAcceptanceCriteria, setSavingAcceptanceCriteria] = useState(false);
+  const [generatingCriteria, setGeneratingCriteria] = useState(false);
   const [acceptanceCriteriaMessage, setAcceptanceCriteriaMessage] = useState('');
   const [savingStatus, setSavingStatus] = useState(false);
   const [statusMessage, setStatusMessage] = useState('');
@@ -285,6 +287,23 @@ export default function TaskDetailModal({ taskId, onClose, onTaskUpdated }: Task
     setAcceptanceCriteriaMessage('');
   }
 
+  async function generateCriteria() {
+    if (!task || !task.description?.trim()) return;
+    setGeneratingCriteria(true);
+    setAcceptanceCriteriaMessage('');
+    try {
+      const result = await generateAcceptanceCriteria(task.title, task.description);
+      const newItems = result.acceptanceCriteria.map((text) => createCriterion(text));
+      setAcceptanceCriteriaItems((current) =>
+        current.length > 0 ? [...current, ...newItems] : newItems
+      );
+    } catch {
+      setAcceptanceCriteriaMessage('Could not generate criteria');
+    } finally {
+      setGeneratingCriteria(false);
+    }
+  }
+
   return (
     <Modal isOpen={Boolean(taskId)} onClose={onClose} className="task-detail-modal">
       {taskQuery.isLoading || projectQuery.isLoading ? (
@@ -340,18 +359,18 @@ export default function TaskDetailModal({ taskId, onClose, onTaskUpdated }: Task
                       <input
                         type="checkbox"
                         checked={item.done}
-                        disabled={savingAcceptanceCriteria}
+                        disabled={savingAcceptanceCriteria || generatingCriteria}
                         onChange={(event) => updateCriterion(item.id, { done: event.target.checked })}
                         aria-label="Mark acceptance criterion complete"
                       />
                       <input
                         className="acceptance-checklist-input"
                         value={item.text}
-                        disabled={savingAcceptanceCriteria}
+                        disabled={savingAcceptanceCriteria || generatingCriteria}
                         onChange={(event) => updateCriterion(item.id, { text: event.target.value })}
                         placeholder="Criterion"
                       />
-                      <button type="button" className="icon-button acceptance-delete-button" onClick={() => deleteCriterion(item.id)} disabled={savingAcceptanceCriteria} aria-label="Delete criterion">
+                      <button type="button" className="icon-button acceptance-delete-button" onClick={() => deleteCriterion(item.id)} disabled={savingAcceptanceCriteria || generatingCriteria} aria-label="Delete criterion">
                         <Icon name="trash" size={15} />
                       </button>
                     </div>
@@ -359,8 +378,17 @@ export default function TaskDetailModal({ taskId, onClose, onTaskUpdated }: Task
                   {acceptanceCriteriaItems.length === 0 && <div className="document-link-empty">No acceptance criteria yet.</div>}
                 </div>
                 <div className="acceptance-actions">
-                  <Button variant="secondary" onClick={addCriterion} disabled={savingAcceptanceCriteria}><Icon name="plus" size={15} /> Add criterion</Button>
-                  <Button onClick={() => saveAcceptanceCriteria()} loading={savingAcceptanceCriteria}>Save criteria</Button>
+                  <Button variant="secondary" onClick={addCriterion} disabled={savingAcceptanceCriteria || generatingCriteria}><Icon name="plus" size={15} /> Add criterion</Button>
+                  <Button
+                    variant="secondary"
+                    onClick={generateCriteria}
+                    loading={generatingCriteria}
+                    disabled={!task.description?.trim() || savingAcceptanceCriteria}
+                    title={!task.description?.trim() ? 'Add a description first to generate criteria' : undefined}
+                  >
+                    Generate with AI
+                  </Button>
+                  <Button onClick={() => saveAcceptanceCriteria()} loading={savingAcceptanceCriteria} disabled={generatingCriteria}>Save criteria</Button>
                 </div>
               </section>
 

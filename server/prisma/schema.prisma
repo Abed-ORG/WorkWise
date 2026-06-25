@@ -364,3 +364,10 @@ model SprintRetrospective {
   @@index([projectId, createdAt])
   @@map("sprint_retrospectives")
 }
+
+model AiQuotaUsage {
+  date  String @id
+  count Int    @default(0)
+
+  @@map("ai_quota_usage")
+}

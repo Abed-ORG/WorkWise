@@ -10,6 +10,7 @@ const taskBreakdownSchema = z.object({
         title: z.string().trim().min(1),
         description: z.string().trim().min(1),
         priority: z.enum(["LOW", "MEDIUM", "HIGH", "URGENT"]),
+        estimatedHours: z.number().nonnegative(),
         acceptanceCriteria: z.array(z.string().trim().min(1)).min(1),
       })
     )

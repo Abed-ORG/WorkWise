@@ -7,6 +7,7 @@ import Modal from './ui/Modal';
 import Icon from './Icon';
 import NotificationBell from './NotificationBell';
 import ThemeToggle from './ThemeToggle';
+import AIQuotaBadge from './AIQuotaBadge';
 import { Button } from './ui';
 import { getProjectDocuments, getUserProjects } from '../services/projectService';
 import type { Project, ProjectDocument } from '../services/projectService';
@@ -231,6 +232,7 @@ export default function Header({ onMenuToggle }: HeaderProps) {
             </div>}
           </div>
 
+          <AIQuotaBadge />
           <ThemeToggle />
           <NotificationBell />
           <Dropdown
