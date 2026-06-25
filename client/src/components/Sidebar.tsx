@@ -1,7 +1,9 @@
+import { useEffect, useState } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import Brand from './Brand';
 import Icon from './Icon';
 import ThemeToggle from './ThemeToggle';
+import { getProjectById } from '../services/projectService';
 import type { IconName } from './Icon';
 
 interface SidebarProps {
@@ -25,12 +27,33 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
   const location = useLocation();
   const projectMatch = location.pathname.match(/^\/projects\/([^/]+)/);
   const projectId = projectMatch && projectMatch[1] !== 'create' ? projectMatch[1] : null;
+  const [currentProjectName, setCurrentProjectName] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!projectId) {
+      setCurrentProjectName(null);
+      return;
+    }
+
+    let active = true;
+    getProjectById(projectId)
+      .then((project) => {
+        if (active) setCurrentProjectName(project.name);
+      })
+      .catch(() => {
+        if (active) setCurrentProjectName(null);
+      });
+
+    return () => { active = false; };
+  }, [projectId]);
 
   const projectNavItems: NavItem[] = projectId ? [
     { label: 'Board', to: `/projects/${projectId}/board`, icon: 'board' },
     { label: 'Backlog', to: `/projects/${projectId}/backlog`, icon: 'tasks' },
     { label: 'Docs', to: `/projects/${projectId}/docs`, icon: 'document' },
     { label: 'Sprints', to: `/projects/${projectId}/sprints`, icon: 'activity' },
+    { label: 'Analytics', to: `/projects/${projectId}/analytics`, icon: 'activity' },
+    { label: 'Project settings', to: `/projects/${projectId}/settings`, icon: 'settings' },
   ] : [];
 
   return (
@@ -53,7 +76,7 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
                 className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
               >
                 <Icon name={item.icon} size={19} />
-                {item.label}
+                {item.to === '/projects' && projectId ? currentProjectName ?? 'Projects' : item.label}
               </NavLink>
               {item.to === '/projects' && projectNavItems.length > 0 && (
                 <div className="project-subnav" aria-label="Project navigation">

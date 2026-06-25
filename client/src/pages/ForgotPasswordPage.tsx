@@ -27,8 +27,14 @@ export default function ForgotPasswordPage() {
       await requestPasswordReset(normalizedEmail);
       setSent(true);
     } catch (requestError) {
-      if (axios.isAxiosError(requestError) && requestError.response?.status === 503) {
-        setError('Email delivery is not configured yet. Please contact your administrator.');
+      if (axios.isAxiosError(requestError)) {
+        if (requestError.response?.status === 429) {
+          setError('Too many reset requests. Please wait a bit before trying again.');
+        } else if (requestError.response?.status === 503) {
+          setError('Email delivery is not configured yet. Please contact your administrator.');
+        } else {
+          setError('We could not send the reset email. Please try again.');
+        }
       } else {
         setError('We could not send the reset email. Please try again.');
       }
