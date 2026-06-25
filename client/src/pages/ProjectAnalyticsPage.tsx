@@ -1,15 +1,14 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
 import { BurndownChart, ContributionMetrics, VelocityChart } from '../components/ProjectAnalyticsWidgets';
 import Icon from '../components/Icon';
 import PageHeader from '../components/PageHeader';
 import { Button, Spinner } from '../components/ui';
 import { getProjectActivityFeed } from '../services/activityService';
-import type { ProjectActivity } from '../services/activityService';
 import { getProjectById, getProjectSprints } from '../services/projectService';
-import type { Project, Sprint } from '../services/projectService';
 import { getProjectTasks } from '../services/taskService';
-import type { Task } from '../services/taskService';
+import { queryKeys, queryTimes } from '../services/queryOptions';
 import {
   buildBurndownData,
   buildContributionMetrics,
@@ -20,35 +19,49 @@ import {
 export default function ProjectAnalyticsPage() {
   const { projectId } = useParams<{ projectId: string }>();
   const navigate = useNavigate();
-  const [project, setProject] = useState<Project | null>(null);
-  const [sprints, setSprints] = useState<Sprint[]>([]);
-  const [tasks, setTasks] = useState<Task[]>([]);
-  const [activities, setActivities] = useState<ProjectActivity[]>([]);
   const [selectedSprintId, setSelectedSprintId] = useState('');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
-  const [loading, setLoading] = useState(true);
+  const projectQuery = useQuery({
+    queryKey: queryKeys.project(projectId ?? ''),
+    queryFn: () => getProjectById(projectId!),
+    enabled: Boolean(projectId),
+    staleTime: queryTimes.projectDetail,
+  });
+  const sprintsQuery = useQuery({
+    queryKey: queryKeys.projectSprints(projectId ?? ''),
+    queryFn: () => getProjectSprints(projectId!),
+    enabled: Boolean(projectId),
+    staleTime: queryTimes.sprints,
+  });
+  const tasksQuery = useQuery({
+    queryKey: queryKeys.projectTasks(projectId ?? ''),
+    queryFn: () => getProjectTasks(projectId!),
+    enabled: Boolean(projectId),
+    staleTime: queryTimes.tasks,
+  });
+  const activitiesQuery = useQuery({
+    queryKey: queryKeys.projectActivity(projectId ?? ''),
+    queryFn: () => getProjectActivityFeed(projectId!),
+    enabled: Boolean(projectId),
+    staleTime: queryTimes.activity,
+  });
+
+  const project = projectQuery.data ?? null;
+  const sprints = Array.isArray(sprintsQuery.data) ? sprintsQuery.data : [];
+  const tasks = Array.isArray(tasksQuery.data) ? tasksQuery.data : [];
+  const activities = Array.isArray(activitiesQuery.data) ? activitiesQuery.data : [];
+  const loading = projectQuery.isLoading || sprintsQuery.isLoading || tasksQuery.isLoading || activitiesQuery.isLoading;
 
   useEffect(() => {
-    if (!projectId) return;
+    if (projectQuery.isError || sprintsQuery.isError || tasksQuery.isError) navigate('/projects', { replace: true });
+  }, [navigate, projectQuery.isError, sprintsQuery.isError, tasksQuery.isError]);
 
-    Promise.all([
-      getProjectById(projectId),
-      getProjectSprints(projectId),
-      getProjectTasks(projectId),
-      getProjectActivityFeed(projectId).catch(() => []),
-    ])
-      .then(([projectData, sprintData, taskData, activityData]) => {
-        setProject(projectData);
-        setSprints(sprintData);
-        setTasks(taskData);
-        setActivities(activityData);
-        const activeSprint = sprintData.find((sprint) => sprint.isActive) ?? sprintData[0];
-        setSelectedSprintId(activeSprint?.id ?? '');
-      })
-      .catch(() => navigate('/projects', { replace: true }))
-      .finally(() => setLoading(false));
-  }, [projectId, navigate]);
+  useEffect(() => {
+    if (selectedSprintId || sprints.length === 0) return;
+    const activeSprint = sprints.find((sprint) => sprint.isActive) ?? sprints[0];
+    setSelectedSprintId(activeSprint?.id ?? '');
+  }, [selectedSprintId, sprints]);
 
   const selectedSprint = useMemo(
     () => sprints.find((sprint) => sprint.id === selectedSprintId) ?? sprints.find((sprint) => sprint.isActive) ?? sprints[0],

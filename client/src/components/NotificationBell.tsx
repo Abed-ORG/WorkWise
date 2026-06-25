@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import Icon from './Icon';
 import {
   getNotifications,
@@ -10,6 +11,7 @@ import {
 import type { NotificationItem, NotificationPreference } from '../services/notificationService';
 import { getRealtimeSocket } from '../services/realtimeService';
 import { useAuth } from '../hooks/useAuth';
+import { queryKeys, queryTimes } from '../services/queryOptions';
 
 const preferenceLabels: Record<NotificationPreference, string> = {
   ALL: 'All',
@@ -28,29 +30,33 @@ function formatTime(value: string) {
 
 export default function NotificationBell() {
   const { user, updateUser } = useAuth();
+  const queryClient = useQueryClient();
   const [isOpen, setIsOpen] = useState(false);
-  const [items, setItems] = useState<NotificationItem[]>([]);
   const [preference, setPreference] = useState<NotificationPreference>(user.notificationPreference ?? 'ALL');
   const containerRef = useRef<HTMLDivElement>(null);
   const mobileFabRef = useRef<HTMLButtonElement>(null);
   const mobilePanelRef = useRef<HTMLDivElement>(null);
+  const notificationsQuery = useQuery({
+    queryKey: queryKeys.notifications,
+    queryFn: getNotifications,
+    staleTime: queryTimes.notifications,
+  });
+  const items = Array.isArray(notificationsQuery.data) ? notificationsQuery.data : [];
   const unreadCount = useMemo(() => items.filter((item) => !item.isRead).length, [items]);
 
   useEffect(() => {
-    getNotifications().then(setItems).catch(() => undefined);
-
     const activeSocket = getRealtimeSocket();
     if (!activeSocket) return undefined;
 
     function handleNewNotification(notification: NotificationItem) {
-      setItems((current) => [notification, ...current.filter((item) => item.id !== notification.id)].slice(0, 20));
+      queryClient.setQueryData<NotificationItem[]>(queryKeys.notifications, (current = []) => [notification, ...current.filter((item) => item.id !== notification.id)].slice(0, 20));
     }
 
     activeSocket.on('notification:new', handleNewNotification);
     return () => {
       activeSocket.off('notification:new', handleNewNotification);
     };
-  }, []);
+  }, [queryClient]);
 
   useEffect(() => {
     if (!isOpen) return undefined;
@@ -67,20 +73,31 @@ export default function NotificationBell() {
   }, [isOpen]);
 
   async function handleRead(notificationId: string) {
-    setItems((current) => current.map((item) => (item.id === notificationId ? { ...item, isRead: true } : item)));
-    await markNotificationRead(notificationId).catch(() => undefined);
+    const previousItems = items;
+    queryClient.setQueryData<NotificationItem[]>(queryKeys.notifications, (current = []) => current.map((item) => (item.id === notificationId ? { ...item, isRead: true } : item)));
+    await markNotificationRead(notificationId).catch(() => {
+      queryClient.setQueryData(queryKeys.notifications, previousItems);
+    });
   }
 
   async function handleReadAll() {
-    setItems((current) => current.map((item) => ({ ...item, isRead: true })));
-    await markAllNotificationsRead().catch(() => undefined);
+    const previousItems = items;
+    queryClient.setQueryData<NotificationItem[]>(queryKeys.notifications, (current = []) => current.map((item) => ({ ...item, isRead: true })));
+    await markAllNotificationsRead().catch(() => {
+      queryClient.setQueryData(queryKeys.notifications, previousItems);
+    });
   }
 
   async function handlePreferenceChange(nextPreference: NotificationPreference) {
+    const previousPreference = preference;
     setPreference(nextPreference);
-    const savedPreference = await updateNotificationPreference(nextPreference).catch(() => nextPreference);
-    setPreference(savedPreference);
-    updateUser({ ...user, notificationPreference: savedPreference });
+    try {
+      const savedPreference = await updateNotificationPreference(nextPreference);
+      setPreference(savedPreference);
+      updateUser({ ...user, notificationPreference: savedPreference });
+    } catch {
+      setPreference(previousPreference);
+    }
   }
 
   function renderNotificationPanel(className: string) {

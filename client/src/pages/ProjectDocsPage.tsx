@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useParams } from 'react-router-dom';
 import Icon from '../components/Icon';
 import PageHeader from '../components/PageHeader';
@@ -11,67 +12,63 @@ import {
   getProjectDocuments,
   updateProjectDocument,
 } from '../services/projectService';
-import type { Project, ProjectDocument } from '../services/projectService';
+import type { ProjectDocument } from '../services/projectService';
+import { queryKeys, queryTimes } from '../services/queryOptions';
 
 export default function ProjectDocsPage() {
   const { projectId } = useParams<{ projectId: string }>();
   const navigate = useNavigate();
-  const [project, setProject] = useState<Project | null>(null);
-  const [projectLoading, setProjectLoading] = useState(true);
-  const [documentLoading, setDocumentLoading] = useState(true);
+  const queryClient = useQueryClient();
   const [documentSaving, setDocumentSaving] = useState(false);
   const [documentDeleting, setDocumentDeleting] = useState(false);
-  const [documents, setDocuments] = useState<ProjectDocument[]>([]);
   const [selectedDocumentId, setSelectedDocumentId] = useState<string | null>(null);
   const [selectedDocumentIds, setSelectedDocumentIds] = useState<string[]>([]);
   const [selectionMode, setSelectionMode] = useState(false);
+  const [initializedProjectId, setInitializedProjectId] = useState<string | null>(null);
   const [documentMode, setDocumentMode] = useState<'view' | 'edit'>('view');
   const [draftReturnDocumentId, setDraftReturnDocumentId] = useState<string | null>(null);
   const [documentTitle, setDocumentTitle] = useState('');
   const [documentContent, setDocumentContent] = useState('');
   const [documentMessage, setDocumentMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
+  const projectQuery = useQuery({
+    queryKey: queryKeys.project(projectId ?? ''),
+    queryFn: () => getProjectById(projectId!),
+    enabled: Boolean(projectId),
+    staleTime: queryTimes.projectDetail,
+  });
+  const documentsQuery = useQuery({
+    queryKey: queryKeys.projectDocuments(projectId ?? ''),
+    queryFn: () => getProjectDocuments(projectId!),
+    enabled: Boolean(projectId),
+    staleTime: queryTimes.documents,
+  });
+
+  const documents = Array.isArray(documentsQuery.data) ? documentsQuery.data : [];
+
   useEffect(() => {
-    if (!projectId) return;
-
-    getProjectById(projectId)
-      .then(setProject)
-      .catch(() => navigate('/projects', { replace: true }))
-      .finally(() => setProjectLoading(false));
-  }, [projectId, navigate]);
+    if (projectQuery.isError) navigate('/projects', { replace: true });
+    if (documentsQuery.isError) setDocumentMessage({ type: 'error', text: 'Documentation could not be loaded.' });
+  }, [documentsQuery.isError, navigate, projectQuery.isError]);
 
   useEffect(() => {
-    if (!projectId) return;
+    if (!projectId || !documentsQuery.data || initializedProjectId === projectId) return;
 
-    let active = true;
+    const firstDocument = documentsQuery.data[0] ?? null;
+    setSelectedDocumentId(firstDocument?.id ?? null);
+    setSelectedDocumentIds([]);
+    setSelectionMode(false);
+    setDocumentMode('view');
+    setDraftReturnDocumentId(null);
+    setDocumentTitle(firstDocument?.title ?? '');
+    setDocumentContent(firstDocument?.content || '');
+    setInitializedProjectId(projectId);
+  }, [documentsQuery.data, initializedProjectId, projectId]);
 
-    setDocumentLoading(true);
-    getProjectDocuments(projectId)
-      .then((projectDocuments) => {
-        if (!active) return;
+  const project = projectQuery.data ?? null;
+  const documentLoading = documentsQuery.isLoading;
 
-        const loadedDocuments = Array.isArray(projectDocuments) ? projectDocuments : [];
-        const firstDocument = loadedDocuments[0] ?? null;
-        setDocuments(loadedDocuments);
-        setSelectedDocumentId(firstDocument?.id ?? null);
-        setSelectedDocumentIds([]);
-        setSelectionMode(false);
-        setDocumentMode('view');
-        setDraftReturnDocumentId(null);
-        setDocumentTitle(firstDocument?.title ?? '');
-        setDocumentContent(firstDocument?.content || '');
-      })
-      .catch(() => {
-        if (active) setDocumentMessage({ type: 'error', text: 'Documentation could not be loaded.' });
-      })
-      .finally(() => {
-        if (active) setDocumentLoading(false);
-      });
-
-    return () => { active = false; };
-  }, [projectId]);
-
-  if (projectLoading) return <div className="empty-panel"><Spinner size="lg" /><p className="mt-4">Opening documentation...</p></div>;
+  if (projectQuery.isLoading) return <div className="empty-panel"><Spinner size="lg" /><p className="mt-4">Opening documentation...</p></div>;
   if (!project || !projectId) return null;
 
   const selectedDocument = documents.find((document) => document.id === selectedDocumentId) ?? null;
@@ -98,16 +95,27 @@ export default function ProjectDocsPage() {
     setDocumentSaving(true);
     setDocumentMessage(null);
 
+    const previousDocuments = documents;
     try {
       const payload = {
         title: trimmedTitle,
         content: documentContent,
       };
+      if (selectedDocumentId) {
+        const optimisticDocument = {
+          ...selectedDocument,
+          id: selectedDocumentId,
+          title: trimmedTitle,
+          content: documentContent,
+          updatedAt: new Date().toISOString(),
+        } as ProjectDocument;
+        queryClient.setQueryData<ProjectDocument[]>(queryKeys.projectDocuments(projectId), (current = []) => current.map((document) => document.id === selectedDocumentId ? optimisticDocument : document));
+      }
       const savedDocument = selectedDocumentId
         ? await updateProjectDocument(projectId, selectedDocumentId, payload)
         : await createProjectDocument(projectId, payload);
 
-      setDocuments((current) => {
+      queryClient.setQueryData<ProjectDocument[]>(queryKeys.projectDocuments(projectId), (current = []) => {
         const existing = current.some((document) => document.id === savedDocument.id);
         if (existing) {
           return current.map((document) => document.id === savedDocument.id ? savedDocument : document);
@@ -121,6 +129,7 @@ export default function ProjectDocsPage() {
       setDocumentContent(savedDocument.content || '');
       setDocumentMessage({ type: 'success', text: 'Document saved.' });
     } catch {
+      queryClient.setQueryData(queryKeys.projectDocuments(projectId), previousDocuments);
       setDocumentMessage({ type: 'error', text: 'Document could not be saved.' });
     } finally {
       setDocumentSaving(false);
@@ -180,20 +189,22 @@ export default function ProjectDocsPage() {
 
     setDocumentDeleting(true);
     setDocumentMessage(null);
+    const previousDocuments = documents;
 
     try {
-      await deleteProjectDocument(projectId, selectedDocumentId);
       const nextDocuments = documents.filter((document) => document.id !== selectedDocumentId);
       const nextDocument = nextDocuments[0] ?? null;
-      setDocuments(nextDocuments);
+      queryClient.setQueryData(queryKeys.projectDocuments(projectId), nextDocuments);
       setSelectedDocumentId(nextDocument?.id ?? null);
       setSelectedDocumentIds((current) => current.filter((id) => id !== selectedDocumentId));
       setDocumentMode('view');
       setDraftReturnDocumentId(null);
       setDocumentTitle(nextDocument?.title ?? '');
       setDocumentContent(nextDocument?.content || '');
+      await deleteProjectDocument(projectId, selectedDocumentId);
       setDocumentMessage({ type: 'success', text: 'Document deleted.' });
     } catch {
+      queryClient.setQueryData(queryKeys.projectDocuments(projectId), previousDocuments);
       setDocumentMessage({ type: 'error', text: 'Document could not be deleted.' });
     } finally {
       setDocumentDeleting(false);
@@ -217,6 +228,7 @@ export default function ProjectDocsPage() {
 
     setDocumentDeleting(true);
     setDocumentMessage(null);
+    const previousDocuments = documents;
 
     try {
       const results = await Promise.allSettled(selectedDocumentIds.map((documentId) => deleteProjectDocument(projectId, documentId)));
@@ -225,7 +237,7 @@ export default function ProjectDocsPage() {
       const currentDocumentDeleted = selectedDocumentId !== null && deletedIds.has(selectedDocumentId);
       const nextDocument = currentDocumentDeleted ? nextDocuments[0] ?? null : selectedDocument;
 
-      setDocuments(nextDocuments);
+      queryClient.setQueryData(queryKeys.projectDocuments(projectId), nextDocuments);
       setSelectedDocumentIds([]);
       setSelectionMode(false);
       if (currentDocumentDeleted) {
@@ -239,6 +251,9 @@ export default function ProjectDocsPage() {
       setDocumentMessage(deletedIds.size === selectedDocumentIds.length
         ? { type: 'success', text: 'Selected documents deleted.' }
         : { type: 'error', text: 'Some documents could not be deleted.' });
+    } catch {
+      queryClient.setQueryData(queryKeys.projectDocuments(projectId), previousDocuments);
+      setDocumentMessage({ type: 'error', text: 'Selected documents could not be deleted.' });
     } finally {
       setDocumentDeleting(false);
     }

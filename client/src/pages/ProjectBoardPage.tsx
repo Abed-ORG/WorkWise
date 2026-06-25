@@ -1,18 +1,18 @@
 import { useEffect, useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useParams } from 'react-router-dom';
 import CreateTaskModal from '../components/CreateTaskModal';
 import Icon from '../components/Icon';
 import KanbanBoard from '../components/KanbanBoard';
-import PageHeader from '../components/PageHeader';
 import TaskDetailModal from '../components/TaskDetailModal';
 import { Button, Spinner } from '../components/ui';
 import { useAuth } from '../hooks/useAuth';
 import { useToast } from '../hooks/useToast';
 import { getProjectById } from '../services/projectService';
-import type { Project } from '../services/projectService';
 import { joinProjectRoom, leaveProjectRoom } from '../services/realtimeService';
 import { getProjectTasks } from '../services/taskService';
 import type { Task } from '../services/taskService';
+import { queryKeys, queryTimes } from '../services/queryOptions';
 
 function upsertTask(tasks: Task[], nextTask: Task) {
   const exists = tasks.some((task) => task.id === nextTask.id);
@@ -25,23 +25,26 @@ export default function ProjectBoardPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const toast = useToast();
-  const [project, setProject] = useState<Project | null>(null);
-  const [tasks, setTasks] = useState<Task[]>([]);
-  const [loading, setLoading] = useState(true);
+  const queryClient = useQueryClient();
   const [createOpen, setCreateOpen] = useState(false);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (!projectId) return;
+  const projectQuery = useQuery({
+    queryKey: queryKeys.project(projectId ?? ''),
+    queryFn: () => getProjectById(projectId!),
+    enabled: Boolean(projectId),
+    staleTime: queryTimes.projectDetail,
+  });
+  const tasksQuery = useQuery({
+    queryKey: queryKeys.projectTasks(projectId ?? ''),
+    queryFn: () => getProjectTasks(projectId!),
+    enabled: Boolean(projectId),
+    staleTime: queryTimes.tasks,
+  });
 
-    Promise.all([getProjectById(projectId), getProjectTasks(projectId)])
-      .then(([projectData, taskData]) => {
-        setProject(projectData);
-        setTasks(Array.isArray(taskData) ? taskData : []);
-      })
-      .catch(() => navigate('/projects', { replace: true }))
-      .finally(() => setLoading(false));
-  }, [projectId, navigate]);
+  useEffect(() => {
+    if (projectQuery.isError || tasksQuery.isError) navigate('/projects', { replace: true });
+  }, [navigate, projectQuery.isError, tasksQuery.isError]);
 
   useEffect(() => {
     if (!projectId) return undefined;
@@ -51,13 +54,15 @@ export default function ProjectBoardPage() {
 
     function handleTaskCreated(task: Task) {
       if (task.projectId === projectId) {
-        setTasks((current) => upsertTask(current, task));
+        queryClient.setQueryData<Task[]>(queryKeys.projectTasks(projectId), (current = []) => upsertTask(current, task));
+        queryClient.setQueryData(queryKeys.task(task.id), task);
       }
     }
 
     function handleTaskUpdated(task: Task) {
       if (task.projectId === projectId) {
-        setTasks((current) => upsertTask(current, task));
+        queryClient.setQueryData<Task[]>(queryKeys.projectTasks(projectId), (current = []) => upsertTask(current, task));
+        queryClient.setQueryData(queryKeys.task(task.id), task);
       }
     }
 
@@ -69,7 +74,15 @@ export default function ProjectBoardPage() {
       activeSocket.off('task:updated', handleTaskUpdated);
       leaveProjectRoom(projectId);
     };
-  }, [projectId]);
+  }, [projectId, queryClient]);
+
+  const project = projectQuery.data ?? null;
+  const tasks = Array.isArray(tasksQuery.data) ? tasksQuery.data : [];
+  const loading = projectQuery.isLoading || tasksQuery.isLoading;
+  const setTasks = (nextTasks: Task[]) => {
+    if (!projectId) return;
+    queryClient.setQueryData(queryKeys.projectTasks(projectId), nextTasks);
+  };
 
   if (loading) return <div className="empty-panel"><Spinner size="lg" /><p className="mt-4">Opening board...</p></div>;
   if (!project || !projectId) return null;
@@ -80,23 +93,31 @@ export default function ProjectBoardPage() {
   return (
     <>
       <button type="button" className="back-link" onClick={() => navigate(`/projects/${projectId}`)}><Icon name="arrow-left" size={15} /> Back to project</button>
-      <PageHeader
-        eyebrow={project.key}
-        title="Project board"
-        description="Move work across the board and keep delivery visible."
-        actions={<div className="page-actions">
-          {isAdmin && <Button onClick={() => setCreateOpen(true)}><Icon name="plus" size={16} /> Create task</Button>}
-          <Button variant="secondary" onClick={() => navigate(`/projects/${projectId}/backlog`)}><Icon name="tasks" size={16} /> Backlog</Button>
-          <Button variant="secondary" onClick={() => navigate(`/projects/${projectId}/docs`)}><Icon name="document" size={16} /> Docs</Button>
-        </div>}
-      />
-
       <section className="animate-enter-delay">
-        <KanbanBoard tasks={tasks} onTasksChange={setTasks} onTaskClick={(task) => setSelectedTaskId(task.id)} />
+        <KanbanBoard
+          tasks={tasks}
+          onTasksChange={setTasks}
+          onTaskClick={(task) => setSelectedTaskId(task.id)}
+          eyebrow={project.key}
+          title="Project board"
+          description="Move work across the board and keep delivery visible."
+          headerAction={isAdmin ? <Button onClick={() => setCreateOpen(true)}><Icon name="plus" size={16} /> Create task</Button> : undefined}
+          assignees={(project.members ?? []).map((member) => ({
+            id: member.user.id,
+            name: member.user.name,
+            avatarUrl: member.user.avatarUrl,
+          }))}
+        />
       </section>
-
-      <CreateTaskModal isOpen={createOpen} projectId={projectId} members={project.members ?? []} onClose={() => setCreateOpen(false)} onCreated={(task) => { setTasks((current) => upsertTask(current, task)); toast.success('Task created successfully.'); }} />
-      <TaskDetailModal taskId={selectedTaskId} onClose={() => setSelectedTaskId(null)} onTaskUpdated={(task) => setTasks((current) => upsertTask(current, task))} />
+      <CreateTaskModal isOpen={createOpen} projectId={projectId} members={project.members ?? []} onClose={() => setCreateOpen(false)} onCreated={(task) => {
+        queryClient.setQueryData<Task[]>(queryKeys.projectTasks(projectId), (current = []) => upsertTask(current, task));
+        queryClient.setQueryData(queryKeys.task(task.id), task);
+        toast.success('Task created successfully.');
+      }} />
+      <TaskDetailModal taskId={selectedTaskId} onClose={() => setSelectedTaskId(null)} onTaskUpdated={(task) => {
+        queryClient.setQueryData<Task[]>(queryKeys.projectTasks(projectId), (current = []) => upsertTask(current, task));
+        queryClient.setQueryData(queryKeys.task(task.id), task);
+      }} />
     </>
   );
 }

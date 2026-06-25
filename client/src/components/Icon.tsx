@@ -1,9 +1,9 @@
 import type { SVGProps } from 'react';
 
 export type IconName =
-  | 'activity' | 'arrow-left' | 'arrow-right' | 'bell' | 'board' | 'calendar'
+  | 'activity' | 'arrow-left' | 'arrow-right' | 'bar-chart' | 'bell' | 'board' | 'calendar'
   | 'check' | 'chevron-down' | 'close' | 'document' | 'folder' | 'home' | 'logout' | 'menu' | 'pencil'
-  | 'moon' | 'plus' | 'search' | 'settings' | 'sparkles' | 'sun' | 'tasks'
+  | 'flag' | 'moon' | 'plus' | 'search' | 'settings' | 'sparkles' | 'sun' | 'tasks'
   | 'team' | 'trash' | 'user';
 
 interface IconProps extends SVGProps<SVGSVGElement> {
@@ -15,6 +15,7 @@ const paths: Record<IconName, React.ReactNode> = {
   activity: <path d="M4 12h3l2-7 4 14 2-7h5" />,
   'arrow-left': <path d="m15 18-6-6 6-6" />,
   'arrow-right': <><path d="m9 18 6-6-6-6" /></>,
+  'bar-chart': <><path d="M4 19V5" /><path d="M4 19h16" /><path d="M8 16v-5" /><path d="M12 16V8" /><path d="M16 16v-9" /></>,
   bell: <><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9" /><path d="M10 21h4" /></>,
   board: <><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M8 8v8M16 8v5" /></>,
   calendar: <><rect x="3" y="5" width="18" height="16" rx="2" /><path d="M16 3v4M8 3v4M3 10h18" /></>,
@@ -22,6 +23,7 @@ const paths: Record<IconName, React.ReactNode> = {
   'chevron-down': <path d="m6 9 6 6 6-6" />,
   close: <path d="M18 6 6 18M6 6l12 12" />,
   document: <><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8Z" /><path d="M14 3v5h5M9 13h6M9 17h4" /></>,
+  flag: <><path d="M5 21V4" /><path d="M5 5h11l-1.5 4L16 13H5" /></>,
   folder: <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z" />,
   home: <><path d="m3 11 9-8 9 8" /><path d="M5 10v10h14V10M9 20v-6h6v6" /></>,
   logout: <><path d="M10 17l5-5-5-5M15 12H3" /><path d="M14 3h5a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-5" /></>,
