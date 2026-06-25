@@ -9,7 +9,16 @@ import {
   AcceptanceCriteriaResult,
   TaskBreakdownInput,
   TaskBreakdownResult,
+  TaskSearchFilters,
+  SprintRiskResult,
+  SprintSuggestionResult,
 } from "./types";
+import { buildTaskSearchPrompt } from "./prompts/taskSearch.prompt";
+import { parseTaskSearchResponse } from "./parsers/taskSearch.parser";
+import { buildSprintRiskPrompt, SprintRiskPromptInput } from "./prompts/sprintRisk.prompt";
+import { parseSprintRiskResponse } from "./parsers/sprintRisk.parser";
+import { buildSprintSuggestionPrompt, SprintSuggestionPromptInput } from "./prompts/sprintSuggestion.prompt";
+import { parseSprintSuggestionResponse } from "./parsers/sprintSuggestion.parser";
 
 const GEMINI_MODEL = "gemini-2.5-flash";
 const GEMINI_TIMEOUT_MS = 30000;
@@ -28,6 +37,26 @@ class GeminiService {
   ): Promise<TaskBreakdownResult> {
     const responseText = await this.generateJson(buildTaskBreakdownPrompt(input));
     return parseTaskBreakdownResponse(responseText);
+  }
+
+  async suggestSprintTasks(input: SprintSuggestionPromptInput): Promise<SprintSuggestionResult> {
+    const responseText = await this.generateJson(buildSprintSuggestionPrompt(input));
+    return parseSprintSuggestionResponse(responseText);
+  }
+
+  async analyzeSprintRisk(input: SprintRiskPromptInput): Promise<SprintRiskResult> {
+    const responseText = await this.generateJson(buildSprintRiskPrompt(input));
+    return parseSprintRiskResponse(responseText);
+  }
+
+  async parseTaskQuery(input: {
+    query: string;
+    memberNames: string[];
+    labels: string[];
+    today: string;
+  }): Promise<TaskSearchFilters> {
+    const responseText = await this.generateJson(buildTaskSearchPrompt(input));
+    return parseTaskSearchResponse(responseText);
   }
 
   async generateAcceptanceCriteria(

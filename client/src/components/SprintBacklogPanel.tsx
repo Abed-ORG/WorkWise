@@ -1,9 +1,12 @@
 import { useEffect, useMemo, useState, type DragEvent } from 'react';
 import Icon from './Icon';
-import { Button } from './ui';
+import { Button, Spinner } from './ui';
 import { useToast } from '../hooks/useToast';
 import { moveTaskToSprint, reorderTask } from '../services/taskService';
 import type { Task } from '../services/taskService';
+import { getSprintSuggestion } from '../services/aiService';
+import type { SprintSuggestionResult } from '../services/aiService';
+import SprintSuggestionModal from './SprintSuggestionModal';
 
 interface SprintBacklogPanelProps {
   sprintId: string;
@@ -24,6 +27,7 @@ function formatStatus(s: string) {
 
 export default function SprintBacklogPanel({
   sprintId,
+  projectId,
   allTasks,
   onTasksChange,
 }: SprintBacklogPanelProps) {
@@ -31,6 +35,9 @@ export default function SprintBacklogPanel({
   const [draggedId, setDraggedId] = useState<string | null>(null);
   const [dropIndex, setDropIndex] = useState<number | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
+  const [suggesting, setSuggesting] = useState(false);
+  const [suggestion, setSuggestion] = useState<SprintSuggestionResult | null>(null);
+  const [suggestError, setSuggestError] = useState<string | null>(null);
   const [bulkAction, setBulkAction] = useState<'add' | 'remove' | null>(null);
   const [backlogSelectionMode, setBacklogSelectionMode] = useState(false);
   const [sprintSelectionMode, setSprintSelectionMode] = useState(false);
@@ -45,7 +52,7 @@ export default function SprintBacklogPanel({
     .sort((a, b) => (PRIORITY_ORDER[a.priority] ?? 2) - (PRIORITY_ORDER[b.priority] ?? 2)), [allTasks]);
   const filteredBacklogTasks = useMemo(() => filterTasks(backlogTasks, backlogSearch), [backlogSearch, backlogTasks]);
   const filteredSprintTasks = useMemo(() => filterTasks(sprintTasks, sprintSearch), [sprintSearch, sprintTasks]);
-  const isProcessing = Boolean(busy || bulkAction);
+  const isProcessing = Boolean(busy || bulkAction || suggesting);
   const allBacklogSelected = filteredBacklogTasks.length > 0 && filteredBacklogTasks.every((task) => selectedBacklogIds.includes(task.id));
   const allSprintSelected = filteredSprintTasks.length > 0 && filteredSprintTasks.every((task) => selectedSprintIds.includes(task.id));
   const selectionModeActive = backlogSelectionMode || sprintSelectionMode;
@@ -54,6 +61,25 @@ export default function SprintBacklogPanel({
     setSelectedBacklogIds((current) => current.filter((taskId) => backlogTasks.some((task) => task.id === taskId)));
     setSelectedSprintIds((current) => current.filter((taskId) => sprintTasks.some((task) => task.id === taskId)));
   }, [backlogTasks, sprintTasks]);
+
+  async function handleSuggest() {
+    if (suggesting) return;
+    setSuggesting(true);
+    setSuggestError(null);
+    try {
+      const result = await getSprintSuggestion(projectId, sprintId);
+      setSuggestion(result);
+    } catch {
+      setSuggestError('Could not generate suggestions. Please try again.');
+    } finally {
+      setSuggesting(false);
+    }
+  }
+
+  function handleSuggestionAccepted(updatedTasks: Task[]) {
+    // Merge the newly sprint-assigned tasks back into allTasks
+    onTasksChange(allTasks.map((t) => updatedTasks.find((u) => u.id === t.id) ?? t));
+  }
 
   async function handleAddToSprint(task: Task) {
     setBusy(task.id);
@@ -246,8 +272,19 @@ export default function SprintBacklogPanel({
                 <Icon name="tasks" size={14} />
                 {backlogTasks.length}
               </span>
+              <Button
+                variant="secondary"
+                className="sprint-suggest-btn"
+                disabled={suggesting || backlogTasks.length === 0}
+                onClick={handleSuggest}
+                title="Ask AI to suggest tasks for this sprint"
+              >
+                {suggesting ? <Spinner size="sm" /> : <Icon name="sparkles" size={14} />}
+                {suggesting ? 'Suggesting…' : 'Suggest tasks'}
+              </Button>
             </div>
           </div>
+          {suggestError && <p className="sprint-suggest-error">{suggestError}</p>}
 
           {backlogTasks.length === 0 ? (
             <div className="sprint-backlog-empty">
@@ -450,6 +487,17 @@ export default function SprintBacklogPanel({
           )}
         </div>
       </div>
+
+      {suggestion && (
+        <SprintSuggestionModal
+          isOpen
+          suggestion={suggestion}
+          backlogTasks={backlogTasks}
+          sprintId={sprintId}
+          onClose={() => setSuggestion(null)}
+          onAccepted={handleSuggestionAccepted}
+        />
+      )}
     </div>
   );
 }

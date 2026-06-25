@@ -4,6 +4,8 @@ import { useSearchParams } from 'react-router-dom';
 import Icon from './Icon';
 import { Button } from './ui';
 import type { Task } from '../services/taskService';
+import { parseTaskQuery } from '../services/aiService';
+import type { TaskSearchFilters } from '../services/aiService';
 
 type SortKey = 'title' | 'status' | 'priority' | 'assignee' | 'project';
 type SortDirection = 'asc' | 'desc';
@@ -25,6 +27,7 @@ interface BacklogListProps {
   onDeleteSelected?: (taskIds: string[]) => Promise<void>;
   onMoveSelectedToBoard?: (taskIds: string[]) => Promise<void>;
   onTaskClick?: (task: Task) => void;
+  projectId?: string;
 }
 
 const visibleAssigneeCount = 6;
@@ -43,6 +46,10 @@ function formatDate(date?: string | null) {
   return new Intl.DateTimeFormat('en', { month: 'short', day: 'numeric', year: 'numeric' }).format(new Date(date));
 }
 
+function hasAnyFilter(filters: TaskSearchFilters): boolean {
+  return Object.values(filters).some((v) => v !== null);
+}
+
 export default function BacklogList({
   tasks,
   title = 'Work queue',
@@ -57,6 +64,7 @@ export default function BacklogList({
   onDeleteSelected,
   onMoveSelectedToBoard,
   onTaskClick,
+  projectId,
 }: BacklogListProps) {
   const [searchParams, setSearchParams] = useSearchParams();
   const [selectedTaskIds, setSelectedTaskIds] = useState<string[]>([]);
@@ -71,6 +79,12 @@ export default function BacklogList({
   const [deleting, setDeleting] = useState(false);
   const [moving, setMoving] = useState(false);
   const advancedFiltersRef = useRef<HTMLDivElement>(null);
+  const [dueBefore, setDueBefore] = useState<string | null>(null);
+  const [nlInput, setNlInput] = useState('');
+  const [isAiSearching, setIsAiSearching] = useState(false);
+  const [aiSearchLabel, setAiSearchLabel] = useState<string | null>(null);
+  const [aiError, setAiError] = useState<string | null>(null);
+
   const search = searchParams.get('q') ?? '';
 
   const taskAssignees = Array.from(new Map(tasks
@@ -112,13 +126,15 @@ export default function BacklogList({
     ].filter(Boolean).join(' ').toLowerCase();
     const matchesSearch = !query || task.title.toLowerCase().includes(query) || task.description?.toLowerCase().includes(query);
     const matchesLocalSearch = !localQuery || searchableTask.includes(localQuery);
+    const matchesDueBefore = !dueBefore || (task.dueDate != null && new Date(task.dueDate) < new Date(dueBefore));
     return matchesSearch
       && matchesLocalSearch
+      && matchesDueBefore
       && (!statusFilter || task.status === statusFilter)
       && (!priorityFilter || task.priority === priorityFilter)
       && (!assigneeFilter || (assigneeFilter === '__unassigned__' ? !task.assignee : task.assignee?.name === assigneeFilter))
       && (!labelFilter || task.labels?.includes(labelFilter));
-  }), [tasks, search, localSearch, statusFilter, priorityFilter, assigneeFilter, labelFilter]);
+  }), [tasks, search, localSearch, statusFilter, priorityFilter, assigneeFilter, labelFilter, dueBefore]);
 
   const sortedTasks = useMemo(() => [...filteredTasks].sort((a, b) => {
     const comparison = getSortValue(a, sortKey).localeCompare(getSortValue(b, sortKey));
@@ -126,7 +142,7 @@ export default function BacklogList({
   }), [filteredTasks, sortKey, sortDirection]);
 
   const advancedFilterCount = [statusFilter, priorityFilter, labelFilter].filter(Boolean).length;
-  const hasActiveFilters = Boolean(search || localSearch || statusFilter || priorityFilter || assigneeFilter || labelFilter);
+  const hasActiveFilters = Boolean(search || localSearch || statusFilter || priorityFilter || assigneeFilter || labelFilter || dueBefore || aiSearchLabel);
   const allVisibleTasksSelected = sortedTasks.length > 0 && sortedTasks.every((task) => selectedTaskIds.includes(task.id));
 
   useEffect(() => {
@@ -164,6 +180,12 @@ export default function BacklogList({
     setSearchParams({});
     setLocalSearch('');
     setStatusFilter(''); setPriorityFilter(''); setAssigneeFilter(''); setLabelFilter('');
+    setDueBefore(null); setAiSearchLabel(null); setAiError(null);
+  }
+  function clearAiFilters() {
+    setSearchParams({});
+    setStatusFilter(''); setPriorityFilter(''); setAssigneeFilter(''); setLabelFilter('');
+    setDueBefore(null); setAiSearchLabel(null); setAiError(null);
   }
   function clearAdvancedFilters() {
     setStatusFilter('');
@@ -192,6 +214,45 @@ export default function BacklogList({
     setSelectedTaskIds([]);
   }
 
+  async function handleNlSearch(e: React.FormEvent) {
+    e.preventDefault();
+    const query = nlInput.trim();
+    if (!query || !projectId) return;
+
+    setIsAiSearching(true);
+    setAiError(null);
+
+    try {
+      const filters = await parseTaskQuery(query, projectId);
+
+      if (!hasAnyFilter(filters)) {
+        // AI found nothing useful — fall back to text search
+        setSearchParams({ q: query });
+        setAiSearchLabel(null);
+      } else {
+        // Apply AI-derived filters, replacing any manually set ones
+        setStatusFilter(filters.status ?? '');
+        setPriorityFilter(filters.priority ?? '');
+        setAssigneeFilter(filters.assigneeName ?? '');
+        setLabelFilter(filters.label ?? '');
+        setDueBefore(filters.dueBefore ?? null);
+        if (filters.titleKeyword) {
+          setSearchParams({ q: filters.titleKeyword });
+        } else {
+          setSearchParams({});
+        }
+        setAiSearchLabel(query);
+      }
+    } catch {
+      // On error, fall back to text search silently
+      setSearchParams({ q: query });
+      setAiSearchLabel(null);
+      setAiError('AI search unavailable — showing text results.');
+    } finally {
+      setIsAiSearching(false);
+    }
+  }
+
   return (
     <section className="app-card backlog-card animate-enter-delay">
       <div className="backlog-toolbar">
@@ -201,6 +262,30 @@ export default function BacklogList({
         </div>
         {headerAction && <div className="backlog-header-action">{headerAction}</div>}
       </div>
+
+      {projectId && (
+        <form className="nl-search-form" onSubmit={handleNlSearch} role="search">
+          <div className="nl-search-wrap">
+            <Icon name="sparkles" size={16} className="nl-search-icon" />
+            <input
+              className="nl-search-input"
+              type="text"
+              placeholder='Search with AI — try "overdue tasks assigned to John" or "high priority bugs"'
+              value={nlInput}
+              onChange={(e) => setNlInput(e.target.value)}
+              disabled={isAiSearching}
+              aria-label="Natural language task search"
+            />
+            {isAiSearching
+              ? <span className="nl-search-spinner" aria-label="Searching…" />
+              : <button type="submit" className="nl-search-btn" disabled={!nlInput.trim()} aria-label="Run AI search">
+                  <Icon name="arrow-right" size={14} />
+                </button>
+            }
+          </div>
+          {aiError && <p className="nl-search-error">{aiError}</p>}
+        </form>
+      )}
 
       <div className="backlog-compact-toolbar">
         <label className="backlog-local-search" aria-label="Search backlog tasks">
@@ -294,12 +379,14 @@ export default function BacklogList({
       </div>}
 
       {hasActiveFilters && <div className="filter-chips">
-        {search && <FilterChip label={`Search: ${search}`} onRemove={() => setSearchParams({})} />}
-        {localSearch && <FilterChip label={`Backlog search: ${localSearch}`} onRemove={() => setLocalSearch('')} />}
-        {statusFilter && <FilterChip label={`Status: ${formatStatus(statusFilter)}`} onRemove={() => setStatusFilter('')} />}
-        {priorityFilter && <FilterChip label={`Priority: ${priorityFilter.toLowerCase()}`} onRemove={() => setPriorityFilter('')} />}
-        {assigneeFilter && <FilterChip label={`Assignee: ${assigneeFilter === '__unassigned__' ? 'Unassigned' : assigneeFilter}`} onRemove={() => setAssigneeFilter('')} />}
-        {labelFilter && <FilterChip label={`Label: ${labelFilter}`} onRemove={() => setLabelFilter('')} />}
+        {aiSearchLabel && <FilterChip label={`AI: ${aiSearchLabel}`} isAi onRemove={clearAiFilters} />}
+        {!aiSearchLabel && search && <FilterChip label={`Search: ${search}`} onRemove={() => setSearchParams({})} />}
+        {!aiSearchLabel && localSearch && <FilterChip label={`Backlog search: ${localSearch}`} onRemove={() => setLocalSearch('')} />}
+        {!aiSearchLabel && statusFilter && <FilterChip label={`Status: ${formatStatus(statusFilter)}`} onRemove={() => setStatusFilter('')} />}
+        {!aiSearchLabel && priorityFilter && <FilterChip label={`Priority: ${priorityFilter.toLowerCase()}`} onRemove={() => setPriorityFilter('')} />}
+        {!aiSearchLabel && assigneeFilter && <FilterChip label={`Assignee: ${assigneeFilter === '__unassigned__' ? 'Unassigned' : assigneeFilter}`} onRemove={() => setAssigneeFilter('')} />}
+        {!aiSearchLabel && labelFilter && <FilterChip label={`Label: ${labelFilter}`} onRemove={() => setLabelFilter('')} />}
+        {!aiSearchLabel && dueBefore && <FilterChip label={`Due before: ${dueBefore}`} onRemove={() => setDueBefore(null)} />}
         <button type="button" className="clear-filters-button" onClick={clearFilters}>Clear all</button>
       </div>}
 
@@ -342,8 +429,15 @@ function getSortValue(task: Task, key: SortKey): string {
   return String(task[key] ?? '');
 }
 
-function FilterChip({ label, onRemove }: { label: string; onRemove: () => void }) {
-  return <span className="filter-chip">{label}<button type="button" onClick={onRemove} aria-label={`Remove ${label} filter`}>&times;</button></span>;
+interface FilterChipProps { label: string; onRemove: () => void; isAi?: boolean; }
+function FilterChip({ label, onRemove, isAi }: FilterChipProps) {
+  return (
+    <span className={`filter-chip${isAi ? ' filter-chip--ai' : ''}`}>
+      {isAi && <Icon name="sparkles" size={12} />}
+      {label}
+      <button type="button" onClick={onRemove} aria-label={`Remove ${label} filter`}>&times;</button>
+    </span>
+  );
 }
 
 interface FilterDropdownProps { label: string; value: string; options: FilterOption[]; onChange: (value: string) => void; }
