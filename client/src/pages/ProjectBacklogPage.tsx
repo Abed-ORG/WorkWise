@@ -1,18 +1,18 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import BacklogList from '../components/BacklogList';
 import CreateTaskModal from '../components/CreateTaskModal';
 import Icon from '../components/Icon';
-import PageHeader from '../components/PageHeader';
 import TaskDetailModal from '../components/TaskDetailModal';
 import { Button, Spinner } from '../components/ui';
 import { useAuth } from '../hooks/useAuth';
 import { useToast } from '../hooks/useToast';
 import { getProjectById } from '../services/projectService';
-import type { Project } from '../services/projectService';
 import { joinProjectRoom, leaveProjectRoom } from '../services/realtimeService';
-import { deleteTask, getProjectTasks } from '../services/taskService';
+import { deleteTask, getProjectTasks, updateTask } from '../services/taskService';
 import type { Task } from '../services/taskService';
+import { queryKeys, queryTimes } from '../services/queryOptions';
 
 function upsertTask(tasks: Task[], nextTask: Task) {
   const exists = tasks.some((task) => task.id === nextTask.id);
@@ -25,23 +25,26 @@ export default function ProjectBacklogPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const toast = useToast();
-  const [project, setProject] = useState<Project | null>(null);
-  const [tasks, setTasks] = useState<Task[]>([]);
-  const [loading, setLoading] = useState(true);
+  const queryClient = useQueryClient();
   const [createOpen, setCreateOpen] = useState(false);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (!projectId) return;
+  const projectQuery = useQuery({
+    queryKey: queryKeys.project(projectId ?? ''),
+    queryFn: () => getProjectById(projectId!),
+    enabled: Boolean(projectId),
+    staleTime: queryTimes.projectDetail,
+  });
+  const tasksQuery = useQuery({
+    queryKey: queryKeys.projectTasks(projectId ?? ''),
+    queryFn: () => getProjectTasks(projectId!),
+    enabled: Boolean(projectId),
+    staleTime: queryTimes.tasks,
+  });
 
-    Promise.all([getProjectById(projectId), getProjectTasks(projectId)])
-      .then(([projectData, taskData]) => {
-        setProject(projectData);
-        setTasks(Array.isArray(taskData) ? taskData : []);
-      })
-      .catch(() => navigate('/projects', { replace: true }))
-      .finally(() => setLoading(false));
-  }, [projectId, navigate]);
+  useEffect(() => {
+    if (projectQuery.isError || tasksQuery.isError) navigate('/projects', { replace: true });
+  }, [navigate, projectQuery.isError, tasksQuery.isError]);
 
   useEffect(() => {
     if (!projectId) return undefined;
@@ -51,13 +54,15 @@ export default function ProjectBacklogPage() {
 
     function handleTaskCreated(task: Task) {
       if (task.projectId === projectId) {
-        setTasks((current) => upsertTask(current, task));
+        queryClient.setQueryData<Task[]>(queryKeys.projectTasks(projectId), (current = []) => upsertTask(current, task));
+        queryClient.setQueryData(queryKeys.task(task.id), task);
       }
     }
 
     function handleTaskUpdated(task: Task) {
       if (task.projectId === projectId) {
-        setTasks((current) => upsertTask(current, task));
+        queryClient.setQueryData<Task[]>(queryKeys.projectTasks(projectId), (current = []) => upsertTask(current, task));
+        queryClient.setQueryData(queryKeys.task(task.id), task);
       }
     }
 
@@ -69,7 +74,11 @@ export default function ProjectBacklogPage() {
       activeSocket.off('task:updated', handleTaskUpdated);
       leaveProjectRoom(projectId);
     };
-  }, [projectId]);
+  }, [projectId, queryClient]);
+
+  const project = projectQuery.data ?? null;
+  const tasks = Array.isArray(tasksQuery.data) ? tasksQuery.data : [];
+  const loading = projectQuery.isLoading || tasksQuery.isLoading;
 
   if (loading) return <div className="empty-panel"><Spinner size="lg" /><p className="mt-4">Opening backlog...</p></div>;
   if (!project || !projectId) return null;
@@ -78,33 +87,73 @@ export default function ProjectBacklogPage() {
   const isAdmin = currentMember?.role === 'ADMIN';
 
   async function handleDeleteSelected(taskIds: string[]) {
+    if (!projectId) return;
+    const previousTasks = tasks;
+    queryClient.setQueryData<Task[]>(queryKeys.projectTasks(projectId), (current = []) => current.filter((task) => !taskIds.includes(task.id)));
     try {
       await Promise.all(taskIds.map(deleteTask));
-      setTasks((current) => current.filter((task) => !taskIds.includes(task.id)));
       toast.success(`${taskIds.length} task${taskIds.length === 1 ? '' : 's'} deleted.`);
     } catch {
+      queryClient.setQueryData(queryKeys.projectTasks(projectId), previousTasks);
       toast.error('One or more tasks could not be deleted.');
+    }
+  }
+
+  async function handleMoveSelectedToBoard(taskIds: string[]) {
+    if (!projectId) return;
+    const previousTasks = tasks;
+    const selectedBacklogIds = new Set(taskIds.filter((taskId) => tasks.some((task) => task.id === taskId && task.status === 'BACKLOG')));
+
+    if (selectedBacklogIds.size === 0) {
+      toast.error('Only backlog tasks can be moved to the board.');
+      return;
+    }
+
+    queryClient.setQueryData<Task[]>(queryKeys.projectTasks(projectId), (current = []) => current.map((task) => (
+      selectedBacklogIds.has(task.id) ? { ...task, status: 'TODO' } : task
+    )));
+
+    try {
+      const updatedTasks = await Promise.all(Array.from(selectedBacklogIds).map((taskId) => updateTask(taskId, { status: 'TODO' })));
+      queryClient.setQueryData<Task[]>(queryKeys.projectTasks(projectId), (current = []) => current.map((task) => updatedTasks.find((updated) => updated.id === task.id) ?? task));
+      updatedTasks.forEach((task) => queryClient.setQueryData(queryKeys.task(task.id), task));
+      toast.success(`${updatedTasks.length} task${updatedTasks.length === 1 ? '' : 's'} moved to To do.`);
+    } catch {
+      queryClient.setQueryData(queryKeys.projectTasks(projectId), previousTasks);
+      toast.error('One or more tasks could not be moved to the board.');
+      throw new Error('Move to board failed');
     }
   }
 
   return (
     <>
       <button type="button" className="back-link" onClick={() => navigate(`/projects/${projectId}`)}><Icon name="arrow-left" size={15} /> Back to project</button>
-      <PageHeader
+      <BacklogList
+        tasks={tasks}
         eyebrow={project.key}
         title="Project backlog"
         description="Create, sort, and prioritize every task in this project."
-        actions={<div className="page-actions">
-          {isAdmin && <Button onClick={() => setCreateOpen(true)}><Icon name="plus" size={16} /> Create task</Button>}
-          <Button variant="secondary" onClick={() => navigate(`/projects/${projectId}/board`)}><Icon name="board" size={16} /> Board</Button>
-          <Button variant="secondary" onClick={() => navigate(`/projects/${projectId}/docs`)}><Icon name="document" size={16} /> Docs</Button>
-        </div>}
+        headerAction={isAdmin ? <Button onClick={() => setCreateOpen(true)}><Icon name="plus" size={16} /> Create task</Button> : undefined}
+        assignees={(project.members ?? []).map((member) => ({
+          id: member.user.id,
+          name: member.user.name,
+          avatarUrl: member.user.avatarUrl,
+        }))}
+        canDelete={isAdmin}
+        onDeleteSelected={handleDeleteSelected}
+        onMoveSelectedToBoard={handleMoveSelectedToBoard}
+        onTaskClick={(task) => setSelectedTaskId(task.id)}
       />
 
-      <BacklogList tasks={tasks} title="Project backlog" description="All tasks belonging to this project." canDelete={isAdmin} onDeleteSelected={handleDeleteSelected} onTaskClick={(task) => setSelectedTaskId(task.id)} />
-
-      <CreateTaskModal isOpen={createOpen} projectId={projectId} members={project.members ?? []} onClose={() => setCreateOpen(false)} onCreated={(task) => { setTasks((current) => upsertTask(current, task)); toast.success('Task created successfully.'); }} />
-      <TaskDetailModal taskId={selectedTaskId} onClose={() => setSelectedTaskId(null)} onTaskUpdated={(task) => setTasks((current) => upsertTask(current, task))} />
+      <CreateTaskModal isOpen={createOpen} projectId={projectId} members={project.members ?? []} onClose={() => setCreateOpen(false)} onCreated={(task) => {
+        queryClient.setQueryData<Task[]>(queryKeys.projectTasks(projectId), (current = []) => upsertTask(current, task));
+        queryClient.setQueryData(queryKeys.task(task.id), task);
+        toast.success('Task created successfully.');
+      }} />
+      <TaskDetailModal taskId={selectedTaskId} onClose={() => setSelectedTaskId(null)} onTaskUpdated={(task) => {
+        queryClient.setQueryData<Task[]>(queryKeys.projectTasks(projectId), (current = []) => upsertTask(current, task));
+        queryClient.setQueryData(queryKeys.task(task.id), task);
+      }} />
     </>
   );
 }

@@ -1,12 +1,13 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import Icon from '../components/Icon';
 import PageHeader from '../components/PageHeader';
 import { Button, Spinner } from '../components/ui';
 import { getProjectById } from '../services/projectService';
-import type { Project } from '../services/projectService';
 import { getProjectActivityFeed } from '../services/activityService';
 import type { ProjectActivity } from '../services/activityService';
+import { queryKeys, queryTimes } from '../services/queryOptions';
 
 const actionLabels: Record<string, string> = {
   TASK_CREATED: 'created a task',
@@ -29,27 +30,35 @@ function formatTime(value: string) {
 export default function ActivityFeedPage() {
   const { projectId } = useParams<{ projectId: string }>();
   const navigate = useNavigate();
-  const [project, setProject] = useState<Project | null>(null);
-  const [activities, setActivities] = useState<ProjectActivity[]>([]);
-  const [loading, setLoading] = useState(true);
+  const queryClient = useQueryClient();
   const [loadingMore, setLoadingMore] = useState(false);
 
+  const projectQuery = useQuery({
+    queryKey: queryKeys.project(projectId ?? ''),
+    queryFn: () => getProjectById(projectId!),
+    enabled: Boolean(projectId),
+    staleTime: queryTimes.projectDetail,
+  });
+  const activitiesQuery = useQuery({
+    queryKey: queryKeys.projectActivity(projectId ?? ''),
+    queryFn: () => getProjectActivityFeed(projectId!),
+    enabled: Boolean(projectId),
+    staleTime: queryTimes.activity,
+  });
+
   useEffect(() => {
-    if (!projectId) return;
-    Promise.all([getProjectById(projectId), getProjectActivityFeed(projectId)])
-      .then(([projectData, activityData]) => {
-        setProject(projectData);
-        setActivities(activityData);
-      })
-      .catch(() => navigate('/projects', { replace: true }))
-      .finally(() => setLoading(false));
-  }, [projectId, navigate]);
+    if (projectQuery.isError || activitiesQuery.isError) navigate('/projects', { replace: true });
+  }, [activitiesQuery.isError, navigate, projectQuery.isError]);
+
+  const project = projectQuery.data ?? null;
+  const activities = Array.isArray(activitiesQuery.data) ? activitiesQuery.data : [];
+  const loading = projectQuery.isLoading || activitiesQuery.isLoading;
 
   async function handleLoadMore() {
     if (!projectId || !activities.length) return;
     setLoadingMore(true);
     const nextActivities = await getProjectActivityFeed(projectId, activities[activities.length - 1].id).catch(() => []);
-    setActivities((current) => [...current, ...nextActivities]);
+    queryClient.setQueryData<ProjectActivity[]>(queryKeys.projectActivity(projectId), (current = []) => [...current, ...nextActivities]);
     setLoadingMore(false);
   }
 

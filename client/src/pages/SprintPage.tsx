@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import axios from 'axios';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import Icon from '../components/Icon';
 import PageHeader from '../components/PageHeader';
 import { Button, Input, Modal, Spinner, Textarea } from '../components/ui';
@@ -16,7 +17,8 @@ import {
   startSprint,
   updateSprintRetrospectiveNotes,
 } from '../services/projectService';
-import type { Project, Sprint, SprintRetrospective } from '../services/projectService';
+import type { Sprint, SprintRetrospective } from '../services/projectService';
+import { queryKeys, queryTimes } from '../services/queryOptions';
 
 function formatDate(dateStr?: string) {
   if (!dateStr) return '—';
@@ -121,9 +123,7 @@ export default function SprintPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const toast = useToast();
-  const [project, setProject] = useState<Project | null>(null);
-  const [sprints, setSprints] = useState<Sprint[]>([]);
-  const [loading, setLoading] = useState(true);
+  const queryClient = useQueryClient();
   const [createOpen, setCreateOpen] = useState(false);
   const [form, setForm] = useState({ name: '', startDate: '', endDate: '', goal: '', activateNow: false });
   const [formError, setFormError] = useState('');
@@ -134,25 +134,51 @@ export default function SprintPage() {
   const [retroSavingId, setRetroSavingId] = useState<string | null>(null);
   const [retroNotes, setRetroNotes] = useState<Record<string, string>>({});
 
+  const projectQuery = useQuery({
+    queryKey: queryKeys.project(projectId ?? ''),
+    queryFn: () => getProjectById(projectId!),
+    enabled: Boolean(projectId),
+    staleTime: queryTimes.projectDetail,
+  });
+  const sprintsQuery = useQuery({
+    queryKey: queryKeys.projectSprints(projectId ?? ''),
+    queryFn: () => getProjectSprints(projectId!),
+    enabled: Boolean(projectId),
+    staleTime: queryTimes.sprints,
+  });
+
   useEffect(() => {
-    if (!projectId) return;
-    Promise.all([getProjectById(projectId), getProjectSprints(projectId)])
-      .then(async ([projectData, sprintData]) => {
-        setProject(projectData);
-        setSprints(sprintData);
-        const pastSprintData = sprintData.filter((sprint) => !sprint.isActive && isPastSprintDate(sprint));
-        const loadedRetros = await Promise.all(
-          pastSprintData.map(async (sprint) => {
-            const retro = await getSprintRetrospective(projectId, sprint.id).catch(() => null);
-            return [sprint.id, retro] as const;
-          })
-        );
-        setRetrospectives(Object.fromEntries(loadedRetros));
-        setRetroNotes(Object.fromEntries(loadedRetros.map(([sprintId, retro]) => [sprintId, retro?.manualNotes ?? ''])));
+    if (projectQuery.isError || sprintsQuery.isError) navigate('/projects', { replace: true });
+  }, [navigate, projectQuery.isError, sprintsQuery.isError]);
+
+  useEffect(() => {
+    if (!projectId || !sprintsQuery.data) return;
+
+    const pastSprintData = sprintsQuery.data.filter((sprint) => !sprint.isActive && isPastSprintDate(sprint));
+    const missingRetros = pastSprintData.filter((sprint) => !(sprint.id in retrospectives));
+    if (missingRetros.length === 0) return;
+
+    let active = true;
+    Promise.all(
+      missingRetros.map(async (sprint) => {
+        const retro = await getSprintRetrospective(projectId, sprint.id).catch(() => null);
+        return [sprint.id, retro] as const;
       })
-      .catch(() => navigate('/projects', { replace: true }))
-      .finally(() => setLoading(false));
-  }, [projectId, navigate]);
+    ).then((loadedRetros) => {
+      if (!active) return;
+      setRetrospectives((current) => ({ ...current, ...Object.fromEntries(loadedRetros) }));
+      setRetroNotes((current) => ({
+        ...current,
+        ...Object.fromEntries(loadedRetros.map(([sprintId, retro]) => [sprintId, retro?.manualNotes ?? ''])),
+      }));
+    });
+
+    return () => { active = false; };
+  }, [projectId, retrospectives, sprintsQuery.data]);
+
+  const project = projectQuery.data ?? null;
+  const sprints = Array.isArray(sprintsQuery.data) ? sprintsQuery.data : [];
+  const loading = projectQuery.isLoading || sprintsQuery.isLoading;
 
   const activeSprints = sprints.filter((s) => s.isActive);
   const isPastSprint = (sprint: Sprint) => isPastSprintDate(sprint);
@@ -197,7 +223,7 @@ export default function SprintPage() {
           goal: form.goal.trim() || undefined,
         });
       }
-      setSprints((current) => [...current, sprint]);
+      queryClient.setQueryData<Sprint[]>(queryKeys.projectSprints(projectId), (current = []) => [...current, sprint]);
       closeModal();
       toast.success(form.activateNow ? 'Sprint started.' : 'Sprint created.');
     } catch (requestError) {
@@ -217,7 +243,7 @@ export default function SprintPage() {
     setDeletingSprintId(sprint.id);
     try {
       await deleteSprint(projectId, sprint.id);
-      setSprints(await getProjectSprints(projectId));
+      queryClient.setQueryData<Sprint[]>(queryKeys.projectSprints(projectId), (current = []) => current.filter((item) => item.id !== sprint.id));
       toast.success('Sprint deleted. Its tasks were moved back to the backlog.');
     } catch (requestError) {
       const message = axios.isAxiosError<{ message?: string }>(requestError)
@@ -236,6 +262,7 @@ export default function SprintPage() {
     try {
       const retrospective = await generateSprintRetrospective(projectId, sprint.id);
       setRetrospectives((current) => ({ ...current, [sprint.id]: retrospective }));
+      queryClient.setQueryData(queryKeys.sprintRetrospective(projectId, sprint.id), retrospective);
       setRetroNotes((current) => ({ ...current, [sprint.id]: retrospective.manualNotes ?? '' }));
       toast.success('Retrospective report generated.');
     } catch (error) {
@@ -252,6 +279,7 @@ export default function SprintPage() {
     try {
       const retrospective = await updateSprintRetrospectiveNotes(projectId, sprint.id, retroNotes[sprint.id] ?? '');
       setRetrospectives((current) => ({ ...current, [sprint.id]: retrospective }));
+      queryClient.setQueryData(queryKeys.sprintRetrospective(projectId, sprint.id), retrospective);
       toast.success('Retrospective notes saved.');
     } catch (error) {
       toast.error(getRequestMessage(error, 'Retrospective notes could not be saved.'));

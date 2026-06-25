@@ -1,14 +1,17 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import * as authService from '../services/authService';
 import type { LoginPayload, RegisterPayload, User } from '../services/authService';
 import { clearStoredAuth, getStoredAuth, setStoredAuth, updateStoredUser } from '../services/authStorage';
 import { getMyProfile } from '../services/userService';
 import { setAuthHandlers } from '../services/apiClient';
+import { queryKeys, queryTimes } from '../services/queryOptions';
 import { AuthContext } from './auth-context';
 import type { AuthContextValue } from './auth-context';
 
 export function AuthProvider({ children }: { children: ReactNode }) {
+  const queryClient = useQueryClient();
   const [initialAuth] = useState(getStoredAuth);
   const [user, setUser] = useState<User | null>(null);
   const [isInitializing, setIsInitializing] = useState(initialAuth !== null);
@@ -46,7 +49,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return () => { active = false; };
     }
 
-    getMyProfile()
+    queryClient.fetchQuery({
+      queryKey: queryKeys.profile,
+      queryFn: getMyProfile,
+      staleTime: queryTimes.profile,
+    })
       .then((profile) => {
         if (!active) return;
         updateUser({
@@ -65,7 +72,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       });
 
     return () => { active = false; };
-  }, [initialAuth, logout, updateUser]);
+  }, [initialAuth, logout, queryClient, updateUser]);
 
   const value = useMemo<AuthContextValue>(
     () => ({ user, isAuthenticated: user !== null, isInitializing, login, register, updateUser, logout }),
