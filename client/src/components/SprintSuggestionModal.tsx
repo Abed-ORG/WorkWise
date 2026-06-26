@@ -1,4 +1,4 @@
-import { useState, type CSSProperties } from 'react';
+import { useState } from 'react';
 import { Button, Modal } from './ui';
 import Icon from './Icon';
 import { moveTaskToSprint } from '../services/taskService';
@@ -13,47 +13,6 @@ interface Props {
   sprintId: string;
   onClose: () => void;
   onAccepted: (updatedTasks: Task[]) => void;
-}
-
-function StatusPill({
-  included,
-  disabled,
-  onClick,
-}: {
-  included: boolean;
-  disabled: boolean;
-  onClick: () => void;
-}) {
-  const style: CSSProperties = {
-    display: 'inline-flex',
-    alignItems: 'center',
-    gap: '5px',
-    padding: '5px 14px',
-    borderRadius: '999px',
-    border: `1.5px solid ${included ? 'var(--success)' : 'var(--danger)'}`,
-    background: included ? 'var(--success-soft)' : 'var(--danger-soft)',
-    color: included ? 'var(--success)' : 'var(--danger)',
-    fontSize: '12px',
-    fontWeight: 750,
-    lineHeight: 1,
-    flexShrink: 0,
-    cursor: disabled ? 'not-allowed' : 'pointer',
-    opacity: disabled ? 0.55 : 1,
-    transition: 'background 0.15s ease, border-color 0.15s ease, color 0.15s ease',
-  };
-  return (
-    <button
-      type="button"
-      style={style}
-      disabled={disabled}
-      onClick={onClick}
-      aria-pressed={included}
-      aria-label={included ? 'Click to skip this task' : 'Click to include this task'}
-    >
-      {included ? <Icon name="check" size={13} /> : <Icon name="close" size={13} />}
-      {included ? 'Adding' : 'Skipping'}
-    </button>
-  );
 }
 
 function priorityLabel(p: string) {
@@ -79,6 +38,7 @@ export default function SprintSuggestionModal({
   const [included, setIncluded] = useState<Set<string>>(
     () => new Set(validItems.map((s) => s.taskId)),
   );
+  const [selectionMode, setSelectionMode] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
   function toggle(taskId: string) {
@@ -90,8 +50,14 @@ export default function SprintSuggestionModal({
     });
   }
 
-  function setAll(value: boolean) {
-    setIncluded(value ? new Set(validItems.map((s) => s.taskId)) : new Set());
+  function startSelection() {
+    setIncluded(new Set(validItems.map((s) => s.taskId)));
+    setSelectionMode(true);
+  }
+
+  function cancelSelection() {
+    setIncluded(new Set(validItems.map((s) => s.taskId)));
+    setSelectionMode(false);
   }
 
   async function handleAccept() {
@@ -147,26 +113,16 @@ export default function SprintSuggestionModal({
               of {validItems.length} suggested task{validItems.length !== 1 ? 's' : ''} will be added.
               Workload is measured by task count — no estimates available.
             </p>
-            <div className="flex items-center gap-3">
-              <button
-                type="button"
-                className="text-link"
-                style={{ fontSize: '12px' }}
-                onClick={() => setAll(true)}
-                disabled={submitting}
-              >
-                Add all
-              </button>
+            <Button
+              variant={selectionMode ? 'ghost' : 'secondary'}
+              className="sprint-suggestion-select-btn"
+              onClick={selectionMode ? cancelSelection : startSelection}
+              disabled={submitting}
+            >
+              {selectionMode ? 'Cancel selection' : 'Select'}
+            </Button>
+            <div className="sprint-suggestion-hidden-actions" hidden>
               <span className="field-help" aria-hidden="true">·</span>
-              <button
-                type="button"
-                className="text-link"
-                style={{ fontSize: '12px' }}
-                onClick={() => setAll(false)}
-                disabled={submitting}
-              >
-                Skip all
-              </button>
             </div>
           </div>
 
@@ -178,9 +134,18 @@ export default function SprintSuggestionModal({
               return (
                 <div
                   key={item.taskId}
-                  className="sprint-suggestion-row"
-                  style={{ opacity: isIncluded ? 1 : 0.5 }}
+                  className={`sprint-suggestion-row${selectionMode && isIncluded ? ' is-selected' : ''}`}
                 >
+                  {selectionMode && (
+                    <input
+                      className="themed-checkbox"
+                      type="checkbox"
+                      checked={isIncluded}
+                      disabled={submitting}
+                      onChange={() => toggle(item.taskId)}
+                      aria-label={`Select ${task.title}`}
+                    />
+                  )}
                   <div className="sprint-suggestion-row-main">
                     <span
                       className={`task-priority-dot priority-${task.priority.toLowerCase()}`}
@@ -202,11 +167,6 @@ export default function SprintSuggestionModal({
                       <span className="sprint-suggestion-reason">{item.reason}</span>
                     </div>
                   </div>
-                  <StatusPill
-                    included={isIncluded}
-                    disabled={submitting}
-                    onClick={() => toggle(item.taskId)}
-                  />
                 </div>
               );
             })}
@@ -219,12 +179,12 @@ export default function SprintSuggestionModal({
         <div />
         <div className="flex gap-3">
           <Button variant="secondary" onClick={onClose} disabled={submitting}>
-            Dismiss
+            Cancel
           </Button>
           {validItems.length > 0 && (
             <Button onClick={handleAccept} loading={submitting} disabled={addCount === 0}>
               <Icon name="plus" size={15} />
-              {addCount > 0 ? `Add ${addCount} to sprint` : 'Add to sprint'}
+              Add {addCount} to sprint
             </Button>
           )}
         </div>

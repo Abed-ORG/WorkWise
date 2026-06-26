@@ -20,6 +20,19 @@ export const createComment = async (
     throw new NotFoundError("Task not found");
   }
 
+  const member = await prisma.projectMember.findUnique({
+    where: {
+      userId_projectId: {
+        userId: authorId,
+        projectId: task.projectId,
+      },
+    },
+  });
+
+  if (!member) {
+    throw new NotFoundError("Task not found");
+  }
+
   const comment = await prisma.comment.create({
     data: {
       taskId,
