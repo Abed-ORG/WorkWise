@@ -4,7 +4,7 @@ import DocumentLinkPicker from './DocumentLinkPicker';
 import Icon from './Icon';
 import { Button, Modal, Select, Spinner } from './ui';
 import { getProjectById } from '../services/projectService';
-import { getTaskById, updateTask, updateTaskDocuments } from '../services/taskService';
+import { createTaskComment, getTaskById, updateTask, updateTaskDocuments } from '../services/taskService';
 import type { Task, TaskStatus } from '../services/taskService';
 import { generateAcceptanceCriteria } from '../services/aiService';
 import type { ProjectDocument, ProjectMember } from '../services/projectService';
@@ -32,6 +32,10 @@ function toDateInputValue(date?: string | null) {
   const parsed = new Date(date);
   if (Number.isNaN(parsed.getTime())) return '';
   return parsed.toISOString().slice(0, 10);
+}
+
+function dateInputToTaskDate(value: string) {
+  return value ? new Date(`${value}T12:00:00.000Z`).toISOString() : null;
 }
 
 function createCriterion(text = '', done = false): AcceptanceCriterion {
@@ -64,6 +68,20 @@ function serializeAcceptanceCriteria(items: AcceptanceCriterion[]) {
   return cleaned.length ? JSON.stringify(cleaned) : '';
 }
 
+function getCriterionRows(text: string) {
+  const wrappedRows = text.split('\n').reduce((count, line) => count + Math.max(1, Math.ceil(line.length / 76)), 0);
+  return Math.max(2, wrappedRows);
+}
+
+function formatCommentDate(value: string) {
+  return new Intl.DateTimeFormat(undefined, {
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  }).format(new Date(value));
+}
+
 const statusOptions = [
   { value: 'BACKLOG', label: 'Backlog' },
   { value: 'TODO', label: 'To do' },
@@ -81,9 +99,15 @@ export default function TaskDetailModal({ taskId, onClose, onTaskUpdated }: Task
   const [savingDescription, setSavingDescription] = useState(false);
   const [descriptionMessage, setDescriptionMessage] = useState('');
   const [acceptanceCriteriaItems, setAcceptanceCriteriaItems] = useState<AcceptanceCriterion[]>([]);
+  const [acceptanceCriteriaDirty, setAcceptanceCriteriaDirty] = useState(false);
+  const [lastSavedAcceptanceCriteria, setLastSavedAcceptanceCriteria] = useState('');
   const [savingAcceptanceCriteria, setSavingAcceptanceCriteria] = useState(false);
   const [generatingCriteria, setGeneratingCriteria] = useState(false);
   const [acceptanceCriteriaMessage, setAcceptanceCriteriaMessage] = useState('');
+  const [commentsView, setCommentsView] = useState<'comments' | 'activity'>('comments');
+  const [commentDraft, setCommentDraft] = useState('');
+  const [postingComment, setPostingComment] = useState(false);
+  const [commentMessage, setCommentMessage] = useState('');
   const [savingStatus, setSavingStatus] = useState(false);
   const [statusMessage, setStatusMessage] = useState('');
   const [savingDetails, setSavingDetails] = useState(false);
@@ -119,8 +143,14 @@ export default function TaskDetailModal({ taskId, onClose, onTaskUpdated }: Task
     setLinkedDocuments(taskQuery.data.documents ?? []);
     setDescriptionDraft(taskQuery.data.description ?? '');
     setDescriptionMessage('');
-    setAcceptanceCriteriaItems(parseAcceptanceCriteria(taskQuery.data.acceptanceCriteria));
+    const parsedCriteria = parseAcceptanceCriteria(taskQuery.data.acceptanceCriteria);
+    setAcceptanceCriteriaItems(parsedCriteria);
+    setLastSavedAcceptanceCriteria(serializeAcceptanceCriteria(parsedCriteria));
+    setAcceptanceCriteriaDirty(false);
     setAcceptanceCriteriaMessage('');
+    setCommentDraft('');
+    setCommentMessage('');
+    setCommentsView('comments');
     setStatusMessage('');
     setDetailsMessage('');
   }, [taskQuery.data]);
@@ -187,7 +217,10 @@ export default function TaskDetailModal({ taskId, onClose, onTaskUpdated }: Task
     if (!taskId || !task) return;
 
     const nextValue = serializeAcceptanceCriteria(nextItems);
-    if (nextValue === (task.acceptanceCriteria ?? '')) return;
+    if (nextValue === lastSavedAcceptanceCriteria) {
+      setAcceptanceCriteriaDirty(false);
+      return;
+    }
 
     setSavingAcceptanceCriteria(true);
     setAcceptanceCriteriaMessage('');
@@ -199,7 +232,10 @@ export default function TaskDetailModal({ taskId, onClose, onTaskUpdated }: Task
     try {
       const updatedTask = await updateTask(taskId, { acceptanceCriteria: nextValue });
       cacheTask({ ...optimisticTask, ...updatedTask });
-      setAcceptanceCriteriaItems(parseAcceptanceCriteria(updatedTask.acceptanceCriteria));
+      const savedItems = parseAcceptanceCriteria(updatedTask.acceptanceCriteria);
+      setAcceptanceCriteriaItems(savedItems);
+      setLastSavedAcceptanceCriteria(serializeAcceptanceCriteria(savedItems));
+      setAcceptanceCriteriaDirty(false);
       setAcceptanceCriteriaMessage('Saved');
     } catch {
       cacheTask(previousTask);
@@ -253,8 +289,8 @@ export default function TaskDetailModal({ taskId, onClose, onTaskUpdated }: Task
 
   async function updateDueDate(dueDate: string) {
     if (!taskId || !task) return;
-    const nextDueDate = dueDate || null;
-    if ((toDateInputValue(task.dueDate) || null) === nextDueDate) return;
+    const nextDueDate = dateInputToTaskDate(dueDate);
+    if ((toDateInputValue(task.dueDate) || null) === (dueDate || null)) return;
 
     setSavingDetails(true);
     setDetailsMessage('');
@@ -274,16 +310,19 @@ export default function TaskDetailModal({ taskId, onClose, onTaskUpdated }: Task
 
   function updateCriterion(id: string, patch: Partial<AcceptanceCriterion>) {
     setAcceptanceCriteriaItems((current) => current.map((item) => item.id === id ? { ...item, ...patch } : item));
+    setAcceptanceCriteriaDirty(true);
     setAcceptanceCriteriaMessage('');
   }
 
   function deleteCriterion(id: string) {
     setAcceptanceCriteriaItems((current) => current.filter((item) => item.id !== id));
+    setAcceptanceCriteriaDirty(true);
     setAcceptanceCriteriaMessage('');
   }
 
   function addCriterion() {
     setAcceptanceCriteriaItems((current) => [...current, createCriterion()]);
+    setAcceptanceCriteriaDirty(true);
     setAcceptanceCriteriaMessage('');
   }
 
@@ -297,10 +336,31 @@ export default function TaskDetailModal({ taskId, onClose, onTaskUpdated }: Task
       setAcceptanceCriteriaItems((current) =>
         current.length > 0 ? [...current, ...newItems] : newItems
       );
+      setAcceptanceCriteriaDirty(true);
     } catch {
       setAcceptanceCriteriaMessage('Could not generate criteria');
     } finally {
       setGeneratingCriteria(false);
+    }
+  }
+
+  async function postComment() {
+    const content = commentDraft.trim();
+    if (!taskId || !task || !content) return;
+
+    setPostingComment(true);
+    setCommentMessage('');
+    try {
+      await createTaskComment(taskId, content);
+      const refreshedTask = await getTaskById(taskId);
+      cacheTask(refreshedTask);
+      setCommentDraft('');
+      setCommentMessage('Posted');
+      await queryClient.invalidateQueries({ queryKey: queryKeys.projectActivity(task.projectId) });
+    } catch {
+      setCommentMessage('Could not post comment');
+    } finally {
+      setPostingComment(false);
     }
   }
 
@@ -363,11 +423,12 @@ export default function TaskDetailModal({ taskId, onClose, onTaskUpdated }: Task
                         onChange={(event) => updateCriterion(item.id, { done: event.target.checked })}
                         aria-label="Mark acceptance criterion complete"
                       />
-                      <input
+                      <textarea
                         className="acceptance-checklist-input"
                         value={item.text}
                         disabled={savingAcceptanceCriteria || generatingCriteria}
                         onChange={(event) => updateCriterion(item.id, { text: event.target.value })}
+                        rows={getCriterionRows(item.text)}
                         placeholder="Criterion"
                       />
                       <button type="button" className="icon-button acceptance-delete-button" onClick={() => deleteCriterion(item.id)} disabled={savingAcceptanceCriteria || generatingCriteria} aria-label="Delete criterion">
@@ -388,16 +449,72 @@ export default function TaskDetailModal({ taskId, onClose, onTaskUpdated }: Task
                   >
                     Generate with AI
                   </Button>
-                  <Button onClick={() => saveAcceptanceCriteria()} loading={savingAcceptanceCriteria} disabled={generatingCriteria}>Save criteria</Button>
+                  {acceptanceCriteriaDirty && (
+                    <Button onClick={() => saveAcceptanceCriteria()} loading={savingAcceptanceCriteria} disabled={savingAcceptanceCriteria || generatingCriteria}>Save criteria</Button>
+                  )}
                 </div>
               </section>
 
               <section className="task-detail-section">
-                <h3>Comments and activity</h3>
-                <div className="activity-summary">
-                  <span><Icon name="document" size={15} /> {task.comments?.length ?? 0} comments</span>
-                  <span><Icon name="activity" size={15} /> {task.activities?.length ?? 0} activity events</span>
+                <div className="task-detail-section-heading">
+                  <h3>Comments and activity</h3>
+                  <span>{postingComment ? 'Posting...' : commentMessage}</span>
                 </div>
+                <div className="task-detail-tabs" role="tablist" aria-label="Task discussion">
+                  <button type="button" className={commentsView === 'comments' ? 'is-active' : ''} onClick={() => setCommentsView('comments')} role="tab" aria-selected={commentsView === 'comments'}>Comments ({task.comments?.length ?? 0})</button>
+                  <button type="button" className={commentsView === 'activity' ? 'is-active' : ''} onClick={() => setCommentsView('activity')} role="tab" aria-selected={commentsView === 'activity'}>Activity ({task.activities?.length ?? 0})</button>
+                </div>
+                {commentsView === 'comments' ? (
+                  <div className="task-comments-panel">
+                    <div className="task-comment-list">
+                      {task.comments?.length ? task.comments.map((comment) => (
+                        <article className="task-comment" key={comment.id}>
+                          <div className="task-comment-avatar">{comment.author.name.slice(0, 2).toUpperCase()}</div>
+                          <div className="task-comment-body">
+                            <div className="task-comment-meta">
+                              <strong>{comment.author.name}</strong>
+                              <time>{formatCommentDate(comment.createdAt)}</time>
+                            </div>
+                            <p>{comment.content}</p>
+                          </div>
+                        </article>
+                      )) : (
+                        <div className="document-link-empty">No comments yet.</div>
+                      )}
+                    </div>
+                    <div className="task-comment-composer">
+                      <textarea
+                        className="task-description-field task-comment-input"
+                        value={commentDraft}
+                        onChange={(event) => {
+                          setCommentDraft(event.target.value);
+                          setCommentMessage('');
+                        }}
+                        disabled={postingComment}
+                        rows={3}
+                        placeholder="Write a comment..."
+                      />
+                      <div className="task-comment-actions">
+                        <Button onClick={postComment} loading={postingComment} disabled={postingComment || !commentDraft.trim()}>Post comment</Button>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="task-activity-list">
+                    {task.activities?.length ? task.activities.map((activity) => (
+                      <article className="task-activity-item" key={activity.id}>
+                        <span><Icon name="activity" size={13} /></span>
+                        <div>
+                          <strong>{activity.action.replaceAll('_', ' ').toLowerCase()}</strong>
+                          {activity.details && <p>{activity.details}</p>}
+                          <time>{formatCommentDate(activity.createdAt)} by {activity.user.name}</time>
+                        </div>
+                      </article>
+                    )) : (
+                      <div className="document-link-empty">No activity yet.</div>
+                    )}
+                  </div>
+                )}
               </section>
             </main>
 

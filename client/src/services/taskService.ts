@@ -101,6 +101,11 @@ export async function updateTask(taskId: string, payload: Partial<Pick<Task, 'ti
   return response.data.data;
 }
 
+export async function createTaskComment(taskId: string, content: string): Promise<TaskComment> {
+  const response = await apiClient.post(`/tasks/${taskId}/comments`, { content });
+  return response.data.data;
+}
+
 export async function deleteTask(taskId: string): Promise<void> {
   await apiClient.delete(`/tasks/${taskId}`);
 }

@@ -1,4 +1,4 @@
-import { useState, type FormEvent, type CSSProperties } from 'react';
+import { useState, type FormEvent } from 'react';
 import { Button, Modal, Textarea } from './ui';
 import Icon from './Icon';
 import { generateTaskBreakdown } from '../services/aiService';
@@ -22,48 +22,6 @@ interface EditableSuggestion {
   included: boolean;
 }
 
-// Pill toggle that uses the app's success/danger CSS vars — no new library.
-function StatusPill({
-  included,
-  disabled,
-  onClick,
-}: {
-  included: boolean;
-  disabled: boolean;
-  onClick: () => void;
-}) {
-  const style: CSSProperties = {
-    display: 'inline-flex',
-    alignItems: 'center',
-    gap: '5px',
-    padding: '5px 14px',
-    borderRadius: '999px',
-    border: `1.5px solid ${included ? 'var(--success)' : 'var(--danger)'}`,
-    background: included ? 'var(--success-soft)' : 'var(--danger-soft)',
-    color: included ? 'var(--success)' : 'var(--danger)',
-    fontSize: '12px',
-    fontWeight: 750,
-    lineHeight: 1,
-    flexShrink: 0,
-    cursor: disabled ? 'not-allowed' : 'pointer',
-    opacity: disabled ? 0.55 : 1,
-    transition: 'background 0.15s ease, border-color 0.15s ease, color 0.15s ease',
-  };
-  return (
-    <button
-      type="button"
-      style={style}
-      disabled={disabled}
-      onClick={onClick}
-      aria-pressed={included}
-      aria-label={included ? 'Click to skip this task' : 'Click to keep this task'}
-    >
-      {included ? <Icon name="check" size={13} /> : <Icon name="close" size={13} />}
-      {included ? 'Keeping' : 'Skipping'}
-    </button>
-  );
-}
-
 export default function AITaskBreakdownModal({ isOpen, projectId, onClose, onTasksCreated }: Props) {
   const toast = useToast();
   const [step, setStep] = useState<'input' | 'review'>('input');
@@ -73,6 +31,7 @@ export default function AITaskBreakdownModal({ isOpen, projectId, onClose, onTas
   const [generating, setGenerating] = useState(false);
   const [generateError, setGenerateError] = useState('');
   const [suggestions, setSuggestions] = useState<EditableSuggestion[]>([]);
+  const [selectionMode, setSelectionMode] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
   function handleClose() {
@@ -83,6 +42,7 @@ export default function AITaskBreakdownModal({ isOpen, projectId, onClose, onTas
     setDescriptionError('');
     setGenerateError('');
     setSuggestions([]);
+    setSelectionMode(false);
     onClose();
   }
 
@@ -107,6 +67,7 @@ export default function AITaskBreakdownModal({ isOpen, projectId, onClose, onTas
           included: true,
         })),
       );
+      setSelectionMode(false);
       setStep('review');
     } catch {
       setGenerateError('Could not generate tasks. Check your connection and try again.');
@@ -121,8 +82,14 @@ export default function AITaskBreakdownModal({ isOpen, projectId, onClose, onTas
     );
   }
 
-  function setAllIncluded(included: boolean) {
-    setSuggestions((current) => current.map((s) => ({ ...s, included })));
+  function startSelection() {
+    setSuggestions((current) => current.map((s) => ({ ...s, included: true })));
+    setSelectionMode(true);
+  }
+
+  function cancelSelection() {
+    setSuggestions((current) => current.map((s) => ({ ...s, included: true })));
+    setSelectionMode(false);
   }
 
   function updateTitle(index: number, value: string) {
@@ -146,7 +113,7 @@ export default function AITaskBreakdownModal({ isOpen, projectId, onClose, onTas
   async function handleAddToBacklog() {
     const toCreate = suggestions.filter((s) => s.included && s.title.trim());
     if (toCreate.length === 0) {
-      toast.error('Keep at least one task before adding to the backlog.');
+      toast.error('Select at least one task before adding to the backlog.');
       return;
     }
     setSubmitting(true);
@@ -240,72 +207,69 @@ export default function AITaskBreakdownModal({ isOpen, projectId, onClose, onTas
               <strong style={{ color: 'var(--text)' }}>{keptCount}</strong>{' '}
               of {suggestions.length} tasks will be added — edit anything before confirming.
             </p>
-            <div className="flex items-center gap-3">
-              <button
-                type="button"
-                className="text-link"
-                style={{ fontSize: '12px' }}
-                onClick={() => setAllIncluded(true)}
-                disabled={submitting}
-              >
-                Keep all
-              </button>
-              <span className="field-help" aria-hidden="true">·</span>
-              <button
-                type="button"
-                className="text-link"
-                style={{ fontSize: '12px' }}
-                onClick={() => setAllIncluded(false)}
-                disabled={submitting}
-              >
-                Skip all
-              </button>
-            </div>
+            <Button
+              variant={selectionMode ? 'ghost' : 'secondary'}
+              className="ai-breakdown-select-btn"
+              onClick={selectionMode ? cancelSelection : startSelection}
+              disabled={submitting}
+            >
+              {selectionMode ? 'Cancel selection' : 'Select'}
+            </Button>
           </div>
 
           {/* Suggestion cards */}
           <div className="flex flex-col gap-6">
             {suggestions.map((suggestion, index) => {
-              const cardStyle: CSSProperties = suggestion.included
-                ? {}
-                : { opacity: 0.52 };
+              const isSelected = suggestion.included;
+              const cardClassName = [
+                'app-card',
+                'card-padding',
+                'ai-breakdown-card',
+                selectionMode ? 'is-selection-mode' : '',
+                selectionMode && isSelected ? 'is-selected' : '',
+              ].filter(Boolean).join(' ');
 
               return (
-                <div key={index} className="app-card card-padding" style={cardStyle}>
-                  {/* Card header: priority + estimate + keep/skip toggle */}
-                  <div className="flex items-center justify-between gap-4 mb-4">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span
-                        className={`task-priority-dot priority-${suggestion.original.priority.toLowerCase()}`}
-                        aria-hidden="true"
-                      />
-                      <span className="task-priority-label">
-                        {suggestion.original.priority.toLowerCase()}
-                      </span>
-                      <span className="field-help" aria-hidden="true">·</span>
-                      <span className="field-help">~{suggestion.original.estimatedHours}h estimated</span>
-                    </div>
-                    <StatusPill
-                      included={suggestion.included}
-                      disabled={submitting}
-                      onClick={() => toggleIncluded(index)}
-                    />
-                  </div>
-
-                  {/* Editable title */}
-                  <div className="field mb-3">
-                    <label htmlFor={`ai-title-${index}`} className="field-label">
-                      Title
-                    </label>
+                <div key={index} className={cardClassName}>
+                  {selectionMode && (
                     <input
-                      id={`ai-title-${index}`}
-                      className="field-control"
-                      value={suggestion.title}
-                      onChange={(e) => updateTitle(index, e.target.value)}
-                      disabled={!suggestion.included || submitting}
-                      maxLength={200}
+                      className="themed-checkbox ai-breakdown-card-checkbox"
+                      type="checkbox"
+                      checked={isSelected}
+                      onChange={() => toggleIncluded(index)}
+                      disabled={submitting}
+                      aria-label={`Select ${suggestion.title || `generated task ${index + 1}`}`}
                     />
-                  </div>
+                  )}
+                  <div className="ai-breakdown-card-body">
+                    {/* Card header: priority + estimate */}
+                    <div className="flex items-center justify-between gap-4 mb-4">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span
+                          className={`task-priority-dot priority-${suggestion.original.priority.toLowerCase()}`}
+                          aria-hidden="true"
+                        />
+                        <span className="task-priority-label">
+                          {suggestion.original.priority.toLowerCase()}
+                        </span>
+                        <span className="field-help">~{suggestion.original.estimatedHours}h estimated</span>
+                      </div>
+                    </div>
+
+                    {/* Editable title */}
+                    <div className="field mb-3">
+                      <label htmlFor={`ai-title-${index}`} className="field-label">
+                        Title
+                      </label>
+                      <input
+                        id={`ai-title-${index}`}
+                        className="field-control"
+                        value={suggestion.title}
+                        onChange={(e) => updateTitle(index, e.target.value)}
+                        disabled={submitting}
+                        maxLength={200}
+                      />
+                    </div>
 
                   {/* Editable description */}
                   <div className="field mb-3">
@@ -318,7 +282,7 @@ export default function AITaskBreakdownModal({ isOpen, projectId, onClose, onTas
                       value={suggestion.description}
                       onChange={(e) => updateDescription(index, e.target.value)}
                       rows={3}
-                      disabled={!suggestion.included || submitting}
+                      disabled={submitting}
                       maxLength={4000}
                     />
                   </div>
@@ -334,10 +298,11 @@ export default function AITaskBreakdownModal({ isOpen, projectId, onClose, onTas
                       value={suggestion.criteria.join('\n')}
                       onChange={(e) => updateCriteria(index, e.target.value.split('\n'))}
                       rows={Math.max(2, suggestion.criteria.length + 1)}
-                      disabled={!suggestion.included || submitting}
+                      disabled={submitting}
                       placeholder="One criterion per line…"
                     />
                     <p className="field-help">One criterion per line.</p>
+                  </div>
                   </div>
                 </div>
               );
@@ -360,7 +325,7 @@ export default function AITaskBreakdownModal({ isOpen, projectId, onClose, onTas
                 disabled={keptCount === 0}
               >
                 <Icon name="plus" size={16} />
-                {keptCount > 0 ? `Add ${keptCount} to backlog` : 'Add to backlog'}
+                Add {keptCount} {keptCount === 1 ? 'task' : 'tasks'}
               </Button>
             </div>
           </div>

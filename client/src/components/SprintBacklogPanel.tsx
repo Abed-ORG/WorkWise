@@ -293,6 +293,18 @@ export default function SprintBacklogPanel({
             </div>
           ) : (
             <>
+              <div className="sprint-ai-helper-row">
+                <Button
+                  variant="secondary"
+                  className="sprint-suggest-btn"
+                  disabled={suggesting}
+                  onClick={handleSuggest}
+                  title="Ask AI to suggest tasks for this sprint"
+                >
+                  {suggesting ? <Spinner size="sm" /> : <Icon name="sparkles" size={14} />}
+                  {suggesting ? 'Suggesting...' : 'Suggest tasks with AI'}
+                </Button>
+              </div>
               <label className="sprint-task-search" aria-label="Search product backlog tasks">
                 <Icon name="search" size={14} />
                 <input
