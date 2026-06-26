@@ -143,6 +143,7 @@ export default function ProjectBacklogPage() {
         onDeleteSelected={handleDeleteSelected}
         onMoveSelectedToBoard={handleMoveSelectedToBoard}
         onTaskClick={(task) => setSelectedTaskId(task.id)}
+        projectId={projectId}
       />
 
       <CreateTaskModal isOpen={createOpen} projectId={projectId} members={project.members ?? []} onClose={() => setCreateOpen(false)} onCreated={(task) => {

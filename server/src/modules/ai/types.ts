@@ -26,3 +26,30 @@ export interface AcceptanceCriteriaResult {
   acceptanceCriteria: string[];
 }
 
+export interface TaskSearchInput {
+  query: string;
+  projectId: string;
+}
+
+export interface TaskSearchFilters {
+  status: "BACKLOG" | "TODO" | "IN_PROGRESS" | "IN_REVIEW" | "DONE" | null;
+  priority: "LOW" | "MEDIUM" | "HIGH" | "URGENT" | null;
+  assigneeName: string | null;
+  dueBefore: string | null;
+  dueAfter: string | null;
+  label: string | null;
+  titleKeyword: string | null;
+}
+
+export interface SprintRiskResult {
+  riskLevel: "low" | "medium" | "high";
+  summary: string;
+  risks: Array<{ title: string; explanation: string }>;
+  suggestions: string[];
+}
+
+export interface SprintSuggestionResult {
+  reasoning: string;
+  suggestions: Array<{ taskId: string; reason: string }>;
+}
+

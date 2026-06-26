@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import axios from 'axios';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import ReactMarkdown from 'react-markdown';
 import { useNavigate, useParams } from 'react-router-dom';
 import AITaskBreakdownModal from '../components/AITaskBreakdownModal';
 import CreateTaskModal from '../components/CreateTaskModal';
@@ -192,9 +193,7 @@ export default function ProjectOverviewPage() {
               </div>
               <h3>{digests[0].title}</h3>
               <div className="digest-summary">
-                {digests[0].summary.split('\n').filter(Boolean).map((line, index) => (
-                  <p key={`${line}-${index}`}>{line}</p>
-                ))}
+                <ReactMarkdown>{digests[0].summary}</ReactMarkdown>
               </div>
               <div className="digest-stats">
                 <span>{digests[0].completedCount} completed</span>

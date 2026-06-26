@@ -37,7 +37,7 @@ export interface CreateTaskInput {
   acceptanceCriteria?: string;
   priority?: TaskPriority;
   labels?: string[];
-  dueDate?: string;
+  dueDate?: string | null;
   projectId: string;
   sprintId?: string;
   assigneeId?: string;
@@ -89,7 +89,7 @@ export const createTask = async (input: CreateTaskInput) => {
       priority: input.priority ?? TaskPriority.MEDIUM,
       status: TaskStatus.BACKLOG,
       labels: input.labels ?? [],
-      dueDate: input.dueDate ? new Date(input.dueDate) : undefined,
+      dueDate: input.dueDate === undefined ? undefined : input.dueDate ? new Date(input.dueDate) : null,
       projectId: input.projectId,
       sprintId: input.sprintId,
       assigneeId: input.assigneeId,
@@ -333,7 +333,7 @@ export const updateTask = async (
       status: input.status,
       priority: input.priority,
       labels: input.labels,
-      dueDate: input.dueDate ? new Date(input.dueDate) : undefined,
+      dueDate: input.dueDate === undefined ? undefined : input.dueDate ? new Date(input.dueDate) : null,
       assigneeId: input.assigneeId,
       sprintId: input.sprintId,
       ...(input.order !== undefined && { order: input.order }),

@@ -14,6 +14,8 @@ import { getProjectTasks } from '../services/taskService';
 import type { Task } from '../services/taskService';
 import { queryKeys, queryTimes } from '../services/queryOptions';
 import { buildBurndownData } from '../utils/projectAnalytics';
+import { getSprintRisk } from '../services/aiService';
+import type { SprintRiskResult } from '../services/aiService';
 
 type Tab = 'board' | 'backlog';
 
@@ -35,6 +37,10 @@ export default function SprintBoardPage() {
 
   const [activeTab, setActiveTab] = useState<Tab>('board');
   const [completeOpen, setCompleteOpen] = useState(false);
+  const [riskResult, setRiskResult] = useState<SprintRiskResult | null>(null);
+  const [riskLoading, setRiskLoading] = useState(false);
+  const [riskPanelOpen, setRiskPanelOpen] = useState(false);
+  const [riskError, setRiskError] = useState<string | null>(null);
 
   const projectQuery = useQuery({
     queryKey: queryKeys.project(projectId ?? ''),
@@ -83,6 +89,21 @@ export default function SprintBoardPage() {
   const days = daysRemaining(sprint.endDate);
   const burndownPoints = buildBurndownData(sprint, allTasks);
 
+  async function handleAnalyzeRisk() {
+    if (!projectId || !sprintId || riskLoading) return;
+    setRiskLoading(true);
+    setRiskError(null);
+    try {
+      const result = await getSprintRisk(projectId, sprintId);
+      setRiskResult(result);
+      setRiskPanelOpen(true);
+    } catch {
+      setRiskError('Could not complete risk analysis. Please try again.');
+    } finally {
+      setRiskLoading(false);
+    }
+  }
+
   function handleSprintCompleted() {
     setCompleteOpen(false);
     toast.success('Sprint completed. Tasks have been moved and the sprint is now in history.');
@@ -122,6 +143,80 @@ export default function SprintBoardPage() {
             <p>{sprint.goal}</p>
           </div>
         )}
+
+        {/* Risk analysis */}
+        <div className="sprint-risk-section">
+          {!riskResult && !riskLoading && (
+            <div className="sprint-risk-idle">
+              <Button variant="secondary" onClick={handleAnalyzeRisk}>
+                <Icon name="sparkles" size={14} /> Analyze sprint risk
+              </Button>
+              {riskError && <p className="sprint-risk-error">{riskError}</p>}
+            </div>
+          )}
+
+          {riskLoading && (
+            <div className="sprint-risk-loading">
+              <Spinner size="sm" />
+              <span>Analyzing sprint risk…</span>
+            </div>
+          )}
+
+          {riskResult && !riskLoading && (
+            <div className="sprint-risk-result">
+              <div className="sprint-risk-result-row">
+                <span className={`risk-badge risk-badge--${riskResult.riskLevel}`}>
+                  {riskResult.riskLevel === 'low' ? 'Low risk' : riskResult.riskLevel === 'medium' ? 'Medium risk' : 'High risk'}
+                </span>
+                <p className="sprint-risk-summary">{riskResult.summary}</p>
+              </div>
+              <div className="sprint-risk-controls">
+                <button
+                  type="button"
+                  className="sprint-risk-toggle"
+                  onClick={() => setRiskPanelOpen((prev) => !prev)}
+                >
+                  {riskPanelOpen ? 'Hide details' : 'View details'}
+                  <Icon name="chevron-down" size={13} className={riskPanelOpen ? 'sort-ascending' : ''} />
+                </button>
+                <button type="button" className="sprint-risk-rerun" onClick={handleAnalyzeRisk}>
+                  <Icon name="sparkles" size={12} /> Re-analyze
+                </button>
+              </div>
+
+              {riskPanelOpen && (
+                <div className="sprint-risk-detail">
+                  {riskResult.risks.length > 0 && (
+                    <div className="sprint-risk-block">
+                      <p className="sprint-risk-block-label">Flagged risks</p>
+                      <ul className="sprint-risk-list">
+                        {riskResult.risks.map((risk, i) => (
+                          <li key={i} className="sprint-risk-item">
+                            <strong>{risk.title}</strong>
+                            <span>{risk.explanation}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  {riskResult.suggestions.length > 0 && (
+                    <div className="sprint-risk-block">
+                      <p className="sprint-risk-block-label">Suggested adjustments</p>
+                      <ul className="sprint-risk-list sprint-risk-list--suggestions">
+                        {riskResult.suggestions.map((s, i) => (
+                          <li key={i}>{s}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  {riskResult.risks.length === 0 && riskResult.suggestions.length === 0 && (
+                    <p className="sprint-risk-empty">No specific issues flagged — sprint looks healthy.</p>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
       </div>
 
       <section className="app-card card-padding sprint-burndown-card">

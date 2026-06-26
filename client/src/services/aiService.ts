@@ -37,6 +37,57 @@ export async function generateAcceptanceCriteria(
   return response.data.data;
 }
 
+export interface SprintSuggestionItem {
+  taskId: string;
+  reason: string;
+}
+
+export interface SprintSuggestionResult {
+  reasoning: string;
+  suggestions: SprintSuggestionItem[];
+}
+
+export async function getSprintSuggestion(
+  projectId: string,
+  sprintId: string,
+): Promise<SprintSuggestionResult> {
+  const response = await apiClient.post('/api/ai/sprint-suggestion', { projectId, sprintId });
+  return response.data.data;
+}
+
+export interface SprintRiskResult {
+  riskLevel: 'low' | 'medium' | 'high';
+  summary: string;
+  risks: Array<{ title: string; explanation: string }>;
+  suggestions: string[];
+}
+
+export async function getSprintRisk(
+  projectId: string,
+  sprintId: string,
+): Promise<SprintRiskResult> {
+  const response = await apiClient.post('/api/ai/sprint-risk', { projectId, sprintId });
+  return response.data.data;
+}
+
+export interface TaskSearchFilters {
+  status: 'BACKLOG' | 'TODO' | 'IN_PROGRESS' | 'IN_REVIEW' | 'DONE' | null;
+  priority: 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT' | null;
+  assigneeName: string | null;
+  dueBefore: string | null;
+  dueAfter: string | null;
+  label: string | null;
+  titleKeyword: string | null;
+}
+
+export async function parseTaskQuery(
+  query: string,
+  projectId: string,
+): Promise<TaskSearchFilters> {
+  const response = await apiClient.post('/api/ai/task-search', { query, projectId });
+  return response.data.data.filters;
+}
+
 export interface AiQuotaStatus {
   count: number;
   limit: number;
