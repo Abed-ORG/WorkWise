@@ -1,7 +1,4 @@
 import { NotificationType, Role, TaskPriority, TaskStatus } from "@prisma/client";
-import fs from "fs/promises";
-import path from "path";
-import { randomUUID } from "crypto";
 import prisma from "../utils/prisma";
 import { NotFoundError } from "../errors/NotFoundError";
 import { AppError } from "../errors/AppError";
@@ -408,29 +405,6 @@ export const deleteTask = async (taskId: string, userId: string) => {
   await prisma.task.delete({ where: { id: taskId } });
 };
 
-const uploadsRoot = path.resolve(process.cwd(), "uploads");
-const taskUploadsRoot = path.join(uploadsRoot, "tasks");
-
-const attachmentSelect = {
-  id: true,
-  taskId: true,
-  fileName: true,
-  storageKey: true,
-  mimeType: true,
-  size: true,
-  createdAt: true,
-} as const;
-
-const withAttachmentUrl = <T extends { storageKey: string }>(attachment: T) => ({
-  ...attachment,
-  fileUrl: `/uploads/${attachment.storageKey.replace(/\\/g, "/")}`,
-});
-
-const safeFileName = (fileName: string) => {
-  const cleaned = fileName.replace(/[<>:"/\\|?*\x00-\x1F]/g, "-").replace(/\s+/g, " ").trim();
-  return cleaned || "attachment";
-};
-
 const getTaskForTaskFeature = async (taskId: string, userId: string) => {
   const task = await prisma.task.findUnique({
     where: { id: taskId },
@@ -495,7 +469,10 @@ export const deleteTaskTimeLog = async (timeLogId: string, userId: string) => {
   });
 
   if (!log) throw new NotFoundError("Time log not found");
-  await requireProjectMember(log.task.projectId, userId);
+  const member = await requireProjectMember(log.task.projectId, userId);
+  if (log.userId !== userId && member.role !== Role.ADMIN) {
+    throw new AppError("Only the log owner or a project admin can delete time entries", 403);
+  }
   await prisma.timeLog.delete({ where: { id: timeLogId } });
 };
 
@@ -565,48 +542,94 @@ export const deleteTaskChecklistItem = async (subtaskId: string, userId: string)
   await prisma.taskChecklistItem.delete({ where: { id: subtaskId } });
 };
 
+// ─── Attachment constants ────────────────────────────────────────────────────
+
+const MAX_ATTACHMENT_BYTES = 5 * 1024 * 1024; // 5 MB
+
+const ALLOWED_MIME_TYPES = new Set([
+  "image/jpeg",
+  "image/png",
+  "image/gif",
+  "image/webp",
+  "image/svg+xml",
+  "application/pdf",
+  "application/msword",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "application/vnd.ms-excel",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  "application/vnd.ms-powerpoint",
+  "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  "text/plain",
+  "text/csv",
+]);
+
+const attachmentMetaSelect = {
+  id: true,
+  taskId: true,
+  uploaderId: true,
+  fileName: true,
+  mimeType: true,
+  size: true,
+  createdAt: true,
+} as const;
+
+// ─── Attachment service functions ────────────────────────────────────────────
+
 export const getTaskAttachments = async (taskId: string, userId: string) => {
   await getTaskForTaskFeature(taskId, userId);
 
-  const attachments = await prisma.attachment.findMany({
+  return prisma.attachment.findMany({
     where: { taskId },
-    select: attachmentSelect,
+    select: attachmentMetaSelect,
     orderBy: { createdAt: "desc" },
   });
+};
 
-  return attachments.map(withAttachmentUrl);
+export const getAttachmentForDownload = async (attachmentId: string, userId: string) => {
+  const attachment = await prisma.attachment.findUnique({
+    where: { id: attachmentId },
+    select: {
+      id: true,
+      fileName: true,
+      mimeType: true,
+      data: true,
+      task: { select: { projectId: true } },
+    },
+  });
+
+  if (!attachment) throw new NotFoundError("Attachment not found");
+  await requireProjectMember(attachment.task.projectId, userId);
+  return attachment;
 };
 
 export const createTaskAttachment = async (
   taskId: string,
   userId: string,
-  file: { fileName: string; mimeType: string; buffer: Buffer }
+  input: { fileName: string; mimeType: string; size: number; data: string }
 ) => {
   await getTaskForTaskFeature(taskId, userId);
 
-  if (!file.buffer.length) throw new AppError("Attachment file is empty", 400);
+  if (!ALLOWED_MIME_TYPES.has(input.mimeType)) {
+    throw new AppError("File type not allowed", 400);
+  }
 
-  await fs.mkdir(taskUploadsRoot, { recursive: true });
+  // Verify actual decoded size — client-reported size could be spoofed
+  const fileBuffer = Buffer.from(input.data, "base64");
+  if (fileBuffer.length > MAX_ATTACHMENT_BYTES) {
+    throw new AppError("File exceeds the 5 MB size limit", 400);
+  }
 
-  const fileName = safeFileName(file.fileName);
-  const storageFileName = `${taskId}-${randomUUID()}-${fileName}`;
-  const storageKey = `tasks/${storageFileName}`;
-  const absolutePath = path.join(uploadsRoot, storageKey);
-
-  await fs.writeFile(absolutePath, file.buffer);
-
-  const attachment = await prisma.attachment.create({
+  return prisma.attachment.create({
     data: {
       taskId,
-      fileName,
-      storageKey,
-      mimeType: file.mimeType || "application/octet-stream",
-      size: file.buffer.length,
+      uploaderId: userId,
+      fileName: input.fileName,
+      mimeType: input.mimeType,
+      size: fileBuffer.length,
+      data: input.data,
     },
-    select: attachmentSelect,
+    select: attachmentMetaSelect,
   });
-
-  return withAttachmentUrl(attachment);
 };
 
 export const deleteTaskAttachment = async (attachmentId: string, userId: string) => {
@@ -616,11 +639,9 @@ export const deleteTaskAttachment = async (attachmentId: string, userId: string)
   });
 
   if (!attachment) throw new NotFoundError("Attachment not found");
-  await requireProjectMember(attachment.task.projectId, userId);
-  await prisma.attachment.delete({ where: { id: attachmentId } });
-
-  const absolutePath = path.resolve(uploadsRoot, attachment.storageKey);
-  if (absolutePath.startsWith(uploadsRoot)) {
-    await fs.unlink(absolutePath).catch(() => undefined);
+  const member = await requireProjectMember(attachment.task.projectId, userId);
+  if (attachment.uploaderId !== userId && member.role !== Role.ADMIN) {
+    throw new AppError("Only the uploader or a project admin can delete attachments", 403);
   }
+  await prisma.attachment.delete({ where: { id: attachmentId } });
 };

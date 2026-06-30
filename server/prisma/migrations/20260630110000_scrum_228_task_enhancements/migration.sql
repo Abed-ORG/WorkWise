@@ -1,5 +1,6 @@
--- AlterTable
-ALTER TABLE "tasks" ADD COLUMN "estimatedHours" DOUBLE PRECISION;
+-- AlterTable: IF NOT EXISTS guards against migration-history drift where estimatedHours
+-- was already present in the baseline init migration applied to the live DB.
+ALTER TABLE "tasks" ADD COLUMN IF NOT EXISTS "estimatedHours" DOUBLE PRECISION;
 
 -- CreateTable
 CREATE TABLE "task_checklist_items" (
@@ -12,13 +13,15 @@ CREATE TABLE "task_checklist_items" (
     CONSTRAINT "task_checklist_items_pkey" PRIMARY KEY ("id")
 );
 
--- CreateTable
+-- CreateTable: attachments store file content as base64 in the data column so files
+-- persist across Render restarts (no local filesystem dependency).
 CREATE TABLE "attachments" (
     "id" TEXT NOT NULL,
     "fileName" TEXT NOT NULL,
-    "storageKey" TEXT NOT NULL,
     "mimeType" TEXT NOT NULL,
     "size" INTEGER NOT NULL,
+    "data" TEXT NOT NULL,
+    "uploaderId" TEXT NOT NULL,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "taskId" TEXT NOT NULL,
 
@@ -54,6 +57,9 @@ ALTER TABLE "task_checklist_items" ADD CONSTRAINT "task_checklist_items_taskId_f
 
 -- AddForeignKey
 ALTER TABLE "attachments" ADD CONSTRAINT "attachments_taskId_fkey" FOREIGN KEY ("taskId") REFERENCES "tasks"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "attachments" ADD CONSTRAINT "attachments_uploaderId_fkey" FOREIGN KEY ("uploaderId") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "time_logs" ADD CONSTRAINT "time_logs_taskId_fkey" FOREIGN KEY ("taskId") REFERENCES "tasks"("id") ON DELETE CASCADE ON UPDATE CASCADE;

@@ -9,6 +9,7 @@ import {
   deleteTask,
   deleteTaskTimeLog,
   getAssignedTasks,
+  getAttachmentForDownload,
   getTaskAttachments,
   getTaskChecklistItems,
   getProjectTasks,
@@ -19,59 +20,6 @@ import {
   updateTask,
   updateTaskDocuments,
 } from "../services/task.service";
-import { AppError } from "../errors/AppError";
-
-const readRequestBuffer = (req: Request) => new Promise<Buffer>((resolve, reject) => {
-  const chunks: Buffer[] = [];
-  req.on("data", (chunk) => chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)));
-  req.on("end", () => resolve(Buffer.concat(chunks)));
-  req.on("error", reject);
-});
-
-const getMultipartHeaderValue = (headers: string, name: string) => {
-  const match = headers.match(new RegExp(`${name}="([^"]+)"`, "i"));
-  return match?.[1];
-};
-
-const parseMultipartFile = async (req: Request) => {
-  const contentType = req.headers["content-type"] ?? "";
-  const boundary = String(contentType).match(/boundary=(?:"([^"]+)"|([^;]+))/i)?.[1]
-    ?? String(contentType).match(/boundary=(?:"([^"]+)"|([^;]+))/i)?.[2];
-
-  if (!boundary) throw new AppError("Multipart boundary is required", 400);
-
-  const body = await readRequestBuffer(req);
-  const marker = Buffer.from(`--${boundary}`);
-  let cursor = body.indexOf(marker);
-
-  while (cursor !== -1) {
-    const partStart = cursor + marker.length;
-    if (body.slice(partStart, partStart + 2).toString() === "--") break;
-
-    const contentStart = body.slice(partStart, partStart + 2).toString() === "\r\n" ? partStart + 2 : partStart;
-    const nextMarker = body.indexOf(marker, contentStart);
-    if (nextMarker === -1) break;
-
-    const rawPart = body.slice(contentStart, Math.max(contentStart, nextMarker - 2));
-    const headerEnd = rawPart.indexOf(Buffer.from("\r\n\r\n"));
-    if (headerEnd !== -1) {
-      const headers = rawPart.slice(0, headerEnd).toString("utf8");
-      const fileName = getMultipartHeaderValue(headers, "filename");
-      if (fileName) {
-        const mimeType = headers.match(/content-type:\s*([^\r\n]+)/i)?.[1]?.trim() || "application/octet-stream";
-        return {
-          fileName,
-          mimeType,
-          buffer: rawPart.slice(headerEnd + 4),
-        };
-      }
-    }
-
-    cursor = nextMarker;
-  }
-
-  throw new AppError("Attachment file is required", 400);
-};
 
 export const createTaskController = async (req: Request, res: Response, next: NextFunction) => {
   try {
@@ -240,9 +188,23 @@ export const getTaskAttachmentsController = async (req: Request, res: Response, 
 export const createTaskAttachmentController = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const user = (req as any).user;
-    const file = await parseMultipartFile(req);
-    const attachment = await createTaskAttachment(req.params.id as string, user.userId, file);
+    const attachment = await createTaskAttachment(req.params.id as string, user.userId, req.body);
     return res.status(201).json({ success: true, data: attachment });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const downloadTaskAttachmentController = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const user = (req as any).user;
+    const attachment = await getAttachmentForDownload(req.params.id as string, user.userId);
+    const buffer = Buffer.from(attachment.data, "base64");
+    const safeName = attachment.fileName.replace(/[^\x20-\x7E]/g, "_").replace(/"/g, "'");
+    res.setHeader("Content-Type", attachment.mimeType);
+    res.setHeader("Content-Disposition", `inline; filename="${safeName}"`);
+    res.setHeader("Content-Length", String(buffer.length));
+    res.send(buffer);
   } catch (error) {
     next(error);
   }

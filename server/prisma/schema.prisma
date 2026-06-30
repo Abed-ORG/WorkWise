@@ -75,6 +75,7 @@ model User {
   passwordResetTokens PasswordResetToken[]
   generatedDigests    DailyDigest[]        @relation("DailyDigestGenerator")
   generatedRetros     SprintRetrospective[] @relation("SprintRetroGenerator")
+  uploadedAttachments Attachment[]
 
   @@map("users")
 }
@@ -195,16 +196,18 @@ model TaskChecklistItem {
 }
 
 model Attachment {
-  id        String   @id @default(cuid())
-  fileName  String
-  storageKey String
-  mimeType  String
-  size      Int
-  createdAt DateTime @default(now())
+  id         String   @id @default(cuid())
+  fileName   String
+  mimeType   String
+  size       Int
+  data       String
+  uploaderId String
+  createdAt  DateTime @default(now())
 
   taskId String
 
-  task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  task     Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  uploader User @relation(fields: [uploaderId], references: [id], onDelete: Cascade)
 
   @@index([taskId, createdAt])
   @@map("attachments")

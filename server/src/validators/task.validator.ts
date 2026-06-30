@@ -43,3 +43,12 @@ export const updateChecklistItemSchema = z.object({
   completed: z.boolean().optional(),
   order: z.number().int().optional(),
 });
+
+const MAX_ATTACHMENT_BYTES = 5 * 1024 * 1024;
+
+export const createAttachmentSchema = z.object({
+  fileName: z.string().min(1).max(255),
+  mimeType: z.string().min(1).max(255),
+  size: z.number().int().positive().max(MAX_ATTACHMENT_BYTES),
+  data: z.string().min(1),
+});

@@ -46,9 +46,8 @@ export interface TaskChecklistItem {
 export interface TaskAttachment {
   id: string;
   taskId: string;
+  uploaderId: string;
   fileName: string;
-  storageKey: string;
-  fileUrl: string;
   mimeType: string;
   size: number;
   createdAt: string;
@@ -189,11 +188,46 @@ export async function getTaskAttachments(taskId: string): Promise<TaskAttachment
   return response.data.data;
 }
 
+function fileToBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = reader.result as string;
+      // strip the "data:<mime>;base64," prefix — server only wants the raw base64
+      resolve(result.split(',')[1]);
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
 export async function uploadTaskAttachment(taskId: string, file: File): Promise<TaskAttachment> {
-  const formData = new FormData();
-  formData.append('file', file);
-  const response = await apiClient.post(`/tasks/${taskId}/attachments`, formData);
+  const MAX_SIZE = 5 * 1024 * 1024;
+  if (file.size > MAX_SIZE) {
+    throw new Error('File exceeds the 5 MB size limit');
+  }
+  const data = await fileToBase64(file);
+  const response = await apiClient.post(`/tasks/${taskId}/attachments`, {
+    fileName: file.name,
+    mimeType: file.type || 'application/octet-stream',
+    size: file.size,
+    data,
+  });
   return response.data.data;
+}
+
+export async function fetchTaskAttachmentBlob(attachmentId: string): Promise<Blob> {
+  const response = await apiClient.get(`/tasks/attachments/${attachmentId}/download`, {
+    responseType: 'blob',
+  });
+  return response.data;
+}
+
+export async function downloadTaskAttachment(attachmentId: string): Promise<void> {
+  const blob = await fetchTaskAttachmentBlob(attachmentId);
+  const url = URL.createObjectURL(blob);
+  window.open(url, '_blank', 'noopener,noreferrer');
+  setTimeout(() => URL.revokeObjectURL(url), 60_000);
 }
 
 export async function deleteTaskAttachment(attachmentId: string): Promise<void> {

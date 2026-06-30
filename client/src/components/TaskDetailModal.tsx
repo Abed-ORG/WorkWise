@@ -11,6 +11,8 @@ import {
   deleteTaskAttachment,
   deleteTaskSubtask,
   deleteTaskTimeLog,
+  downloadTaskAttachment,
+  fetchTaskAttachmentBlob,
   getTaskAttachments,
   getTaskById,
   getTaskSubtasks,
@@ -54,11 +56,6 @@ function formatFileSize(size: number) {
   if (size >= 1024 * 1024) return `${(size / (1024 * 1024)).toFixed(1)} MB`;
   if (size >= 1024) return `${Math.round(size / 1024)} KB`;
   return `${size} B`;
-}
-
-function attachmentHref(fileUrl: string) {
-  const base = import.meta.env.VITE_API_BASE_URL || window.location.origin;
-  return new URL(fileUrl, base).toString();
 }
 
 function toDateInputValue(date?: string | null) {
@@ -137,6 +134,8 @@ export default function TaskDetailModal({ taskId, onClose, onTaskUpdated }: Task
   const [uploadingAttachment, setUploadingAttachment] = useState(false);
   const [attachmentDragActive, setAttachmentDragActive] = useState(false);
   const [attachmentsMessage, setAttachmentsMessage] = useState('');
+  const [imagePreviews, setImagePreviews] = useState<Record<string, string>>({});
+  const [lightboxAttachmentId, setLightboxAttachmentId] = useState<string | null>(null);
   const [timeLogs, setTimeLogs] = useState<TaskTimeLog[]>([]);
   const [totalTimeMinutes, setTotalTimeMinutes] = useState(0);
   const [timeAmount, setTimeAmount] = useState('');
@@ -186,6 +185,8 @@ export default function TaskDetailModal({ taskId, onClose, onTaskUpdated }: Task
       setTimeLogs([]);
       setTotalTimeMinutes(0);
       setProjectMembers([]);
+      setImagePreviews({});
+      setLightboxAttachmentId(null);
       return;
     }
     setError('');
@@ -216,6 +217,9 @@ export default function TaskDetailModal({ taskId, onClose, onTaskUpdated }: Task
     setSubtasksMessage('');
     setAttachmentsMessage('');
     setTimeMessage('');
+    setImagePreviews({});
+
+    const createdPreviewUrls: string[] = [];
 
     Promise.all([
       getTaskSubtasks(taskId),
@@ -228,6 +232,19 @@ export default function TaskDetailModal({ taskId, onClose, onTaskUpdated }: Task
         setAttachments(nextAttachments);
         setTimeLogs(timeResult.logs);
         setTotalTimeMinutes(timeResult.totalMinutes);
+
+        nextAttachments
+          .filter((attachment) => attachment.mimeType.startsWith('image/'))
+          .forEach((attachment) => {
+            fetchTaskAttachmentBlob(attachment.id)
+              .then((blob) => {
+                if (!active) return;
+                const url = URL.createObjectURL(blob);
+                createdPreviewUrls.push(url);
+                setImagePreviews((current) => ({ ...current, [attachment.id]: url }));
+              })
+              .catch(() => undefined);
+          });
       })
       .catch(() => {
         if (active) setError('Task details could not be loaded.');
@@ -235,6 +252,7 @@ export default function TaskDetailModal({ taskId, onClose, onTaskUpdated }: Task
 
     return () => {
       active = false;
+      createdPreviewUrls.forEach((url) => URL.revokeObjectURL(url));
     };
   }, [taskId]);
 
@@ -597,7 +615,11 @@ export default function TaskDetailModal({ taskId, onClose, onTaskUpdated }: Task
     }
   }
 
+  const lightboxAttachment = lightboxAttachmentId ? attachments.find((item) => item.id === lightboxAttachmentId) : null;
+  const lightboxUrl = lightboxAttachmentId ? imagePreviews[lightboxAttachmentId] : undefined;
+
   return (
+    <>
     <Modal isOpen={Boolean(taskId)} onClose={onClose} className="task-detail-modal">
       {taskQuery.isLoading || projectQuery.isLoading ? (
         <div className="task-detail-loading"><Spinner /><span>Loading task details...</span></div>
@@ -801,6 +823,26 @@ export default function TaskDetailModal({ taskId, onClose, onTaskUpdated }: Task
             </main>
 
             <aside className="task-detail-sidebar">
+              <section className="task-estimate-panel">
+                <label className="field task-estimate-field">
+                  <span className="field-label">Estimated hours</span>
+                  <input
+                    className="field-control"
+                    type="number"
+                    min="0"
+                    step="0.25"
+                    value={estimatedHoursDraft}
+                    onChange={(event) => {
+                      setEstimatedHoursDraft(event.target.value);
+                      setDetailsMessage('');
+                    }}
+                    onBlur={saveEstimatedHours}
+                    disabled={savingDetails}
+                    placeholder="No estimate"
+                  />
+                </label>
+              </section>
+
               <section className="task-detail-section">
                 <div className="task-detail-section-heading">
                   <h3>Time tracking</h3>
@@ -810,43 +852,47 @@ export default function TaskDetailModal({ taskId, onClose, onTaskUpdated }: Task
                   <div><span>Estimated</span><strong>{task.estimatedHours ? `${task.estimatedHours}h` : 'None'}</strong></div>
                   <div><span>Logged</span><strong>{formatMinutes(totalTimeMinutes)}</strong></div>
                 </div>
-                <label className="field">
-                  <span className="field-label">Hours</span>
-                  <input
-                    className="field-control"
-                    type="number"
-                    min="0"
-                    step="0.25"
-                    value={timeAmount}
-                    onChange={(event) => {
-                      setTimeAmount(event.target.value);
-                      setTimeMessage('');
-                    }}
+
+                <div className="time-log-entry-group">
+                  <label className="field">
+                    <span className="field-label">Hours</span>
+                    <input
+                      className="field-control"
+                      type="number"
+                      min="0"
+                      step="0.25"
+                      value={timeAmount}
+                      onChange={(event) => {
+                        setTimeAmount(event.target.value);
+                        setTimeMessage('');
+                      }}
+                      disabled={savingTimeLog}
+                      placeholder="1.5"
+                    />
+                  </label>
+                  <textarea
+                    className="task-description-field task-comment-input"
+                    value={timeDescription}
+                    onChange={(event) => setTimeDescription(event.target.value)}
                     disabled={savingTimeLog}
-                    placeholder="1.5"
+                    rows={2}
+                    placeholder="What was worked on?"
                   />
-                </label>
-                <textarea
-                  className="task-description-field task-comment-input"
-                  value={timeDescription}
-                  onChange={(event) => setTimeDescription(event.target.value)}
-                  disabled={savingTimeLog}
-                  rows={2}
-                  placeholder="What was worked on?"
-                />
-                <div className="task-comment-actions">
-                  <Button onClick={logTime} loading={savingTimeLog} disabled={savingTimeLog || !timeAmount}>Log time</Button>
+                  <div className="task-comment-actions">
+                    <Button onClick={logTime} loading={savingTimeLog} disabled={savingTimeLog || !timeAmount}>Log time</Button>
+                  </div>
                 </div>
-                <div className="task-activity-list">
+
+                <div className="time-log-list">
                   {timeLogs.slice(0, 5).map((log) => (
-                    <article className="task-activity-item" key={log.id}>
-                      <span><Icon name="activity" size={13} /></span>
-                      <div>
+                    <article className="time-log-item" key={log.id}>
+                      <span className="time-log-icon"><Icon name="clock" size={14} /></span>
+                      <div className="time-log-body">
                         <strong>{formatMinutes(log.durationMinutes)} by {log.user.name}</strong>
                         {log.description && <p>{log.description}</p>}
                         <time>{formatCommentDate(log.createdAt)}</time>
                       </div>
-                      <button type="button" className="icon-button" onClick={() => removeTimeLog(log)} aria-label="Delete time log"><Icon name="trash" size={14} /></button>
+                      <button type="button" className="icon-button time-log-delete" onClick={() => removeTimeLog(log)} aria-label="Delete time log"><Icon name="trash" size={13} /></button>
                     </article>
                   ))}
                   {timeLogs.length === 0 && <div className="document-link-empty">No time logged yet.</div>}
@@ -863,6 +909,7 @@ export default function TaskDetailModal({ taskId, onClose, onTaskUpdated }: Task
                   className="sr-only"
                   type="file"
                   multiple
+                  accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv"
                   onChange={(event) => {
                     if (event.target.files) uploadAttachments(event.target.files);
                   }}
@@ -879,21 +926,68 @@ export default function TaskDetailModal({ taskId, onClose, onTaskUpdated }: Task
                   }}
                   onDrop={handleAttachmentDrop}
                 >
-                  <Icon name="document" size={18} />
-                  <Button variant="secondary" onClick={() => attachmentInputRef.current?.click()} disabled={uploadingAttachment}>Choose files</Button>
+                  <Button variant="secondary" onClick={() => attachmentInputRef.current?.click()} disabled={uploadingAttachment}>
+                    <Icon name="upload" size={15} /> Choose files
+                  </Button>
                 </div>
                 <div className="linked-document-list">
-                  {attachments.map((attachment) => (
-                    <div className="linked-document-row" key={attachment.id}>
-                      <span className="linked-document-icon"><Icon name="document" size={15} /></span>
-                      <span className="linked-document-copy">
-                        <strong>{attachment.fileName}</strong>
-                        <span>{attachment.mimeType} · {formatFileSize(attachment.size)}</span>
-                      </span>
-                      <Button variant="ghost" onClick={() => window.open(attachmentHref(attachment.fileUrl), '_blank', 'noopener,noreferrer')}>Open</Button>
-                      <Button variant="ghost" onClick={() => removeAttachment(attachment)}><Icon name="trash" size={14} /></Button>
-                    </div>
-                  ))}
+                  {attachments.map((attachment) => {
+                    const isImage = attachment.mimeType.startsWith('image/');
+                    const previewUrl = imagePreviews[attachment.id];
+                    return (
+                      <div
+                        className={`linked-document-row attachment-row${isImage ? '' : ' is-clickable'}`}
+                        key={attachment.id}
+                        role={isImage ? undefined : 'button'}
+                        tabIndex={isImage ? undefined : 0}
+                        onClick={isImage ? undefined : () => downloadTaskAttachment(attachment.id)}
+                        onKeyDown={isImage ? undefined : (event) => {
+                          if (event.key === 'Enter' || event.key === ' ') {
+                            event.preventDefault();
+                            downloadTaskAttachment(attachment.id);
+                          }
+                        }}
+                      >
+                        {isImage ? (
+                          <span className="attachment-thumb-preview" aria-hidden="true">
+                            {previewUrl ? (
+                              <img className="attachment-thumb" src={previewUrl} alt="" />
+                            ) : (
+                              <span className="linked-document-icon"><Icon name="document" size={15} /></span>
+                            )}
+                          </span>
+                        ) : (
+                          <span className="linked-document-icon"><Icon name="document" size={15} /></span>
+                        )}
+                        <span className="linked-document-copy">
+                          {isImage ? (
+                            <button
+                              type="button"
+                              className="attachment-filename-link"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                setLightboxAttachmentId(attachment.id);
+                              }}
+                            >
+                              {attachment.fileName}
+                            </button>
+                          ) : (
+                            <strong>{attachment.fileName}</strong>
+                          )}
+                          <span>{attachment.mimeType} · {formatFileSize(attachment.size)}</span>
+                        </span>
+                        <Button
+                          variant="ghost"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            removeAttachment(attachment);
+                          }}
+                        >
+                          <Icon name="trash" size={14} />
+                        </Button>
+                      </div>
+                    );
+                  })}
                   {attachments.length === 0 && <div className="document-link-empty">No files attached yet.</div>}
                 </div>
               </section>
@@ -938,24 +1032,6 @@ export default function TaskDetailModal({ taskId, onClose, onTaskUpdated }: Task
                   />
                   <span className="field-help">Leave empty to remove the due date.</span>
                 </label>
-                <label className="field">
-                  <span className="field-label">Estimated hours</span>
-                  <input
-                    className="field-control"
-                    type="number"
-                    min="0"
-                    step="0.25"
-                    value={estimatedHoursDraft}
-                    onChange={(event) => {
-                      setEstimatedHoursDraft(event.target.value);
-                      setDetailsMessage('');
-                    }}
-                    onBlur={saveEstimatedHours}
-                    disabled={savingDetails}
-                    placeholder="No estimate"
-                  />
-                  <span className="field-help">Used for planned vs actual work.</span>
-                </label>
                 <div className="task-detail-fields">
                   <div><span>Reporter</span><strong>{task.creator?.name ?? 'Unknown'}</strong></div>
                   <div><span>Project</span><strong>{task.project?.name ?? 'Unknown'}</strong></div>
@@ -971,5 +1047,24 @@ export default function TaskDetailModal({ taskId, onClose, onTaskUpdated }: Task
         </div>
       ) : null}
     </Modal>
+    {lightboxUrl && (
+      <div className="attachment-lightbox" onClick={() => setLightboxAttachmentId(null)}>
+        <button
+          type="button"
+          className="attachment-lightbox-close"
+          onClick={() => setLightboxAttachmentId(null)}
+          aria-label="Close image preview"
+        >
+          <Icon name="close" size={18} />
+        </button>
+        <img
+          className="attachment-lightbox-image"
+          src={lightboxUrl}
+          alt={lightboxAttachment?.fileName ?? 'Attachment preview'}
+          onClick={(event) => event.stopPropagation()}
+        />
+      </div>
+    )}
+    </>
   );
 }
