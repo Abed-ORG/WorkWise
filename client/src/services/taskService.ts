@@ -16,6 +16,7 @@ export interface Task {
   title: string;
   description?: string;
   acceptanceCriteria?: string | null;
+  estimatedHours?: number | null;
   priority: TaskPriority;
   status: TaskStatus;
   labels: string[];
@@ -32,6 +33,35 @@ export interface Task {
   comments?: TaskComment[];
   activities?: TaskActivity[];
   documents?: ProjectDocument[];
+}
+
+export interface TaskChecklistItem {
+  id: string;
+  taskId: string;
+  text: string;
+  completed: boolean;
+  order: number;
+}
+
+export interface TaskAttachment {
+  id: string;
+  taskId: string;
+  fileName: string;
+  storageKey: string;
+  fileUrl: string;
+  mimeType: string;
+  size: number;
+  createdAt: string;
+}
+
+export interface TaskTimeLog {
+  id: string;
+  taskId: string;
+  userId: string;
+  durationMinutes: number;
+  description?: string | null;
+  createdAt: string;
+  user: TaskUser;
 }
 
 export interface TaskComment {
@@ -53,6 +83,7 @@ export interface CreateTaskPayload {
   title: string;
   description?: string;
   acceptanceCriteria?: string;
+  estimatedHours?: number | null;
   priority?: TaskPriority;
   labels?: string[];
   dueDate?: string;
@@ -96,7 +127,7 @@ export async function updateTaskStatus(taskId: string, status: TaskStatus): Prom
   return response.data.data;
 }
 
-export async function updateTask(taskId: string, payload: Partial<Pick<Task, 'title' | 'description' | 'acceptanceCriteria' | 'priority' | 'status' | 'labels' | 'dueDate'>> & { assigneeId?: string | null }): Promise<Task> {
+export async function updateTask(taskId: string, payload: Partial<Pick<Task, 'title' | 'description' | 'acceptanceCriteria' | 'estimatedHours' | 'priority' | 'status' | 'labels' | 'dueDate'>> & { assigneeId?: string | null }): Promise<Task> {
   const response = await apiClient.patch(`/tasks/${taskId}`, payload);
   return response.data.data;
 }
@@ -118,4 +149,53 @@ export async function moveTaskToSprint(taskId: string, sprintId: string | null):
 export async function reorderTask(taskId: string, order: number): Promise<Task> {
   const response = await apiClient.patch(`/tasks/${taskId}`, { order });
   return response.data.data;
+}
+
+export async function getTaskSubtasks(taskId: string): Promise<TaskChecklistItem[]> {
+  const response = await apiClient.get(`/tasks/${taskId}/subtasks`);
+  return response.data.data;
+}
+
+export async function createTaskSubtask(taskId: string, text: string): Promise<TaskChecklistItem> {
+  const response = await apiClient.post(`/tasks/${taskId}/subtasks`, { text });
+  return response.data.data;
+}
+
+export async function updateTaskSubtask(subtaskId: string, payload: Partial<Pick<TaskChecklistItem, 'text' | 'completed' | 'order'>>): Promise<TaskChecklistItem> {
+  const response = await apiClient.patch(`/tasks/subtasks/${subtaskId}`, payload);
+  return response.data.data;
+}
+
+export async function deleteTaskSubtask(subtaskId: string): Promise<void> {
+  await apiClient.delete(`/tasks/subtasks/${subtaskId}`);
+}
+
+export async function getTaskTimeLogs(taskId: string): Promise<{ logs: TaskTimeLog[]; totalMinutes: number }> {
+  const response = await apiClient.get(`/tasks/${taskId}/time-logs`);
+  return response.data.data;
+}
+
+export async function createTaskTimeLog(taskId: string, payload: { durationMinutes: number; description?: string }): Promise<TaskTimeLog> {
+  const response = await apiClient.post(`/tasks/${taskId}/time-logs`, payload);
+  return response.data.data;
+}
+
+export async function deleteTaskTimeLog(timeLogId: string): Promise<void> {
+  await apiClient.delete(`/tasks/time-logs/${timeLogId}`);
+}
+
+export async function getTaskAttachments(taskId: string): Promise<TaskAttachment[]> {
+  const response = await apiClient.get(`/tasks/${taskId}/attachments`);
+  return response.data.data;
+}
+
+export async function uploadTaskAttachment(taskId: string, file: File): Promise<TaskAttachment> {
+  const formData = new FormData();
+  formData.append('file', file);
+  const response = await apiClient.post(`/tasks/${taskId}/attachments`, formData);
+  return response.data.data;
+}
+
+export async function deleteTaskAttachment(attachmentId: string): Promise<void> {
+  await apiClient.delete(`/tasks/attachments/${attachmentId}`);
 }

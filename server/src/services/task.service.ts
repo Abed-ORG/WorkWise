@@ -1,4 +1,7 @@
 import { NotificationType, Role, TaskPriority, TaskStatus } from "@prisma/client";
+import fs from "fs/promises";
+import path from "path";
+import { randomUUID } from "crypto";
 import prisma from "../utils/prisma";
 import { NotFoundError } from "../errors/NotFoundError";
 import { AppError } from "../errors/AppError";
@@ -35,6 +38,7 @@ export interface CreateTaskInput {
   title: string;
   description?: string;
   acceptanceCriteria?: string;
+  estimatedHours?: number | null;
   priority?: TaskPriority;
   labels?: string[];
   dueDate?: string | null;
@@ -86,6 +90,7 @@ export const createTask = async (input: CreateTaskInput) => {
       title: input.title,
       description: input.description,
       acceptanceCriteria: input.acceptanceCriteria,
+      estimatedHours: input.estimatedHours,
       priority: input.priority ?? TaskPriority.MEDIUM,
       status: TaskStatus.BACKLOG,
       labels: input.labels ?? [],
@@ -288,6 +293,7 @@ export interface UpdateTaskInput {
   title?: string;
   description?: string;
   acceptanceCriteria?: string | null;
+  estimatedHours?: number | null;
   status?: TaskStatus;
   priority?: TaskPriority;
   labels?: string[];
@@ -330,6 +336,7 @@ export const updateTask = async (
       title: input.title,
       description: input.description,
       acceptanceCriteria: input.acceptanceCriteria,
+      estimatedHours: input.estimatedHours,
       status: input.status,
       priority: input.priority,
       labels: input.labels,
@@ -399,4 +406,221 @@ export const deleteTask = async (taskId: string, userId: string) => {
   }
 
   await prisma.task.delete({ where: { id: taskId } });
+};
+
+const uploadsRoot = path.resolve(process.cwd(), "uploads");
+const taskUploadsRoot = path.join(uploadsRoot, "tasks");
+
+const attachmentSelect = {
+  id: true,
+  taskId: true,
+  fileName: true,
+  storageKey: true,
+  mimeType: true,
+  size: true,
+  createdAt: true,
+} as const;
+
+const withAttachmentUrl = <T extends { storageKey: string }>(attachment: T) => ({
+  ...attachment,
+  fileUrl: `/uploads/${attachment.storageKey.replace(/\\/g, "/")}`,
+});
+
+const safeFileName = (fileName: string) => {
+  const cleaned = fileName.replace(/[<>:"/\\|?*\x00-\x1F]/g, "-").replace(/\s+/g, " ").trim();
+  return cleaned || "attachment";
+};
+
+const getTaskForTaskFeature = async (taskId: string, userId: string) => {
+  const task = await prisma.task.findUnique({
+    where: { id: taskId },
+    select: { id: true, projectId: true },
+  });
+
+  if (!task) throw new NotFoundError("Task not found");
+  await requireProjectMember(task.projectId, userId);
+  return task;
+};
+
+export const getTaskTimeLogs = async (taskId: string, userId: string) => {
+  await getTaskForTaskFeature(taskId, userId);
+
+  const logs = await prisma.timeLog.findMany({
+    where: { taskId },
+    include: { user: { select: { id: true, name: true, email: true } } },
+    orderBy: { createdAt: "desc" },
+  });
+
+  const totalMinutes = logs.reduce((total, log) => total + log.durationMinutes, 0);
+  return { logs, totalMinutes };
+};
+
+export const createTaskTimeLog = async (
+  taskId: string,
+  userId: string,
+  input: { durationMinutes: number; description?: string }
+) => {
+  await getTaskForTaskFeature(taskId, userId);
+
+  if (!Number.isInteger(input.durationMinutes) || input.durationMinutes <= 0) {
+    throw new AppError("durationMinutes must be a positive integer", 400);
+  }
+
+  const log = await prisma.timeLog.create({
+    data: {
+      taskId,
+      userId,
+      durationMinutes: input.durationMinutes,
+      description: input.description?.trim() || undefined,
+    },
+    include: { user: { select: { id: true, name: true, email: true } } },
+  });
+
+  await prisma.taskActivity.create({
+    data: {
+      taskId,
+      userId,
+      action: "TIME_LOGGED",
+      details: `Logged ${input.durationMinutes} minutes`,
+    },
+  });
+
+  return log;
+};
+
+export const deleteTaskTimeLog = async (timeLogId: string, userId: string) => {
+  const log = await prisma.timeLog.findUnique({
+    where: { id: timeLogId },
+    include: { task: { select: { projectId: true } } },
+  });
+
+  if (!log) throw new NotFoundError("Time log not found");
+  await requireProjectMember(log.task.projectId, userId);
+  await prisma.timeLog.delete({ where: { id: timeLogId } });
+};
+
+export const getTaskChecklistItems = async (taskId: string, userId: string) => {
+  await getTaskForTaskFeature(taskId, userId);
+
+  return prisma.taskChecklistItem.findMany({
+    where: { taskId },
+    orderBy: [{ order: "asc" }, { id: "asc" }],
+  });
+};
+
+export const createTaskChecklistItem = async (
+  taskId: string,
+  userId: string,
+  input: { text: string; order?: number }
+) => {
+  await getTaskForTaskFeature(taskId, userId);
+  const text = input.text.trim();
+  if (!text) throw new AppError("Subtask text is required", 400);
+
+  const order = input.order ?? await prisma.taskChecklistItem.count({ where: { taskId } });
+
+  return prisma.taskChecklistItem.create({
+    data: {
+      taskId,
+      text,
+      order,
+    },
+  });
+};
+
+export const updateTaskChecklistItem = async (
+  subtaskId: string,
+  userId: string,
+  input: { text?: string; completed?: boolean; order?: number }
+) => {
+  const item = await prisma.taskChecklistItem.findUnique({
+    where: { id: subtaskId },
+    include: { task: { select: { projectId: true } } },
+  });
+
+  if (!item) throw new NotFoundError("Subtask not found");
+  await requireProjectMember(item.task.projectId, userId);
+
+  const text = input.text === undefined ? undefined : input.text.trim();
+  if (text !== undefined && !text) throw new AppError("Subtask text is required", 400);
+
+  return prisma.taskChecklistItem.update({
+    where: { id: subtaskId },
+    data: {
+      text,
+      completed: input.completed,
+      order: input.order,
+    },
+  });
+};
+
+export const deleteTaskChecklistItem = async (subtaskId: string, userId: string) => {
+  const item = await prisma.taskChecklistItem.findUnique({
+    where: { id: subtaskId },
+    include: { task: { select: { projectId: true } } },
+  });
+
+  if (!item) throw new NotFoundError("Subtask not found");
+  await requireProjectMember(item.task.projectId, userId);
+  await prisma.taskChecklistItem.delete({ where: { id: subtaskId } });
+};
+
+export const getTaskAttachments = async (taskId: string, userId: string) => {
+  await getTaskForTaskFeature(taskId, userId);
+
+  const attachments = await prisma.attachment.findMany({
+    where: { taskId },
+    select: attachmentSelect,
+    orderBy: { createdAt: "desc" },
+  });
+
+  return attachments.map(withAttachmentUrl);
+};
+
+export const createTaskAttachment = async (
+  taskId: string,
+  userId: string,
+  file: { fileName: string; mimeType: string; buffer: Buffer }
+) => {
+  await getTaskForTaskFeature(taskId, userId);
+
+  if (!file.buffer.length) throw new AppError("Attachment file is empty", 400);
+
+  await fs.mkdir(taskUploadsRoot, { recursive: true });
+
+  const fileName = safeFileName(file.fileName);
+  const storageFileName = `${taskId}-${randomUUID()}-${fileName}`;
+  const storageKey = `tasks/${storageFileName}`;
+  const absolutePath = path.join(uploadsRoot, storageKey);
+
+  await fs.writeFile(absolutePath, file.buffer);
+
+  const attachment = await prisma.attachment.create({
+    data: {
+      taskId,
+      fileName,
+      storageKey,
+      mimeType: file.mimeType || "application/octet-stream",
+      size: file.buffer.length,
+    },
+    select: attachmentSelect,
+  });
+
+  return withAttachmentUrl(attachment);
+};
+
+export const deleteTaskAttachment = async (attachmentId: string, userId: string) => {
+  const attachment = await prisma.attachment.findUnique({
+    where: { id: attachmentId },
+    include: { task: { select: { projectId: true } } },
+  });
+
+  if (!attachment) throw new NotFoundError("Attachment not found");
+  await requireProjectMember(attachment.task.projectId, userId);
+  await prisma.attachment.delete({ where: { id: attachmentId } });
+
+  const absolutePath = path.resolve(uploadsRoot, attachment.storageKey);
+  if (absolutePath.startsWith(uploadsRoot)) {
+    await fs.unlink(absolutePath).catch(() => undefined);
+  }
 };

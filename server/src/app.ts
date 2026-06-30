@@ -1,6 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
+import path from 'path';
 import userRoutes from './modules/users/users.routes';
 import healthRoutes from './routes/health.routes';
 import authRoutes from './routes/auth.routes';
@@ -25,6 +26,7 @@ app.use(cors({
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+app.use('/uploads', express.static(path.resolve(process.cwd(), 'uploads')));
 
 app.use('/', healthRoutes);
 app.use('/auth', authRoutes);
