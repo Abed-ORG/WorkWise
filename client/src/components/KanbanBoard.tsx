@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent, type FormEvent, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react';
 import Icon from './Icon';
 import TaskCard from './TaskCard';
 import { Button } from './ui';
@@ -12,6 +12,16 @@ const columns: { status: TaskStatus; label: string }[] = [
   { status: 'DONE', label: 'Done' },
 ];
 
+const wipLimits: Partial<Record<TaskStatus, number>> = {
+  TODO: 20,
+  IN_PROGRESS: 8,
+  IN_REVIEW: 5,
+};
+
+function boardWorkflowTask(task: Task): Task {
+  return task.status === 'BACKLOG' ? { ...task, status: 'TODO' } : task;
+}
+
 interface KanbanBoardProps {
   tasks: Task[];
   onTasksChange: (tasks: Task[]) => void;
@@ -21,6 +31,8 @@ interface KanbanBoardProps {
   description?: string;
   headerAction?: ReactNode;
   assignees?: AssigneeOption[];
+  activeSprintId?: string | null;
+  onCreateTask?: (input: { title: string; status: TaskStatus; sprintId: string }) => Promise<Task>;
 }
 
 interface AssigneeOption { id: string; name: string; avatarUrl?: string; }
@@ -47,6 +59,8 @@ export default function KanbanBoard({
   description = 'Move work across the board and keep delivery visible.',
   headerAction,
   assignees: assigneeOptions,
+  activeSprintId = null,
+  onCreateTask,
 }: KanbanBoardProps) {
   const [draggedTaskId, setDraggedTaskId] = useState<string | null>(null);
   const [dropTarget, setDropTarget] = useState<TaskStatus | null>(null);
@@ -55,12 +69,15 @@ export default function KanbanBoard({
   const [assigneeFilters, setAssigneeFilters] = useState<string[]>([]);
   const [priorityFilter, setPriorityFilter] = useState('');
   const [labelFilter, setLabelFilter] = useState('');
+  const [quickAddColumn, setQuickAddColumn] = useState<TaskStatus | null>(null);
+  const [quickAddTitle, setQuickAddTitle] = useState('');
+  const [quickAdding, setQuickAdding] = useState(false);
   const [advancedFiltersOpen, setAdvancedFiltersOpen] = useState(false);
   const [openFilterSection, setOpenFilterSection] = useState<FilterSection | null>(null);
   const [overflowOpen, setOverflowOpen] = useState(false);
   const advancedFiltersRef = useRef<HTMLDivElement>(null);
   const overflowRef = useRef<HTMLDivElement>(null);
-  const boardTasks = useMemo(() => tasks.filter((task) => task.status !== 'BACKLOG'), [tasks]);
+  const boardTasks = useMemo(() => tasks.filter((task) => Boolean(task.sprintId)).map(boardWorkflowTask), [tasks]);
   const boardTaskCount = boardTasks.length;
   const taskAssignees = Array.from(new Map(boardTasks
     .map((task) => task.assignee)
@@ -187,6 +204,28 @@ export default function KanbanBoard({
     setPriorityFilter('');
     setLabelFilter('');
     setOpenFilterSection(null);
+  }
+
+  async function handleQuickAddSubmit(event: FormEvent, status: TaskStatus) {
+    event.preventDefault();
+    const title = quickAddTitle.trim();
+    if (!title || !activeSprintId || !onCreateTask || quickAdding) return;
+
+    setQuickAdding(true);
+    try {
+      await onCreateTask({ title, status, sprintId: activeSprintId });
+      setQuickAddTitle('');
+      setQuickAddColumn(null);
+    } finally {
+      setQuickAdding(false);
+    }
+  }
+
+  function handleQuickAddKeyDown(event: ReactKeyboardEvent<HTMLInputElement>) {
+    if (event.key === 'Escape') {
+      setQuickAddTitle('');
+      setQuickAddColumn(null);
+    }
   }
 
   return (
@@ -325,11 +364,13 @@ export default function KanbanBoard({
         {columns.map((column, index) => {
           const columnTasks = filteredTasks.filter((task) => task.status === column.status);
           const isTarget = dropTarget === column.status && draggedTaskId !== null;
+          const limit = wipLimits[column.status];
+          const wipExceeded = typeof limit === 'number' && columnTasks.length > limit;
 
           return (
             <section
               key={column.status}
-              className={`kanban-column${isTarget ? ' is-drop-target' : ''}`}
+              className={`kanban-column${isTarget ? ' is-drop-target' : ''}${wipExceeded ? ' is-wip-exceeded' : ''}`}
               style={{ '--column-index': index } as CSSProperties}
               onDragEnter={() => setDropTarget(column.status)}
               onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = 'move'; }}
@@ -339,8 +380,9 @@ export default function KanbanBoard({
               <header className="kanban-column-head">
                 <span className={`status-marker status-${column.status.toLowerCase()}`} />
                 <h3>{column.label}</h3>
-                <span className="kanban-count">{columnTasks.length}</span>
+                <span className={`kanban-count${wipExceeded ? ' is-warning' : ''}`}>{limit ? `${columnTasks.length} / ${limit}` : columnTasks.length}</span>
               </header>
+              {wipExceeded && <div className="board-wip-alert" role="status">WIP limit exceeded</div>}
               <div className="kanban-task-stack">
                 {columnTasks.map((task) => (
                   <TaskCard
@@ -353,6 +395,35 @@ export default function KanbanBoard({
                   />
                 ))}
                 {columnTasks.length === 0 && <div className="kanban-empty"><span />Drop tasks here</div>}
+                <div className="board-column-quick-add">
+                  {quickAddColumn === column.status ? (
+                    <form className="board-quick-add-form" onSubmit={(event) => handleQuickAddSubmit(event, column.status)}>
+                      <input
+                        autoFocus
+                        type="text"
+                        value={quickAddTitle}
+                        onChange={(event) => setQuickAddTitle(event.target.value)}
+                        onKeyDown={handleQuickAddKeyDown}
+                        placeholder="Task title"
+                        aria-label={`Add task to ${column.label}`}
+                        disabled={quickAdding}
+                      />
+                      <Button type="submit" loading={quickAdding} disabled={!quickAddTitle.trim()}>Add</Button>
+                    </form>
+                  ) : (
+                    <button
+                      type="button"
+                      className="board-quick-add-trigger"
+                      disabled={!activeSprintId || !onCreateTask}
+                      onClick={() => {
+                        setQuickAddColumn(column.status);
+                        setQuickAddTitle('');
+                      }}
+                    >
+                      <Icon name="plus" size={14} /> Add task
+                    </button>
+                  )}
+                </div>
               </div>
             </section>
           );

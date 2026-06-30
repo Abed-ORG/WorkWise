@@ -10,8 +10,9 @@ vi.mock('../services/taskService', async () => {
 describe('KanbanBoard', () => {
   it('renders workflow columns and their task cards', () => {
     render(<KanbanBoard onTasksChange={vi.fn()} tasks={[
-      { id: 'task-1', title: 'In progress task', status: 'IN_PROGRESS', priority: 'MEDIUM', labels: [], order: 0, projectId: 'project-1' },
-      { id: 'task-2', title: 'Ready to review', status: 'IN_REVIEW', priority: 'LOW', labels: [], order: 1, projectId: 'project-1' },
+      { id: 'task-1', title: 'In progress task', status: 'IN_PROGRESS', priority: 'MEDIUM', labels: [], order: 0, projectId: 'project-1', sprintId: 'sprint-1' },
+      { id: 'task-2', title: 'Ready to review', status: 'IN_REVIEW', priority: 'LOW', labels: [], order: 1, projectId: 'project-1', sprintId: 'sprint-1' },
+      { id: 'task-3', title: 'Unsprinted todo', status: 'TODO', priority: 'LOW', labels: [], order: 2, projectId: 'project-1', sprintId: null },
     ]} />);
 
     expect(screen.getByRole('heading', { name: 'To do' })).toBeInTheDocument();
@@ -20,5 +21,6 @@ describe('KanbanBoard', () => {
     expect(screen.getByRole('heading', { name: 'Done' })).toBeInTheDocument();
     expect(screen.getByText('In progress task')).toBeInTheDocument();
     expect(screen.getByText('Ready to review')).toBeInTheDocument();
+    expect(screen.queryByText('Unsprinted todo')).not.toBeInTheDocument();
   });
 });
