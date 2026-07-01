@@ -4,6 +4,7 @@ import type { SelectHTMLAttributes, Ref } from 'react';
 export interface SelectOption {
   value: string;
   label: string;
+  disabled?: boolean;
 }
 
 export interface SelectProps extends SelectHTMLAttributes<HTMLSelectElement> {
@@ -60,6 +61,8 @@ export default function Select({
 
   function emitChange(nextValue: string) {
     if (disabled) return;
+    const nextOption = options.find((option) => option.value === nextValue);
+    if (nextOption?.disabled) return;
     if (hiddenSelectRef.current) hiddenSelectRef.current.value = nextValue;
     onChange?.({ target: { value: nextValue, name } } as React.ChangeEvent<HTMLSelectElement>);
     setOpen(false);
@@ -115,6 +118,7 @@ export default function Select({
                 className={`themed-select-option${option.value === currentValue ? ' is-selected' : ''}`}
                 role="option"
                 aria-selected={option.value === currentValue}
+                disabled={option.disabled}
                 onClick={() => emitChange(option.value)}
               >
                 <span>{option.label}</span>
@@ -140,7 +144,7 @@ export default function Select({
             </option>
           )}
           {options.map((option) => (
-            <option key={option.value} value={option.value}>
+            <option key={option.value} value={option.value} disabled={option.disabled}>
               {option.label}
             </option>
           ))}

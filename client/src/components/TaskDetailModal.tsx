@@ -3,7 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import DocumentLinkPicker from './DocumentLinkPicker';
 import Icon from './Icon';
 import { Button, Modal, Select, Spinner } from './ui';
-import { getProjectById } from '../services/projectService';
+import { getProjectById, getProjectSprints } from '../services/projectService';
 import {
   createTaskComment,
   createTaskSubtask,
@@ -24,8 +24,9 @@ import {
 } from '../services/taskService';
 import type { Task, TaskAttachment, TaskChecklistItem, TaskStatus, TaskTimeLog } from '../services/taskService';
 import { generateAcceptanceCriteria } from '../services/aiService';
-import type { ProjectDocument, ProjectMember } from '../services/projectService';
+import type { ProjectDocument, ProjectMember, Sprint } from '../services/projectService';
 import { queryKeys, queryTimes } from '../services/queryOptions';
+import { isOpenSprintMoveTarget, isPastSprintMoveTarget } from '../utils/sprintOptions';
 
 interface TaskDetailModalProps {
   taskId: string | null;
@@ -114,12 +115,15 @@ function formatCommentDate(value: string) {
 }
 
 const statusOptions = [
-  { value: 'BACKLOG', label: 'Backlog' },
   { value: 'TODO', label: 'To do' },
   { value: 'IN_PROGRESS', label: 'In progress' },
   { value: 'IN_REVIEW', label: 'Review' },
   { value: 'DONE', label: 'Done' },
 ];
+
+function workflowStatus(status: TaskStatus): Exclude<TaskStatus, 'BACKLOG'> {
+  return status === 'BACKLOG' ? 'TODO' : status;
+}
 
 export default function TaskDetailModal({ taskId, onClose, onTaskUpdated }: TaskDetailModalProps) {
   const queryClient = useQueryClient();
@@ -159,6 +163,8 @@ export default function TaskDetailModal({ taskId, onClose, onTaskUpdated }: Task
   const [commentMessage, setCommentMessage] = useState('');
   const [savingStatus, setSavingStatus] = useState(false);
   const [statusMessage, setStatusMessage] = useState('');
+  const [savingSprint, setSavingSprint] = useState(false);
+  const [sprintMessage, setSprintMessage] = useState('');
   const [savingDetails, setSavingDetails] = useState(false);
   const [detailsMessage, setDetailsMessage] = useState('');
   const [error, setError] = useState('');
@@ -175,6 +181,24 @@ export default function TaskDetailModal({ taskId, onClose, onTaskUpdated }: Task
     enabled: Boolean(taskQuery.data?.projectId),
     staleTime: queryTimes.projectDetail,
   });
+  const sprintsQuery = useQuery({
+    queryKey: queryKeys.projectSprints(taskQuery.data?.projectId ?? ''),
+    queryFn: () => getProjectSprints(taskQuery.data!.projectId),
+    enabled: Boolean(taskQuery.data?.projectId),
+    staleTime: queryTimes.sprints,
+  });
+  const sprints = Array.isArray(sprintsQuery.data) ? sprintsQuery.data : [];
+  const currentSprint = task?.sprintId ? sprints.find((sprint) => sprint.id === task.sprintId) ?? null : null;
+  const currentPastSprint = currentSprint && isPastSprintMoveTarget(currentSprint) ? currentSprint : null;
+  const selectableSprints = sprints.filter((sprint) => isOpenSprintMoveTarget(sprint) || sprint.id === task?.sprintId);
+  const sprintOptions = [
+    { value: '', label: 'Product backlog / No sprint' },
+    ...selectableSprints.map((sprint) => ({
+      value: sprint.id,
+      label: `${sprint.name}${sprint.isActive ? ' (active)' : currentPastSprint?.id === sprint.id ? ' (completed)' : ''}`,
+      disabled: currentPastSprint?.id === sprint.id,
+    })),
+  ];
 
   useEffect(() => {
     if (!taskId) {
@@ -208,6 +232,7 @@ export default function TaskDetailModal({ taskId, onClose, onTaskUpdated }: Task
     setCommentMessage('');
     setCommentsView('comments');
     setStatusMessage('');
+    setSprintMessage('');
     setDetailsMessage('');
   }, [taskQuery.data]);
 
@@ -261,8 +286,8 @@ export default function TaskDetailModal({ taskId, onClose, onTaskUpdated }: Task
   }, [projectQuery.data]);
 
   useEffect(() => {
-    if (taskQuery.isError || projectQuery.isError) setError('Task details could not be loaded.');
-  }, [projectQuery.isError, taskQuery.isError]);
+    if (taskQuery.isError || projectQuery.isError || sprintsQuery.isError) setError('Task details could not be loaded.');
+  }, [projectQuery.isError, sprintsQuery.isError, taskQuery.isError]);
 
   function cacheTask(nextTask: Task) {
     setTask(nextTask);
@@ -363,6 +388,44 @@ export default function TaskDetailModal({ taskId, onClose, onTaskUpdated }: Task
       setStatusMessage('Could not save');
     } finally {
       setSavingStatus(false);
+    }
+  }
+
+  async function updateSprint(sprintId: string) {
+    if (!taskId || !task) return;
+    const nextSprintId = sprintId || null;
+    if ((task.sprintId ?? null) === nextSprintId) return;
+    const targetSprint = nextSprintId ? sprints.find((sprint: Sprint) => sprint.id === nextSprintId) ?? null : null;
+    if (targetSprint && isPastSprintMoveTarget(targetSprint)) {
+      setSprintMessage('Completed sprints cannot be selected');
+      return;
+    }
+
+    setSavingSprint(true);
+    setSprintMessage('');
+    const previousTask = task;
+    const nextSprint = targetSprint;
+    const nextStatus = nextSprintId && task.status === 'BACKLOG' ? 'TODO' : task.status;
+    const optimisticTask: Task = {
+      ...task,
+      status: nextStatus,
+      sprintId: nextSprintId,
+      sprint: nextSprint ? { id: nextSprint.id, name: nextSprint.name } : null,
+    };
+
+    cacheTask(optimisticTask);
+    try {
+      const updatedTask = await updateTask(taskId, {
+        sprintId: nextSprintId,
+        ...(nextStatus !== task.status ? { status: nextStatus } : {}),
+      });
+      cacheTask({ ...optimisticTask, ...updatedTask });
+      setSprintMessage('Saved');
+    } catch {
+      cacheTask(previousTask);
+      setSprintMessage('Could not save sprint');
+    } finally {
+      setSavingSprint(false);
     }
   }
 
@@ -621,7 +684,7 @@ export default function TaskDetailModal({ taskId, onClose, onTaskUpdated }: Task
   return (
     <>
     <Modal isOpen={Boolean(taskId)} onClose={onClose} className="task-detail-modal">
-      {taskQuery.isLoading || projectQuery.isLoading ? (
+      {taskQuery.isLoading || projectQuery.isLoading || sprintsQuery.isLoading ? (
         <div className="task-detail-loading"><Spinner /><span>Loading task details...</span></div>
       ) : error ? (
         <div className="empty-panel"><p>{error}</p></div>
@@ -1004,11 +1067,19 @@ export default function TaskDetailModal({ taskId, onClose, onTaskUpdated }: Task
                 <Select
                   label="Status"
                   className="task-status-select"
-                  value={task.status}
+                  value={workflowStatus(task.status)}
                   options={statusOptions}
                   onChange={(event) => updateStatus(event.target.value as TaskStatus)}
                   disabled={savingStatus}
-                  helperText={savingStatus ? 'Saving status...' : statusMessage || 'Changes update the project board immediately.'}
+                  helperText={savingStatus ? 'Saving status...' : statusMessage || 'Status does not move a task onto the board; assign it to a sprint for board visibility.'}
+                />
+                <Select
+                  label="Sprint"
+                  value={task.sprintId ?? ''}
+                  options={sprintOptions}
+                  onChange={(event) => updateSprint(event.target.value)}
+                  disabled={savingSprint}
+                  helperText={savingSprint ? 'Saving sprint...' : sprintMessage || 'Sprint controls where this task appears. Tasks in a sprint appear on the board.'}
                 />
                 <Select
                   label="Assignee"
