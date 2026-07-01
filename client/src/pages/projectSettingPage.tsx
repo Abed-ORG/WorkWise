@@ -31,11 +31,13 @@ export default function ProjectSettingsPage() {
   const [invitations, setInvitations] = useState<Invitation[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showInviteForm, setShowInviteForm] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [form, setForm] = useState({ name: '', description: '' });
+  const [deleteConfirmName, setDeleteConfirmName] = useState('');
   const [inviteForm, setInviteForm] = useState({ email: '', role: 'DEVELOPER' });
 
   useEffect(() => {
@@ -108,22 +110,25 @@ export default function ProjectSettingsPage() {
   }
 
   async function handleDelete() {
-    if (!projectId) return;
+    if (!projectId || !project || deleteConfirmName !== project.name) return;
+    setDeleting(true);
     try {
       await deleteProject(projectId);
       navigate('/projects');
     } catch {
       setError('Failed to delete project.');
       setShowDeleteConfirm(false);
+      setDeleteConfirmName('');
+      setDeleting(false);
     }
   }
 
   if (loading) return <div className="empty-panel"><Spinner size="lg" /><p className="mt-4">Loading project settings...</p></div>;
   if (!project) return null;
+  const canDeleteProject = deleteConfirmName === project.name;
 
   return (
     <>
-      <button type="button" className="back-link" onClick={() => navigate(`/projects/${projectId}`)}><Icon name="arrow-left" size={15} /> Back to project</button>
       <PageHeader eyebrow={project.key} title="Project settings" description="Manage project details, teammate access, and permanent workspace actions." />
 
       <div className="settings-stack animate-enter-delay">
@@ -195,14 +200,35 @@ export default function ProjectSettingsPage() {
         <section className="app-card settings-section danger-card">
           <div className="danger-row">
             <div><h3>Delete this project</h3><p>This permanently removes its tasks, sprints, members, and history.</p></div>
-            <Button variant="danger" onClick={() => setShowDeleteConfirm(true)}>Delete project</Button>
+            <Button variant="danger" onClick={() => { setDeleteConfirmName(''); setShowDeleteConfirm(true); }}>Delete project</Button>
           </div>
         </section>
       </div>
 
-      <Modal isOpen={showDeleteConfirm} onClose={() => setShowDeleteConfirm(false)} title="Delete project permanently?">
-        <p className="page-description mt-0">This will permanently delete <strong>{project.name}</strong> and all of its data. This action cannot be undone.</p>
-        <div className="form-actions mt-6"><Button variant="secondary" onClick={() => setShowDeleteConfirm(false)}>Cancel</Button><Button variant="danger" onClick={handleDelete}>Yes, delete project</Button></div>
+      <Modal
+        isOpen={showDeleteConfirm}
+        onClose={() => { setShowDeleteConfirm(false); setDeleteConfirmName(''); }}
+        title="Delete project permanently?"
+        className="delete-project-modal"
+      >
+        <div className="delete-warning">
+          <span className="delete-warning-icon"><Icon name="trash" size={18} /></span>
+          <div>
+            <strong>This action is permanent.</strong>
+            <p>This will delete <strong>{project.name}</strong>, including its tasks, sprints, members, documents, and history. It cannot be undone.</p>
+          </div>
+        </div>
+        <Input
+          label={`Type "${project.name}" to confirm`}
+          value={deleteConfirmName}
+          onChange={(event) => setDeleteConfirmName(event.target.value)}
+          placeholder={project.name}
+          autoFocus
+        />
+        <div className="form-actions mt-6">
+          <Button variant="secondary" onClick={() => { setShowDeleteConfirm(false); setDeleteConfirmName(''); }}>Cancel</Button>
+          <Button variant="danger" onClick={handleDelete} disabled={!canDeleteProject} loading={deleting}>Delete project permanently</Button>
+        </div>
       </Modal>
     </>
   );

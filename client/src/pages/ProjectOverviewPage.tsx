@@ -148,7 +148,6 @@ export default function ProjectOverviewPage() {
 
   return (
     <>
-      <button type="button" className="back-link" onClick={() => navigate('/projects')}><Icon name="arrow-left" size={15} /> All projects</button>
       <PageHeader
         eyebrow={project.key}
         title={project.name}
