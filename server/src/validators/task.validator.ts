@@ -10,6 +10,7 @@ export const createTaskSchema = z.object({
   labels: z.array(z.string()).optional(),
   dueDate: z.string().datetime().optional(),
   projectId: z.string().min(1, "Project ID is required"),
+  status: z.nativeEnum(TaskStatus).optional(),
   sprintId: z.string().optional(),
   assigneeId: z.string().optional(),
 });
