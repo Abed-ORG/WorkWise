@@ -6,6 +6,7 @@ import Icon from '../components/Icon';
 import KanbanBoard from '../components/KanbanBoard';
 import { BurndownChart } from '../components/ProjectAnalyticsWidgets';
 import SprintBacklogPanel from '../components/SprintBacklogPanel';
+import SprintCapacitySummary from '../components/SprintCapacitySummary';
 import { Button, Spinner } from '../components/ui';
 import { useAuth } from '../hooks/useAuth';
 import { useToast } from '../hooks/useToast';
@@ -14,6 +15,7 @@ import { createTask, getProjectTasks } from '../services/taskService';
 import type { Task } from '../services/taskService';
 import { queryKeys, queryTimes } from '../services/queryOptions';
 import { buildBurndownData } from '../utils/projectAnalytics';
+import { computeSprintCapacity } from '../utils/sprintCapacity';
 import { getSprintRisk } from '../services/aiService';
 import type { SprintRiskResult } from '../services/aiService';
 
@@ -94,6 +96,7 @@ export default function SprintBoardPage() {
   const sprintTasks = allTasks.filter((t) => t.sprintId === sprintId);
   const days = daysRemaining(sprint.endDate);
   const burndownPoints = buildBurndownData(sprint, allTasks);
+  const sprintCapacity = computeSprintCapacity(sprint, project.members ?? [], sprintTasks);
 
   async function handleAnalyzeRisk() {
     if (!projectId || !sprintId || riskLoading) return;
@@ -168,6 +171,9 @@ export default function SprintBoardPage() {
             <p>{sprint.goal}</p>
           </div>
         )}
+
+        {/* Capacity summary */}
+        <SprintCapacitySummary capacity={sprintCapacity} />
 
         {/* Risk analysis */}
         <div className="sprint-risk-section">
@@ -298,6 +304,8 @@ export default function SprintBoardPage() {
           projectId={projectId}
           allTasks={allTasks}
           onTasksChange={setAllTasks}
+          sprint={sprint}
+          members={project.members ?? []}
         />
       )}
 
