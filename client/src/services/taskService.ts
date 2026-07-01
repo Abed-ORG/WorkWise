@@ -57,6 +57,7 @@ export interface CreateTaskPayload {
   labels?: string[];
   dueDate?: string;
   projectId: string;
+  status?: TaskStatus;
   sprintId?: string;
   assigneeId?: string;
 }
@@ -96,7 +97,7 @@ export async function updateTaskStatus(taskId: string, status: TaskStatus): Prom
   return response.data.data;
 }
 
-export async function updateTask(taskId: string, payload: Partial<Pick<Task, 'title' | 'description' | 'acceptanceCriteria' | 'priority' | 'status' | 'labels' | 'dueDate'>> & { assigneeId?: string | null }): Promise<Task> {
+export async function updateTask(taskId: string, payload: Partial<Pick<Task, 'title' | 'description' | 'acceptanceCriteria' | 'priority' | 'status' | 'labels' | 'dueDate' | 'sprintId'>> & { assigneeId?: string | null }): Promise<Task> {
   const response = await apiClient.patch(`/tasks/${taskId}`, payload);
   return response.data.data;
 }

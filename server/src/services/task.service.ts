@@ -8,6 +8,7 @@ import { createProjectActivity } from "./activity.service";
 
 const taskSummaryInclude = {
   project: { select: { id: true, name: true, key: true } },
+  sprint: { select: { id: true, name: true } },
   assignee: { select: { id: true, name: true, email: true, avatarUrl: true } },
   creator: { select: { id: true, name: true, email: true } },
 } as const;
@@ -39,6 +40,7 @@ export interface CreateTaskInput {
   labels?: string[];
   dueDate?: string | null;
   projectId: string;
+  status?: TaskStatus;
   sprintId?: string;
   assigneeId?: string;
   creatorId: string;
@@ -87,7 +89,7 @@ export const createTask = async (input: CreateTaskInput) => {
       description: input.description,
       acceptanceCriteria: input.acceptanceCriteria,
       priority: input.priority ?? TaskPriority.MEDIUM,
-      status: TaskStatus.BACKLOG,
+      status: input.status ?? TaskStatus.TODO,
       labels: input.labels ?? [],
       dueDate: input.dueDate === undefined ? undefined : input.dueDate ? new Date(input.dueDate) : null,
       projectId: input.projectId,
@@ -324,13 +326,16 @@ export const updateTask = async (
     }
   }
 
+  const nextStatus = input.status ?? (input.sprintId && existingTask.status === TaskStatus.BACKLOG ? TaskStatus.TODO : undefined);
+  const statusChanged = Boolean(nextStatus && nextStatus !== existingTask.status);
+
   const updatedTask = await prisma.task.update({
     where: { id: taskId },
     data: {
       title: input.title,
       description: input.description,
       acceptanceCriteria: input.acceptanceCriteria,
-      status: input.status,
+      status: nextStatus,
       priority: input.priority,
       labels: input.labels,
       dueDate: input.dueDate === undefined ? undefined : input.dueDate ? new Date(input.dueDate) : null,
@@ -345,26 +350,26 @@ export const updateTask = async (
     data: {
       taskId,
       userId: input.userId,
-      action: input.status && input.status !== existingTask.status ? "TASK_MOVED" : "TASK_UPDATED",
-      details: input.status && input.status !== existingTask.status
-        ? `Moved task "${updatedTask.title}" from ${existingTask.status} to ${input.status}`
+      action: statusChanged ? "TASK_MOVED" : "TASK_UPDATED",
+      details: statusChanged
+        ? `Moved task "${updatedTask.title}" from ${existingTask.status} to ${nextStatus}`
         : `Updated task "${updatedTask.title}"`,
     },
   });
 
-  if (input.status && input.status !== existingTask.status) {
+  if (statusChanged && nextStatus) {
     await createProjectActivity({
       projectId: existingTask.projectId,
       userId: input.userId,
       action: "TASK_MOVED",
       target: updatedTask.title,
-      details: `${existingTask.status} to ${input.status}`,
+      details: `${existingTask.status} to ${nextStatus}`,
     });
     await notifyProjectMembers(
       existingTask.projectId,
       input.userId,
       NotificationType.TASK_MOVED,
-      `"${updatedTask.title}" moved to ${input.status.replace("_", " ").toLowerCase()}.`
+      `"${updatedTask.title}" moved to ${nextStatus.replace("_", " ").toLowerCase()}.`
     );
   } else {
     await createProjectActivity({
