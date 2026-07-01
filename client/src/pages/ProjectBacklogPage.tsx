@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import BacklogList from '../components/BacklogList';
+import type { BacklogMoveTarget } from '../components/BacklogList';
 import CreateTaskModal from '../components/CreateTaskModal';
 import Icon from '../components/Icon';
 import TaskDetailModal from '../components/TaskDetailModal';
@@ -9,9 +10,9 @@ import { Button } from '../components/ui';
 import PageSkeleton from '../components/PageSkeleton';
 import { useAuth } from '../hooks/useAuth';
 import { useToast } from '../hooks/useToast';
-import { getProjectById } from '../services/projectService';
+import { getProjectById, getProjectSprints } from '../services/projectService';
 import { joinProjectRoom, leaveProjectRoom } from '../services/realtimeService';
-import { deleteTask, getProjectTasks, reorderTask, updateTask } from '../services/taskService';
+import { createTask, deleteTask, getProjectTasks, moveTaskToSprint, reorderTask, updateTask } from '../services/taskService';
 import type { Task } from '../services/taskService';
 import { queryKeys, queryTimes } from '../services/queryOptions';
 
@@ -42,10 +43,16 @@ export default function ProjectBacklogPage() {
     enabled: Boolean(projectId),
     staleTime: queryTimes.tasks,
   });
+  const sprintsQuery = useQuery({
+    queryKey: queryKeys.projectSprints(projectId ?? ''),
+    queryFn: () => getProjectSprints(projectId!),
+    enabled: Boolean(projectId),
+    staleTime: queryTimes.sprints,
+  });
 
   useEffect(() => {
-    if (projectQuery.isError || tasksQuery.isError) navigate('/projects', { replace: true });
-  }, [navigate, projectQuery.isError, tasksQuery.isError]);
+    if (projectQuery.isError || tasksQuery.isError || sprintsQuery.isError) navigate('/projects', { replace: true });
+  }, [navigate, projectQuery.isError, sprintsQuery.isError, tasksQuery.isError]);
 
   useEffect(() => {
     if (!projectId) return undefined;
@@ -79,7 +86,9 @@ export default function ProjectBacklogPage() {
 
   const project = projectQuery.data ?? null;
   const tasks = Array.isArray(tasksQuery.data) ? tasksQuery.data : [];
-  const loading = projectQuery.isLoading || tasksQuery.isLoading;
+  const sprints = Array.isArray(sprintsQuery.data) ? sprintsQuery.data : [];
+  const activeSprint = sprints.find((sprint) => sprint.isActive) ?? null;
+  const loading = projectQuery.isLoading || tasksQuery.isLoading || sprintsQuery.isLoading;
 
   if (loading) return <PageSkeleton variant="table" />;
   if (!project || !projectId) return null;
@@ -100,29 +109,53 @@ export default function ProjectBacklogPage() {
     }
   }
 
-  async function handleMoveSelectedToBoard(taskIds: string[]) {
-    if (!projectId) return;
+  async function handleMoveTasks(taskIds: string[], target: BacklogMoveTarget) {
+    if (!projectId || taskIds.length === 0) return;
+
     const previousTasks = tasks;
-    const selectedBacklogIds = new Set(taskIds.filter((taskId) => tasks.some((task) => task.id === taskId && task.status === 'BACKLOG')));
+    const sprint = target.type === 'sprint' ? sprints.find((item) => item.id === target.sprintId) : null;
 
-    if (selectedBacklogIds.size === 0) {
-      toast.error('Only backlog tasks can be moved to the board.');
-      return;
-    }
-
-    queryClient.setQueryData<Task[]>(queryKeys.projectTasks(projectId), (current = []) => current.map((task) => (
-      selectedBacklogIds.has(task.id) ? { ...task, status: 'TODO' } : task
-    )));
+    queryClient.setQueryData<Task[]>(queryKeys.projectTasks(projectId), (current = []) => current.map((task) => {
+      if (!taskIds.includes(task.id)) return task;
+      if (target.type === 'backlog') return { ...task, sprintId: null, sprint: null };
+      return {
+        ...task,
+        status: task.status === 'BACKLOG' ? 'TODO' : task.status,
+        sprintId: target.sprintId,
+        sprint: sprint ? { id: sprint.id, name: sprint.name } : task.sprint,
+      };
+    }));
 
     try {
-      const updatedTasks = await Promise.all(Array.from(selectedBacklogIds).map((taskId) => updateTask(taskId, { status: 'TODO' })));
+      const updatedTasks = await Promise.all(taskIds.map(async (taskId) => {
+        if (target.type === 'backlog') return moveTaskToSprint(taskId, null);
+        return moveTaskToSprint(taskId, target.sprintId);
+      }));
+
       queryClient.setQueryData<Task[]>(queryKeys.projectTasks(projectId), (current = []) => current.map((task) => updatedTasks.find((updated) => updated.id === task.id) ?? task));
       updatedTasks.forEach((task) => queryClient.setQueryData(queryKeys.task(task.id), task));
-      toast.success(`${updatedTasks.length} task${updatedTasks.length === 1 ? '' : 's'} moved to To do.`);
+
+      const destination = target.type === 'backlog'
+        ? 'the product backlog'
+        : sprint?.name ?? 'the selected sprint';
+      toast.success(`${updatedTasks.length} task${updatedTasks.length === 1 ? '' : 's'} moved to ${destination}.`);
     } catch {
       queryClient.setQueryData(queryKeys.projectTasks(projectId), previousTasks);
-      toast.error('One or more tasks could not be moved to the board.');
-      throw new Error('Move to board failed');
+      toast.error('One or more tasks could not be moved.');
+      throw new Error('Move failed');
+    }
+  }
+
+  async function handleQuickAddTask(title: string) {
+    if (!projectId) return;
+    try {
+      const task = await createTask({ projectId, title, status: 'TODO' });
+      queryClient.setQueryData<Task[]>(queryKeys.projectTasks(projectId), (current = []) => upsertTask(current, task));
+      queryClient.setQueryData(queryKeys.task(task.id), task);
+      toast.success('Task added to the product backlog.');
+    } catch {
+      toast.error('Task could not be created.');
+      throw new Error('Create failed');
     }
   }
 
@@ -164,12 +197,15 @@ export default function ProjectBacklogPage() {
         }))}
         canDelete={isAdmin}
         onDeleteSelected={handleDeleteSelected}
-        onMoveSelectedToBoard={handleMoveSelectedToBoard}
+        onMoveTasks={handleMoveTasks}
+        onQuickAddTask={handleQuickAddTask}
         onTaskUpdate={handleTaskUpdate}
         onBulkUpdate={handleBulkUpdate}
         onReorder={handleReorder}
         onTaskClick={(task) => setSelectedTaskId(task.id)}
         projectId={projectId}
+        sprints={sprints}
+        activeSprint={activeSprint}
       />
 
       <CreateTaskModal isOpen={createOpen} projectId={projectId} members={project.members ?? []} onClose={() => setCreateOpen(false)} onCreated={(task) => {

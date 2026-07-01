@@ -59,7 +59,7 @@ export default function TaskCard({ task, dragging = false, onDragStart, onDragEn
       </div>}
 
       <footer className="task-card-footer">
-        <span className="task-assignee-avatar">{task.assignee?.avatarUrl ? <img src={task.assignee.avatarUrl} alt="" /> : getInitials(task.assignee?.name)}</span>
+        <span className="task-assignee-avatar" title={task.assignee?.name}>{task.assignee?.avatarUrl ? <img src={task.assignee.avatarUrl} alt="" /> : getInitials(task.assignee?.name)}</span>
       </footer>
     </article>
   );

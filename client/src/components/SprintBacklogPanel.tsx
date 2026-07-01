@@ -1,18 +1,23 @@
 import { useEffect, useMemo, useState, type DragEvent } from 'react';
 import Icon from './Icon';
+import SprintCapacitySummary from './SprintCapacitySummary';
 import { Button, Spinner } from './ui';
 import { useToast } from '../hooks/useToast';
 import { moveTaskToSprint, reorderTask } from '../services/taskService';
 import type { Task } from '../services/taskService';
+import type { ProjectMember, Sprint } from '../services/projectService';
 import { getSprintSuggestion } from '../services/aiService';
 import type { SprintSuggestionResult } from '../services/aiService';
 import SprintSuggestionModal from './SprintSuggestionModal';
+import { computeSprintCapacity } from '../utils/sprintCapacity';
 
 interface SprintBacklogPanelProps {
   sprintId: string;
   projectId: string;
   allTasks: Task[];
   onTasksChange: (tasks: Task[]) => void;
+  sprint: Pick<Sprint, 'startDate' | 'endDate'>;
+  members: ProjectMember[];
 }
 
 const PRIORITY_ORDER: Record<string, number> = { URGENT: 0, HIGH: 1, MEDIUM: 2, LOW: 3 };
@@ -22,7 +27,11 @@ function priorityLabel(p: string) {
 }
 
 function formatStatus(s: string) {
+  if (s === 'BACKLOG') return 'Product backlog';
   return s.toLowerCase().split('_').map((w) => w[0].toUpperCase() + w.slice(1)).join(' ');
+}
+function sprintAssignedTask(task: Task, sprintId: string): Task {
+  return { ...task, sprintId, status: task.status === 'BACKLOG' ? 'TODO' : task.status };
 }
 
 export default function SprintBacklogPanel({
@@ -30,6 +39,8 @@ export default function SprintBacklogPanel({
   projectId,
   allTasks,
   onTasksChange,
+  sprint,
+  members,
 }: SprintBacklogPanelProps) {
   const toast = useToast();
   const [draggedId, setDraggedId] = useState<string | null>(null);
@@ -45,6 +56,7 @@ export default function SprintBacklogPanel({
   const [selectedSprintIds, setSelectedSprintIds] = useState<string[]>([]);
   const [backlogSearch, setBacklogSearch] = useState('');
   const [sprintSearch, setSprintSearch] = useState('');
+  const [dropZone, setDropZone] = useState<'backlog' | 'sprint' | null>(null);
 
   const sprintTasks = useMemo(() => [...allTasks.filter((t) => t.sprintId === sprintId)]
     .sort((a, b) => a.order - b.order), [allTasks, sprintId]);
@@ -52,6 +64,10 @@ export default function SprintBacklogPanel({
     .sort((a, b) => (PRIORITY_ORDER[a.priority] ?? 2) - (PRIORITY_ORDER[b.priority] ?? 2)), [allTasks]);
   const filteredBacklogTasks = useMemo(() => filterTasks(backlogTasks, backlogSearch), [backlogSearch, backlogTasks]);
   const filteredSprintTasks = useMemo(() => filterTasks(sprintTasks, sprintSearch), [sprintSearch, sprintTasks]);
+  const sprintCapacity = useMemo(
+    () => computeSprintCapacity(sprint, members, sprintTasks),
+    [sprint, members, sprintTasks],
+  );
   const isProcessing = Boolean(busy || bulkAction || suggesting);
   const allBacklogSelected = filteredBacklogTasks.length > 0 && filteredBacklogTasks.every((task) => selectedBacklogIds.includes(task.id));
   const allSprintSelected = filteredSprintTasks.length > 0 && filteredSprintTasks.every((task) => selectedSprintIds.includes(task.id));
@@ -81,14 +97,15 @@ export default function SprintBacklogPanel({
     onTasksChange(allTasks.map((t) => updatedTasks.find((u) => u.id === t.id) ?? t));
   }
 
-  async function handleAddToSprint(task: Task) {
+  async function moveBacklogTaskToSprint(task: Task) {
     setBusy(task.id);
-    const optimistic = allTasks.map((t) => t.id === task.id ? { ...t, sprintId } : t);
+    const nextOrder = sprintTasks.length > 0 ? Math.max(...sprintTasks.map((item) => item.order)) + 1 : 0;
+    const optimistic = allTasks.map((t) => t.id === task.id ? { ...sprintAssignedTask(t, sprintId), order: nextOrder } : t);
     onTasksChange(optimistic);
     try {
       const updated = await moveTaskToSprint(task.id, sprintId);
-      onTasksChange(allTasks.map((t) => t.id === updated.id ? updated : t));
-      setSelectedBacklogIds((current) => current.filter((taskId) => taskId !== task.id));
+      onTasksChange(allTasks.map((t) => t.id === updated.id ? { ...sprintAssignedTask(updated, sprintId), order: nextOrder } : t));
+      toast.success('Task added to the sprint backlog.');
     } catch {
       onTasksChange(allTasks);
       toast.error('Task could not be added to the sprint.');
@@ -97,14 +114,14 @@ export default function SprintBacklogPanel({
     }
   }
 
-  async function handleRemoveFromSprint(task: Task) {
+  async function moveSprintTaskToBacklog(task: Task) {
     setBusy(task.id);
     const optimistic = allTasks.map((t) => t.id === task.id ? { ...t, sprintId: null } : t);
     onTasksChange(optimistic);
     try {
       const updated = await moveTaskToSprint(task.id, null);
       onTasksChange(allTasks.map((t) => t.id === updated.id ? updated : t));
-      setSelectedSprintIds((current) => current.filter((taskId) => taskId !== task.id));
+      toast.success('Task moved back to the product backlog.');
     } catch {
       onTasksChange(allTasks);
       toast.error('Task could not be removed from the sprint.');
@@ -169,11 +186,22 @@ export default function SprintBacklogPanel({
 
     setBulkAction('add');
     const previousTasks = allTasks;
-    onTasksChange(allTasks.map((task) => selectedIds.includes(task.id) ? { ...task, sprintId } : task));
+    const selectedOrder = selectedIds.reduce<Record<string, number>>((orders, taskId, index) => {
+      orders[taskId] = sprintTasks.length + index;
+      return orders;
+    }, {});
+    onTasksChange(allTasks.map((task) => (
+      selectedIds.includes(task.id)
+        ? { ...sprintAssignedTask(task, sprintId), order: selectedOrder[task.id] ?? task.order }
+        : task
+    )));
 
     try {
       const updatedTasks = await Promise.all(selectedIds.map((taskId) => moveTaskToSprint(taskId, sprintId)));
-      onTasksChange(previousTasks.map((task) => updatedTasks.find((updated) => updated.id === task.id) ?? task));
+      onTasksChange(previousTasks.map((task) => {
+        const updated = updatedTasks.find((item) => item.id === task.id);
+        return updated ? { ...sprintAssignedTask(updated, sprintId), order: selectedOrder[updated.id] ?? updated.order } : task;
+      }));
       setSelectedBacklogIds([]);
       setBacklogSelectionMode(false);
       toast.success(`${updatedTasks.length} task${updatedTasks.length === 1 ? '' : 's'} added to the sprint.`);
@@ -209,33 +237,72 @@ export default function SprintBacklogPanel({
 
   function handleDragStart(event: DragEvent<HTMLElement>, taskId: string) {
     event.dataTransfer.effectAllowed = 'move';
+    event.dataTransfer.setData('text/plain', taskId);
     setDraggedId(taskId);
   }
 
-  function handleDragOver(event: DragEvent<HTMLElement>, index: number) {
+  function handleSprintDragOver(event: DragEvent<HTMLElement>, index?: number) {
+    if (selectionModeActive) return;
     event.preventDefault();
     event.dataTransfer.dropEffect = 'move';
-    setDropIndex(index);
+    setDropZone('sprint');
+    if (typeof index === 'number') setDropIndex(index);
+    autoScrollPage(event.clientY);
   }
 
-  async function handleDrop(event: DragEvent<HTMLElement>, targetIndex: number) {
+  function handleBacklogDragOver(event: DragEvent<HTMLElement>) {
+    if (selectionModeActive) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = 'move';
+    setDropZone('backlog');
+    autoScrollPage(event.clientY);
+  }
+
+  function clearDragState() {
+    setDraggedId(null);
+    setDropIndex(null);
+    setDropZone(null);
+  }
+
+  async function handleSprintDrop(event: DragEvent<HTMLElement>, targetIndex = filteredSprintTasks.length) {
     event.preventDefault();
     if (isProcessing || selectionModeActive) return;
-    if (!draggedId) return;
-    const sourceTask = sprintTasks.find((t) => t.id === draggedId);
+    const sourceId = draggedId ?? event.dataTransfer.getData('text/plain');
+    if (!sourceId) return;
+    const backlogTask = backlogTasks.find((task) => task.id === sourceId);
+    if (backlogTask) {
+      clearDragState();
+      await moveBacklogTaskToSprint(backlogTask);
+      return;
+    }
+
+    await handleSprintReorder(sourceId, targetIndex);
+  }
+
+  async function handleBacklogDrop(event: DragEvent<HTMLElement>) {
+    event.preventDefault();
+    if (isProcessing || selectionModeActive) return;
+    const sourceId = draggedId ?? event.dataTransfer.getData('text/plain');
+    const sprintTask = sprintTasks.find((task) => task.id === sourceId);
+    clearDragState();
+    if (!sprintTask) return;
+    await moveSprintTaskToBacklog(sprintTask);
+  }
+
+  async function handleSprintReorder(taskId: string, targetIndex: number) {
+    const sourceTask = sprintTasks.find((t) => t.id === taskId);
     if (!sourceTask) return;
 
     const targetTask = filteredSprintTasks[targetIndex];
     const resolvedTargetIndex = targetTask ? sprintTasks.findIndex((task) => task.id === targetTask.id) : targetIndex;
-    const reordered = sprintTasks.filter((t) => t.id !== draggedId);
+    const reordered = sprintTasks.filter((t) => t.id !== taskId);
     reordered.splice(Math.max(0, resolvedTargetIndex), 0, sourceTask);
 
     // Assign order values 0, 1, 2… — global order field, no migration needed
     const updated = reordered.map((t, i) => ({ ...t, order: i }));
     onTasksChange(allTasks.map((t) => updated.find((u) => u.id === t.id) ?? t));
 
-    setDraggedId(null);
-    setDropIndex(null);
+    clearDragState();
 
     await Promise.allSettled(updated.map((t) => reorderTask(t.id, t.order)));
   }
@@ -248,6 +315,8 @@ export default function SprintBacklogPanel({
         Add tasks from the product backlog on the left into this sprint on the right. Drag sprint tasks to reorder them.
       </p>
 
+      <SprintCapacitySummary capacity={sprintCapacity} compact />
+
       <div className="sprint-backlog-layout">
         {/* LEFT — Product backlog (source) */}
         <div className="app-card sprint-backlog-col">
@@ -255,7 +324,7 @@ export default function SprintBacklogPanel({
             <div>
               <p className="section-kicker">Product backlog</p>
               <h2>Available tasks</h2>
-              <p>Unassigned tasks sorted by priority. Click <strong>+</strong> to add to the sprint.</p>
+              <p>Drag tasks into the Sprint Backlog or use Select for bulk planning.</p>
             </div>
             <div className="sprint-backlog-head-actions">
               {backlogTasks.length > 0 && (
@@ -287,9 +356,14 @@ export default function SprintBacklogPanel({
           {suggestError && <p className="sprint-suggest-error">{suggestError}</p>}
 
           {backlogTasks.length === 0 ? (
-            <div className="sprint-backlog-empty">
+            <div
+              className={`sprint-backlog-empty${dropZone === 'backlog' ? ' is-drop-target' : ''}`}
+              onDragOver={handleBacklogDragOver}
+              onDragLeave={() => setDropZone(null)}
+              onDrop={handleBacklogDrop}
+            >
               <span className="sprint-backlog-empty-icon"><Icon name="check" size={20} /></span>
-              <p>All tasks are in a sprint or the project has no backlog tasks yet.</p>
+              <p>No tasks remain in the Product Backlog.</p>
             </div>
           ) : (
             <>
@@ -330,14 +404,27 @@ export default function SprintBacklogPanel({
                 <div className="sprint-bulk-actions" aria-label="Selected product backlog task actions">
                   <span className="selection-count is-visible">{selectedBacklogIds.length} selected</span>
                   <Button variant="secondary" className="bulk-action-button" loading={bulkAction === 'add'} disabled={bulkAction === 'remove' || selectedBacklogIds.length === 0} onClick={handleBulkAddToSprint}>
-                    <Icon name="plus" size={15} /> Add to sprint
+                    <Icon name="tasks" size={15} /> Add selected to sprint
                   </Button>
                   <Button variant="ghost" className="bulk-action-button" disabled={isProcessing} onClick={() => setSelectedBacklogIds([])}>Clear</Button>
                 </div>
               )}
-              <ul className="sprint-task-list">
+              <ul
+                className={`sprint-task-list sprint-task-drop-list${dropZone === 'backlog' ? ' is-drop-target' : ''}`}
+                onDragOver={handleBacklogDragOver}
+                onDragLeave={(event) => {
+                  if (!event.currentTarget.contains(event.relatedTarget as Node)) setDropZone(null);
+                }}
+                onDrop={handleBacklogDrop}
+              >
                 {filteredBacklogTasks.map((task) => (
-                  <li key={task.id} className={`sprint-task-row${selectedBacklogIds.includes(task.id) ? ' is-selected' : ''}`}>
+                  <li
+                    key={task.id}
+                    className={`sprint-task-row${draggedId === task.id ? ' is-dragging' : ''}${selectedBacklogIds.includes(task.id) ? ' is-selected' : ''}${backlogSelectionMode ? ' is-selection-mode' : ''}`}
+                    draggable={!isProcessing && !backlogSelectionMode}
+                    onDragStart={(event) => handleDragStart(event, task.id)}
+                    onDragEnd={clearDragState}
+                  >
                     {backlogSelectionMode && (
                       <input
                         className="themed-checkbox"
@@ -348,6 +435,11 @@ export default function SprintBacklogPanel({
                         aria-label={`Select ${task.title}`}
                       />
                     )}
+                    {!backlogSelectionMode && (
+                      <span className="sprint-task-drag-handle" aria-hidden="true">
+                        <Icon name="menu" size={14} />
+                      </span>
+                    )}
                     <span className={`task-priority-dot priority-${task.priority.toLowerCase()}`} />
                     <span className="sprint-task-info">
                       <span className="sprint-task-title">{task.title}</span>
@@ -357,18 +449,6 @@ export default function SprintBacklogPanel({
                         {task.assignee && <span className="sprint-task-assignee">{task.assignee.name}</span>}
                       </span>
                     </span>
-                    {!backlogSelectionMode && (
-                      <Button
-                        variant="secondary"
-                        className="sprint-task-action"
-                        loading={busy === task.id}
-                        disabled={isProcessing && busy !== task.id}
-                        onClick={() => handleAddToSprint(task)}
-                        title="Add to sprint"
-                      >
-                        <Icon name="plus" size={14} />
-                      </Button>
-                    )}
                   </li>
                 ))}
                 {filteredBacklogTasks.length === 0 && (
@@ -385,7 +465,7 @@ export default function SprintBacklogPanel({
             <div>
               <p className="section-kicker">Sprint backlog</p>
               <h2>In this sprint</h2>
-              <p>Drag to reorder. Click <strong>←</strong> to return a task to the backlog.</p>
+              <p>Drag tasks to reorder them, move them back, or use Select for bulk changes.</p>
             </div>
             <div className="sprint-backlog-head-actions">
               {sprintTasks.length > 0 && (
@@ -406,9 +486,14 @@ export default function SprintBacklogPanel({
           </div>
 
           {sprintTasks.length === 0 ? (
-            <div className="sprint-backlog-empty">
+            <div
+              className={`sprint-backlog-empty${dropZone === 'sprint' ? ' is-drop-target' : ''}`}
+              onDragOver={(event) => handleSprintDragOver(event)}
+              onDragLeave={() => setDropZone(null)}
+              onDrop={(event) => handleSprintDrop(event)}
+            >
               <span className="sprint-backlog-empty-icon"><Icon name="tasks" size={20} /></span>
-              <p>No tasks in this sprint yet. Add tasks from the product backlog on the left.</p>
+              <p>Drop tasks here to start planning this sprint.</p>
             </div>
           ) : (
             <>
@@ -437,21 +522,31 @@ export default function SprintBacklogPanel({
                 <div className="sprint-bulk-actions" aria-label="Selected sprint task actions">
                   <span className="selection-count is-visible">{selectedSprintIds.length} selected</span>
                   <Button variant="secondary" className="bulk-action-button" loading={bulkAction === 'remove'} disabled={bulkAction === 'add' || selectedSprintIds.length === 0} onClick={handleBulkRemoveFromSprint}>
-                    <Icon name="arrow-left" size={15} /> Remove from sprint
+                    <Icon name="tasks" size={15} /> Remove selected from sprint
                   </Button>
                   <Button variant="ghost" className="bulk-action-button" disabled={isProcessing} onClick={() => setSelectedSprintIds([])}>Clear</Button>
                 </div>
               )}
-              <ul className="sprint-task-list">
+              <ul
+                className={`sprint-task-list sprint-task-drop-list${dropZone === 'sprint' ? ' is-drop-target' : ''}`}
+                onDragOver={(event) => handleSprintDragOver(event)}
+                onDragLeave={(event) => {
+                  if (!event.currentTarget.contains(event.relatedTarget as Node)) {
+                    setDropIndex(null);
+                    setDropZone(null);
+                  }
+                }}
+                onDrop={(event) => handleSprintDrop(event)}
+              >
                 {filteredSprintTasks.map((task, index) => (
                   <li
                     key={task.id}
-                    className={`sprint-task-row${draggedId === task.id ? ' is-dragging' : ''}${dropIndex === index && draggedId !== task.id ? ' is-drop-target' : ''}${selectedSprintIds.includes(task.id) ? ' is-selected' : ''}${selectionModeActive ? ' is-selection-mode' : ''}`}
-                    draggable={!isProcessing && !selectionModeActive}
+                    className={`sprint-task-row${draggedId === task.id ? ' is-dragging' : ''}${dropIndex === index && draggedId !== task.id ? ' is-drop-target' : ''}${selectedSprintIds.includes(task.id) ? ' is-selected' : ''}${sprintSelectionMode ? ' is-selection-mode' : ''}`}
+                    draggable={!isProcessing && !sprintSelectionMode}
                     onDragStart={(e) => handleDragStart(e, task.id)}
-                    onDragEnd={() => { setDraggedId(null); setDropIndex(null); }}
-                    onDragOver={(e) => handleDragOver(e, index)}
-                    onDrop={(e) => handleDrop(e, index)}
+                    onDragEnd={clearDragState}
+                    onDragOver={(e) => handleSprintDragOver(e, index)}
+                    onDrop={(e) => handleSprintDrop(e, index)}
                   >
                     {sprintSelectionMode && (
                       <input
@@ -477,18 +572,6 @@ export default function SprintBacklogPanel({
                         {task.assignee && <span className="sprint-task-assignee">{task.assignee.name}</span>}
                       </span>
                     </span>
-                    {!sprintSelectionMode && (
-                      <Button
-                        variant="secondary"
-                        className="sprint-task-action"
-                        loading={busy === task.id}
-                        disabled={isProcessing && busy !== task.id}
-                        onClick={() => handleRemoveFromSprint(task)}
-                        title="Remove from sprint"
-                      >
-                        <Icon name="arrow-left" size={14} />
-                      </Button>
-                    )}
                   </li>
                 ))}
                 {filteredSprintTasks.length === 0 && (
@@ -512,6 +595,18 @@ export default function SprintBacklogPanel({
       )}
     </div>
   );
+}
+
+function autoScrollPage(pointerY: number) {
+  const threshold = 44;
+  const maxStep = 18;
+  if (pointerY < threshold) {
+    const intensity = (threshold - pointerY) / threshold;
+    window.scrollBy({ top: -Math.ceil(maxStep * intensity), behavior: 'auto' });
+  } else if (pointerY > window.innerHeight - threshold) {
+    const intensity = (pointerY - (window.innerHeight - threshold)) / threshold;
+    window.scrollBy({ top: Math.ceil(maxStep * intensity), behavior: 'auto' });
+  }
 }
 
 function filterTasks(tasks: Task[], search: string) {

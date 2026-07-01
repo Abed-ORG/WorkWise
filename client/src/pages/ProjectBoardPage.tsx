@@ -9,9 +9,9 @@ import { Button } from '../components/ui';
 import PageSkeleton from '../components/PageSkeleton';
 import { useAuth } from '../hooks/useAuth';
 import { useToast } from '../hooks/useToast';
-import { getProjectById } from '../services/projectService';
+import { getProjectById, getProjectSprints } from '../services/projectService';
 import { joinProjectRoom, leaveProjectRoom } from '../services/realtimeService';
-import { getProjectTasks, updateTask } from '../services/taskService';
+import { createTask, getProjectTasks, updateTask } from '../services/taskService';
 import type { Task } from '../services/taskService';
 import { queryKeys, queryTimes } from '../services/queryOptions';
 
@@ -42,10 +42,16 @@ export default function ProjectBoardPage() {
     enabled: Boolean(projectId),
     staleTime: queryTimes.tasks,
   });
+  const sprintsQuery = useQuery({
+    queryKey: queryKeys.projectSprints(projectId ?? ''),
+    queryFn: () => getProjectSprints(projectId!),
+    enabled: Boolean(projectId),
+    staleTime: queryTimes.sprints,
+  });
 
   useEffect(() => {
-    if (projectQuery.isError || tasksQuery.isError) navigate('/projects', { replace: true });
-  }, [navigate, projectQuery.isError, tasksQuery.isError]);
+    if (projectQuery.isError || tasksQuery.isError || sprintsQuery.isError) navigate('/projects', { replace: true });
+  }, [navigate, projectQuery.isError, sprintsQuery.isError, tasksQuery.isError]);
 
   useEffect(() => {
     if (!projectId) return undefined;
@@ -79,7 +85,9 @@ export default function ProjectBoardPage() {
 
   const project = projectQuery.data ?? null;
   const tasks = Array.isArray(tasksQuery.data) ? tasksQuery.data : [];
-  const loading = projectQuery.isLoading || tasksQuery.isLoading;
+  const sprints = Array.isArray(sprintsQuery.data) ? sprintsQuery.data : [];
+  const activeSprint = sprints.find((sprint) => sprint.isActive) ?? null;
+  const loading = projectQuery.isLoading || tasksQuery.isLoading || sprintsQuery.isLoading;
   const setTasks = (nextTasks: Task[]) => {
     if (!projectId) return;
     queryClient.setQueryData(queryKeys.projectTasks(projectId), nextTasks);
@@ -96,6 +104,25 @@ export default function ProjectBoardPage() {
     setTasks(tasks.map((task) => taskIds.includes(task.id) ? { ...task, ...changes } as Task : task));
     try { const updated = await Promise.all(taskIds.map((id) => updateTask(id, changes))); setTasks(tasks.map((task) => updated.find((item) => item.id === task.id) ?? task)); toast.success(`${updated.length} board tasks updated.`); }
     catch { setTasks(previous); toast.error('Board changes could not be saved.'); }
+  }
+
+  async function handleBoardQuickAdd(input: { title: string; status: Task['status']; sprintId: string }) {
+    if (!projectId) throw new Error('Project not found');
+    try {
+      const task = await createTask({
+        projectId,
+        title: input.title,
+        status: input.status,
+        sprintId: input.sprintId,
+      });
+      queryClient.setQueryData<Task[]>(queryKeys.projectTasks(projectId), (current = []) => upsertTask(current, task));
+      queryClient.setQueryData(queryKeys.task(task.id), task);
+      toast.success('Task added to the board.');
+      return task;
+    } catch {
+      toast.error('Task could not be created.');
+      throw new Error('Create failed');
+    }
   }
 
   return (
@@ -116,6 +143,8 @@ export default function ProjectBoardPage() {
             avatarUrl: member.user.avatarUrl,
           }))}
           onBulkUpdate={handleBulkUpdate}
+          activeSprintId={activeSprint?.id ?? null}
+          onCreateTask={activeSprint ? handleBoardQuickAdd : undefined}
         />
       </section>
       <CreateTaskModal isOpen={createOpen} projectId={projectId} members={project.members ?? []} onClose={() => setCreateOpen(false)} onCreated={(task) => {

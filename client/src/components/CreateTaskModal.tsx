@@ -17,6 +17,7 @@ const initialForm = {
   description: '',
   priority: 'MEDIUM' as TaskPriority,
   assigneeId: '',
+  estimatedHours: '',
   labels: '',
   dueDate: '',
 };
@@ -46,6 +47,7 @@ export default function CreateTaskModal({ isOpen, projectId, members, onClose, o
         projectId,
         title,
         description: form.description.trim() || undefined,
+        estimatedHours: form.estimatedHours ? Number(form.estimatedHours) : undefined,
         priority: form.priority,
         assigneeId: form.assigneeId || undefined,
         labels: form.labels.split(',').map((label) => label.trim()).filter(Boolean),
@@ -76,7 +78,10 @@ export default function CreateTaskModal({ isOpen, projectId, members, onClose, o
           ]} />
         </div>
         <div className="form-grid-2">
+          <Input label="Estimated hours" type="number" min="0" step="0.25" value={form.estimatedHours} onChange={(event) => setForm({ ...form, estimatedHours: event.target.value })} placeholder="4" />
           <Input label="Labels" value={form.labels} onChange={(event) => setForm({ ...form, labels: event.target.value })} placeholder="frontend, urgent" helperText="Separate labels with commas." />
+        </div>
+        <div className="form-grid-2">
           <Input label="Due date" type="date" value={form.dueDate} onChange={(event) => setForm({ ...form, dueDate: event.target.value })} />
         </div>
         {error && <div className="board-alert" role="alert">{error}</div>}

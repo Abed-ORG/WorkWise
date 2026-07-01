@@ -6,19 +6,27 @@ import Icon from '../components/Icon';
 import KanbanBoard from '../components/KanbanBoard';
 import { BurndownChart } from '../components/ProjectAnalyticsWidgets';
 import SprintBacklogPanel from '../components/SprintBacklogPanel';
+import SprintCapacitySummary from '../components/SprintCapacitySummary';
 import { Button, Spinner } from '../components/ui';
 import PageSkeleton from '../components/PageSkeleton';
 import { useAuth } from '../hooks/useAuth';
 import { useToast } from '../hooks/useToast';
 import { getProjectById, getSprintById } from '../services/projectService';
-import { getProjectTasks } from '../services/taskService';
+import { createTask, getProjectTasks } from '../services/taskService';
 import type { Task } from '../services/taskService';
 import { queryKeys, queryTimes } from '../services/queryOptions';
 import { buildBurndownData } from '../utils/projectAnalytics';
+import { computeSprintCapacity } from '../utils/sprintCapacity';
 import { getSprintRisk } from '../services/aiService';
 import type { SprintRiskResult } from '../services/aiService';
 
 type Tab = 'board' | 'backlog';
+
+function upsertTask(tasks: Task[], nextTask: Task) {
+  const exists = tasks.some((task) => task.id === nextTask.id);
+  if (exists) return tasks.map((task) => (task.id === nextTask.id ? nextTask : task));
+  return [nextTask, ...tasks];
+}
 
 function daysRemaining(endDateStr?: string): number | null {
   const match = endDateStr && /^(\d{4})-(\d{2})-(\d{2})/.exec(endDateStr);
@@ -89,6 +97,7 @@ export default function SprintBoardPage() {
   const sprintTasks = allTasks.filter((t) => t.sprintId === sprintId);
   const days = daysRemaining(sprint.endDate);
   const burndownPoints = buildBurndownData(sprint, allTasks);
+  const sprintCapacity = computeSprintCapacity(sprint, project.members ?? [], sprintTasks);
 
   async function handleAnalyzeRisk() {
     if (!projectId || !sprintId || riskLoading) return;
@@ -109,6 +118,25 @@ export default function SprintBoardPage() {
     setCompleteOpen(false);
     toast.success('Sprint completed. Tasks have been moved and the sprint is now in history.');
     navigate(`/projects/${projectId}/sprints`);
+  }
+
+  async function handleBoardQuickAdd(input: { title: string; status: Task['status']; sprintId: string }) {
+    if (!projectId) throw new Error('Project not found');
+    try {
+      const task = await createTask({
+        projectId,
+        title: input.title,
+        status: input.status,
+        sprintId: input.sprintId,
+      });
+      setAllTasks((current) => upsertTask(current, task));
+      queryClient.setQueryData(queryKeys.task(task.id), task);
+      toast.success('Task added to the sprint.');
+      return task;
+    } catch {
+      toast.error('Task could not be created.');
+      throw new Error('Create failed');
+    }
   }
 
   return (
@@ -144,6 +172,9 @@ export default function SprintBoardPage() {
             <p>{sprint.goal}</p>
           </div>
         )}
+
+        {/* Capacity summary */}
+        <SprintCapacitySummary capacity={sprintCapacity} />
 
         {/* Risk analysis */}
         <div className="sprint-risk-section">
@@ -255,27 +286,16 @@ export default function SprintBoardPage() {
 
       {/* Board tab */}
       {activeTab === 'board' && (
-        <>
-          {sprintTasks.length === 0 ? (
-            <div className="app-card sprint-empty-state">
-              <span className="empty-icon"><Icon name="board" size={24} /></span>
-              <h3>This sprint has no tasks yet</h3>
-              <p>Switch to the <strong>Sprint backlog</strong> tab to add tasks from the product backlog into this sprint.</p>
-              <Button variant="secondary" onClick={() => setActiveTab('backlog')}>
-                <Icon name="tasks" size={15} /> Open sprint backlog
-              </Button>
-            </div>
-          ) : (
-            <KanbanBoard
-              tasks={sprintTasks}
-              onTasksChange={(updated) =>
-                setAllTasks((current) =>
-                  current.map((t) => updated.find((u) => u.id === t.id) ?? t)
-                )
-              }
-            />
-          )}
-        </>
+        <KanbanBoard
+          tasks={sprintTasks}
+          onTasksChange={(updated) =>
+            setAllTasks((current) =>
+              current.map((t) => updated.find((u) => u.id === t.id) ?? t)
+            )
+          }
+          activeSprintId={sprintId}
+          onCreateTask={handleBoardQuickAdd}
+        />
       )}
 
       {/* Backlog tab */}
@@ -285,6 +305,8 @@ export default function SprintBoardPage() {
           projectId={projectId}
           allTasks={allTasks}
           onTasksChange={setAllTasks}
+          sprint={sprint}
+          members={project.members ?? []}
         />
       )}
 
