@@ -1708,6 +1708,22 @@ input[type='checkbox'].themed-checkbox:disabled { cursor: not-allowed; opacity: 
 .sprint-board-goal-label { display: flex; align-items: center; gap: 6px; margin: 0 0 5px; color: var(--text-subtle); font-size: 10px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; }
 .sprint-board-goal p { margin: 0; color: var(--text-muted); font-size: 13px; line-height: 1.55; }
 
+/* ── Sprint Capacity ──────────────────────────────────────────── */
+.sprint-capacity { display: flex; flex-direction: column; gap: 6px; padding: 11px 14px; border-radius: 11px; border: 1px solid var(--border); background: var(--surface-muted); }
+.sprint-capacity--compact { margin: 0 0 14px; padding: 10px 14px; }
+.sprint-capacity--over { border-color: color-mix(in srgb, var(--danger) 35%, transparent); background: var(--danger-soft); }
+.sprint-capacity-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.sprint-capacity-label { display: flex; align-items: center; gap: 6px; color: var(--text-subtle); font-size: 10px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; }
+.sprint-capacity-warning { display: flex; align-items: center; gap: 5px; color: var(--danger); font-size: 11px; font-weight: 700; }
+.sprint-capacity-bar-track { height: 7px; border-radius: 999px; background: color-mix(in srgb, var(--border) 70%, transparent); overflow: hidden; }
+.sprint-capacity-bar-fill { height: 100%; border-radius: 999px; background: var(--primary); transition: width .3s ease; }
+.sprint-capacity-bar-fill--over { background: var(--danger); }
+.sprint-capacity-figures { display: flex; }
+.sprint-capacity-figure { color: var(--text); font-size: 13px; font-weight: 650; }
+.sprint-capacity-hint { color: var(--text-muted); font-size: 12px; font-weight: 500; }
+.sprint-capacity-unestimated { margin: 0; color: var(--text-muted); font-size: 11.5px; }
+.sprint-capacity-note { margin: 0; color: var(--text-subtle); font-size: 11px; }
+
 /* ── Sprint Risk Analysis ───────────────────────────────────── */
 .sprint-risk-section { display: flex; flex-direction: column; gap: 10px; }
 
