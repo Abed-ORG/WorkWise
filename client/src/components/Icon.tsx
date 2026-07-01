@@ -1,10 +1,9 @@
 import type { SVGProps } from 'react';
-
 export type IconName =
   | 'activity' | 'arrow-left' | 'arrow-right' | 'bar-chart' | 'bell' | 'board' | 'calendar'
-  | 'check' | 'chevron-down' | 'close' | 'document' | 'folder' | 'home' | 'logout' | 'menu' | 'pencil'
+  | 'check' | 'chevron-down' | 'clock' | 'close' | 'document' | 'folder' | 'home' | 'logout' | 'menu' | 'pencil'
   | 'flag' | 'more-horizontal' | 'moon' | 'plus' | 'search' | 'settings' | 'sparkles' | 'sun' | 'tasks'
-  | 'team' | 'trash' | 'user';
+  | 'team' | 'trash' | 'upload' | 'user';
 
 interface IconProps extends SVGProps<SVGSVGElement> {
   name: IconName;
@@ -21,6 +20,7 @@ const paths: Record<IconName, React.ReactNode> = {
   calendar: <><rect x="3" y="5" width="18" height="16" rx="2" /><path d="M16 3v4M8 3v4M3 10h18" /></>,
   check: <path d="m5 12 4 4L19 6" />,
   'chevron-down': <path d="m6 9 6 6 6-6" />,
+  clock: <><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></>,
   close: <path d="M18 6 6 18M6 6l12 12" />,
   document: <><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8Z" /><path d="M14 3v5h5M9 13h6M9 17h4" /></>,
   flag: <><path d="M5 21V4" /><path d="M5 5h11l-1.5 4L16 13H5" /></>,
@@ -39,6 +39,7 @@ const paths: Record<IconName, React.ReactNode> = {
   tasks: <><rect x="4" y="3" width="16" height="18" rx="2" /><path d="m8 9 1.5 1.5L12 8M14 9h3M8 15l1.5 1.5L12 14M14 15h3" /></>,
   team: <><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M22 21v-2a4 4 0 0 0-3-3.9M16 3.1a4 4 0 0 1 0 7.8" /></>,
   trash: <><path d="M3 6h18M8 6V4h8v2M6 6l1 15h10l1-15" /><path d="M10 11v6M14 11v6" /></>,
+  upload: <><path d="M12 16V4" /><path d="m7 9 5-5 5 5" /><path d="M4 20h16" /></>,
   user: <><circle cx="12" cy="8" r="4" /><path d="M4 21a8 8 0 0 1 16 0" /></>,
 };
 

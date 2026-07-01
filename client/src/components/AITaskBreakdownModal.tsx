@@ -125,6 +125,7 @@ export default function AITaskBreakdownModal({ isOpen, projectId, onClose, onTas
             title: s.title.trim(),
             description: s.description.trim() || undefined,
             priority: s.original.priority,
+            estimatedHours: s.original.estimatedHours,
             acceptanceCriteria: s.criteria.filter((c) => c.trim()).join('\n') || undefined,
           }),
         ),

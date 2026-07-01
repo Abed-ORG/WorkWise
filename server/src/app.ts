@@ -23,7 +23,8 @@ app.use(cors({
   credentials: true,
 }));
 
-app.use(express.json());
+// 8 MB limit accommodates base64-encoded attachments up to 5 MB (~6.7 MB base64 + JSON envelope)
+app.use(express.json({ limit: '8mb' }));
 app.use(express.urlencoded({ extended: true }));
 
 app.use('/', healthRoutes);

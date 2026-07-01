@@ -1,11 +1,22 @@
 import { NextFunction, Request, Response } from "express";
 import {
+  createTaskAttachment,
+  createTaskChecklistItem,
   createTask,
+  createTaskTimeLog,
+  deleteTaskAttachment,
+  deleteTaskChecklistItem,
   deleteTask,
+  deleteTaskTimeLog,
   getAssignedTasks,
+  getAttachmentForDownload,
+  getTaskAttachments,
+  getTaskChecklistItems,
   getProjectTasks,
   getTaskById,
   getTaskDocuments,
+  getTaskTimeLogs,
+  updateTaskChecklistItem,
   updateTask,
   updateTaskDocuments,
 } from "../services/task.service";
@@ -89,6 +100,121 @@ export const deleteTaskController = async (req: Request, res: Response, next: Ne
     const user = (req as any).user;
     await deleteTask(req.params.id as string, user.userId);
     return res.status(200).json({ success: true, message: "Task deleted successfully" });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getTaskTimeLogsController = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const user = (req as any).user;
+    const result = await getTaskTimeLogs(req.params.id as string, user.userId);
+    return res.status(200).json({ success: true, data: result });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const createTaskTimeLogController = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const user = (req as any).user;
+    const log = await createTaskTimeLog(req.params.id as string, user.userId, req.body);
+    return res.status(201).json({ success: true, data: log });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const deleteTaskTimeLogController = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const user = (req as any).user;
+    await deleteTaskTimeLog(req.params.id as string, user.userId);
+    return res.status(204).send();
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getTaskChecklistItemsController = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const user = (req as any).user;
+    const items = await getTaskChecklistItems(req.params.id as string, user.userId);
+    return res.status(200).json({ success: true, data: items });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const createTaskChecklistItemController = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const user = (req as any).user;
+    const item = await createTaskChecklistItem(req.params.id as string, user.userId, req.body);
+    return res.status(201).json({ success: true, data: item });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const updateTaskChecklistItemController = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const user = (req as any).user;
+    const item = await updateTaskChecklistItem(req.params.id as string, user.userId, req.body);
+    return res.status(200).json({ success: true, data: item });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const deleteTaskChecklistItemController = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const user = (req as any).user;
+    await deleteTaskChecklistItem(req.params.id as string, user.userId);
+    return res.status(204).send();
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getTaskAttachmentsController = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const user = (req as any).user;
+    const attachments = await getTaskAttachments(req.params.id as string, user.userId);
+    return res.status(200).json({ success: true, data: attachments });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const createTaskAttachmentController = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const user = (req as any).user;
+    const attachment = await createTaskAttachment(req.params.id as string, user.userId, req.body);
+    return res.status(201).json({ success: true, data: attachment });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const downloadTaskAttachmentController = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const user = (req as any).user;
+    const attachment = await getAttachmentForDownload(req.params.id as string, user.userId);
+    const buffer = Buffer.from(attachment.data, "base64");
+    const safeName = attachment.fileName.replace(/[^\x20-\x7E]/g, "_").replace(/"/g, "'");
+    res.setHeader("Content-Type", attachment.mimeType);
+    res.setHeader("Content-Disposition", `inline; filename="${safeName}"`);
+    res.setHeader("Content-Length", String(buffer.length));
+    res.send(buffer);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const deleteTaskAttachmentController = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const user = (req as any).user;
+    await deleteTaskAttachment(req.params.id as string, user.userId);
+    return res.status(204).send();
   } catch (error) {
     next(error);
   }

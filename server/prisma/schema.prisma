@@ -67,6 +67,7 @@ model User {
   createdTasks        Task[]               @relation("TaskCreator")
   comments            Comment[]
   taskActivities      TaskActivity[]
+  timeLogs            TimeLog[]
   projectActivities   ProjectActivity[]
   notifications       Notification[]
   documents           Document[]
@@ -74,6 +75,7 @@ model User {
   passwordResetTokens PasswordResetToken[]
   generatedDigests    DailyDigest[]        @relation("DailyDigestGenerator")
   generatedRetros     SprintRetrospective[] @relation("SprintRetroGenerator")
+  uploadedAttachments Attachment[]
 
   @@map("users")
 }
@@ -144,6 +146,7 @@ model Task {
   title       String
   description String?
   acceptanceCriteria String?
+  estimatedHours Float?
   status      TaskStatus   @default(BACKLOG)
   priority    TaskPriority @default(MEDIUM)
   labels      String[]
@@ -164,6 +167,9 @@ model Task {
   comments   Comment[]
   activities TaskActivity[]
   documents  TaskDocument[]
+  checklistItems TaskChecklistItem[]
+  attachments Attachment[]
+  timeLogs TimeLog[]
 
   @@index([projectId, status])
   @@index([projectId, sprintId])
@@ -173,6 +179,55 @@ model Task {
   @@index([assigneeId, status])
   @@index([assigneeId, updatedAt])
   @@map("tasks")
+}
+
+model TaskChecklistItem {
+  id        String   @id @default(cuid())
+  text      String
+  completed Boolean  @default(false)
+  order     Int
+
+  taskId String
+
+  task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@index([taskId, order])
+  @@map("task_checklist_items")
+}
+
+model Attachment {
+  id         String   @id @default(cuid())
+  fileName   String
+  mimeType   String
+  size       Int
+  data       String
+  uploaderId String
+  createdAt  DateTime @default(now())
+
+  taskId String
+
+  task     Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  uploader User @relation(fields: [uploaderId], references: [id], onDelete: Cascade)
+
+  @@index([taskId, createdAt])
+  @@map("attachments")
+}
+
+model TimeLog {
+  id              String   @id @default(cuid())
+  durationMinutes Int
+  description     String?
+  createdAt       DateTime @default(now())
+
+  taskId String
+  userId String
+
+  task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([taskId, createdAt])
+  @@index([userId, createdAt])
+  @@map("time_logs")
 }
 
 model Comment {
