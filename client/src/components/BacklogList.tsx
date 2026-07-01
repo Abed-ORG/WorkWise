@@ -3,7 +3,7 @@ import type { ReactNode } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import Icon from './Icon';
 import { Button } from './ui';
-import type { Task } from '../services/taskService';
+import type { Task, TaskPriority, TaskStatus } from '../services/taskService';
 import { parseTaskQuery } from '../services/aiService';
 import type { TaskSearchFilters } from '../services/aiService';
 
@@ -27,6 +27,9 @@ interface BacklogListProps {
   onDeleteSelected?: (taskIds: string[]) => Promise<void>;
   onMoveSelectedToBoard?: (taskIds: string[]) => Promise<void>;
   onTaskClick?: (task: Task) => void;
+  onTaskUpdate?: (task: Task, changes: { title?: string; priority?: TaskPriority; assigneeId?: string | null }) => Promise<void>;
+  onReorder?: (taskId: string, order: number) => Promise<void>;
+  onBulkUpdate?: (taskIds: string[], changes: { status?: TaskStatus; priority?: TaskPriority; assigneeId?: string | null }) => Promise<void>;
   projectId?: string;
 }
 
@@ -64,6 +67,9 @@ export default function BacklogList({
   onDeleteSelected,
   onMoveSelectedToBoard,
   onTaskClick,
+  onTaskUpdate,
+  onReorder,
+  onBulkUpdate,
   projectId,
 }: BacklogListProps) {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -78,6 +84,12 @@ export default function BacklogList({
   const [advancedFiltersOpen, setAdvancedFiltersOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [moving, setMoving] = useState(false);
+  const [bulkStatus, setBulkStatus] = useState('');
+  const [bulkPriority, setBulkPriority] = useState('');
+  const [bulkAssignee, setBulkAssignee] = useState('');
+  const [draggedRowId, setDraggedRowId] = useState<string | null>(null);
+  const [editingCell, setEditingCell] = useState<{ taskId: string; field: 'title' | 'priority' | 'assignee' } | null>(null);
+  const clickTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const advancedFiltersRef = useRef<HTMLDivElement>(null);
   const [dueBefore, setDueBefore] = useState<string | null>(null);
   const [nlInput, setNlInput] = useState('');
@@ -212,6 +224,33 @@ export default function BacklogList({
   }
   function clearSelection() {
     setSelectedTaskIds([]);
+  }
+  async function applyBulkUpdate() {
+    if (!onBulkUpdate || !selectedTaskIds.length) return;
+    const changes = {
+      ...(bulkStatus && { status: bulkStatus as TaskStatus }),
+      ...(bulkPriority && { priority: bulkPriority as TaskPriority }),
+      ...(bulkAssignee && { assigneeId: bulkAssignee === '__unassigned__' ? null : bulkAssignee }),
+    };
+    if (!Object.keys(changes).length) return;
+    setMoving(true);
+    try { await onBulkUpdate(selectedTaskIds, changes); setSelectedTaskIds([]); setBulkStatus(''); setBulkPriority(''); setBulkAssignee(''); }
+    finally { setMoving(false); }
+  }
+
+  function handleTitleClick(e: React.MouseEvent, task: Task) {
+    if (e.detail === 2 && onTaskUpdate) {
+      if (clickTimerRef.current) { clearTimeout(clickTimerRef.current); clickTimerRef.current = null; }
+      setEditingCell({ taskId: task.id, field: 'title' });
+      return;
+    }
+    if (e.detail === 1 && onTaskClick) {
+      if (onTaskUpdate) {
+        clickTimerRef.current = setTimeout(() => { clickTimerRef.current = null; onTaskClick(task); }, 250);
+      } else {
+        onTaskClick(task);
+      }
+    }
   }
 
   async function handleNlSearch(e: React.FormEvent) {
@@ -375,6 +414,12 @@ export default function BacklogList({
         {onDeleteSelected && <Button variant="danger" className="bulk-action-button" loading={deleting} disabled={moving} onClick={handleDelete}>
           <Icon name="trash" size={15} /> Delete selected
         </Button>}
+        {onBulkUpdate && <>
+          <select aria-label="Bulk status" value={bulkStatus} onChange={(event) => setBulkStatus(event.target.value)}><option value="">— status —</option>{statusOptions.slice(1).map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select>
+          <select aria-label="Bulk priority" value={bulkPriority} onChange={(event) => setBulkPriority(event.target.value)}><option value="">— priority —</option>{priorityOptions.slice(1).map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select>
+          <select aria-label="Bulk assignee" value={bulkAssignee} onChange={(event) => setBulkAssignee(event.target.value)}><option value="">— assignee —</option><option value="__unassigned__">Unassigned</option>{assignees.map((assignee) => <option key={assignee.id} value={assignee.id}>{assignee.name}</option>)}</select>
+          <Button variant="secondary" loading={moving} onClick={applyBulkUpdate}>Apply changes</Button>
+        </>}
         <Button variant="ghost" className="bulk-action-button" disabled={deleting || moving} onClick={clearSelection}>Clear selection</Button>
       </div>}
 
@@ -402,13 +447,13 @@ export default function BacklogList({
             <th>Due date</th>
           </tr></thead>
           <tbody>
-            {sortedTasks.map((task) => <tr key={task.id} className={selectedTaskIds.includes(task.id) ? 'is-selected' : ''}>
+            {sortedTasks.map((task, rowIndex) => <tr key={task.id} draggable={Boolean(onReorder)} onDragStart={() => setDraggedRowId(task.id)} onDragOver={(event) => onReorder && event.preventDefault()} onDrop={() => { if (draggedRowId && draggedRowId !== task.id) void onReorder?.(draggedRowId, task.order ?? rowIndex); setDraggedRowId(null); }} className={`${selectedTaskIds.includes(task.id) ? 'is-selected ' : ''}${draggedRowId === task.id ? 'is-dragging' : ''}`}>
               {canDelete && <td className="checkbox-cell"><input className="themed-checkbox" type="checkbox" checked={selectedTaskIds.includes(task.id)} onChange={() => toggleTaskSelection(task.id)} aria-label={`Select ${task.title}`} /></td>}
-              <td data-label="Task">{onTaskClick ? <button type="button" className="task-table-link" onClick={() => onTaskClick(task)}>{task.title}</button> : <strong className="task-table-title">{task.title}</strong>}</td>
+              <td data-label="Task">{editingCell?.taskId === task.id && editingCell?.field === 'title' ? <input className="backlog-inline-input" defaultValue={task.title} autoFocus aria-label={`Edit title for ${task.title}`} onClick={(e) => e.stopPropagation()} onBlur={(event) => { const title = event.target.value.trim(); if (title && title !== task.title) void onTaskUpdate!(task, { title }); setEditingCell(null); }} onKeyDown={(event) => { if (event.key === 'Enter') event.currentTarget.blur(); if (event.key === 'Escape') setEditingCell(null); }} /> : (onTaskClick || onTaskUpdate) ? <button type="button" className="task-table-link" onClick={(e) => handleTitleClick(e, task)} title={onTaskUpdate ? 'Double-click to edit' : undefined}>{task.title}</button> : <strong className="task-table-title">{task.title}</strong>}</td>
               {showProject && <td data-label="Project"><span className="project-key">{task.project?.key}</span> {task.project?.name}</td>}
               <td data-label="Status"><span className={`status-badge status-${task.status.toLowerCase()}`}>{formatStatus(task.status)}</span></td>
-              <td data-label="Priority"><span className={`priority-badge priority-${task.priority.toLowerCase()}`}><span />{task.priority.toLowerCase()}</span></td>
-              <td data-label="Assignee"><span className="table-assignee"><span className="mini-avatar">{getInitials(task.assignee?.name)}</span>{task.assignee?.name ?? 'Unassigned'}</span></td>
+              <td data-label="Priority">{editingCell?.taskId === task.id && editingCell?.field === 'priority' && onTaskUpdate ? <select className="backlog-inline-select" value={task.priority} autoFocus aria-label={`Edit priority for ${task.title}`} onChange={(event) => { void onTaskUpdate(task, { priority: event.target.value as TaskPriority }); setEditingCell(null); }} onBlur={() => setEditingCell(null)}>{priorityOptions.slice(1).map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select> : <span className={`priority-badge priority-${task.priority.toLowerCase()}`} onDoubleClick={() => onTaskUpdate && setEditingCell({ taskId: task.id, field: 'priority' })} style={onTaskUpdate ? { cursor: 'pointer' } : undefined}><span />{task.priority.toLowerCase()}</span>}</td>
+              <td data-label="Assignee">{editingCell?.taskId === task.id && editingCell?.field === 'assignee' && onTaskUpdate ? <select className="backlog-inline-select" value={task.assignee?.id ?? ''} autoFocus aria-label={`Edit assignee for ${task.title}`} onChange={(event) => { void onTaskUpdate(task, { assigneeId: event.target.value || null }); setEditingCell(null); }} onBlur={() => setEditingCell(null)}><option value="">Unassigned</option>{assignees.map((assignee) => <option key={assignee.id} value={assignee.id}>{assignee.name}</option>)}</select> : <span className="table-assignee" onDoubleClick={() => onTaskUpdate && setEditingCell({ taskId: task.id, field: 'assignee' })} style={onTaskUpdate ? { cursor: 'pointer' } : undefined}><span className="mini-avatar">{getInitials(task.assignee?.name)}</span>{task.assignee?.name ?? 'Unassigned'}</span>}</td>
               <td data-label="Due date"><span className="due-date"><Icon name="calendar" size={14} />{formatDate(task.dueDate)}</span></td>
             </tr>)}
             {!sortedTasks.length && <tr><td colSpan={6 + Number(showProject) + Number(canDelete)} className="empty-state-cell">{localSearch ? 'No backlog tasks match your search.' : 'No tasks match the active filters.'}</td></tr>}

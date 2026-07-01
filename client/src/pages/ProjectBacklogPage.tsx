@@ -5,12 +5,13 @@ import BacklogList from '../components/BacklogList';
 import CreateTaskModal from '../components/CreateTaskModal';
 import Icon from '../components/Icon';
 import TaskDetailModal from '../components/TaskDetailModal';
-import { Button, Spinner } from '../components/ui';
+import { Button } from '../components/ui';
+import PageSkeleton from '../components/PageSkeleton';
 import { useAuth } from '../hooks/useAuth';
 import { useToast } from '../hooks/useToast';
 import { getProjectById } from '../services/projectService';
 import { joinProjectRoom, leaveProjectRoom } from '../services/realtimeService';
-import { deleteTask, getProjectTasks, updateTask } from '../services/taskService';
+import { deleteTask, getProjectTasks, reorderTask, updateTask } from '../services/taskService';
 import type { Task } from '../services/taskService';
 import { queryKeys, queryTimes } from '../services/queryOptions';
 
@@ -80,7 +81,7 @@ export default function ProjectBacklogPage() {
   const tasks = Array.isArray(tasksQuery.data) ? tasksQuery.data : [];
   const loading = projectQuery.isLoading || tasksQuery.isLoading;
 
-  if (loading) return <div className="empty-panel"><Spinner size="lg" /><p className="mt-4">Opening backlog...</p></div>;
+  if (loading) return <PageSkeleton variant="table" />;
   if (!project || !projectId) return null;
 
   const currentMember = project.members?.find((member) => member.user.id === user.id);
@@ -125,6 +126,28 @@ export default function ProjectBacklogPage() {
     }
   }
 
+  async function handleTaskUpdate(task: Task, changes: Parameters<typeof updateTask>[1]) {
+    const previous = tasks;
+    queryClient.setQueryData<Task[]>(queryKeys.projectTasks(projectId!), (current = []) => current.map((item) => item.id === task.id ? { ...item, ...changes } as Task : item));
+    try {
+      const updated = await updateTask(task.id, changes);
+      queryClient.setQueryData<Task[]>(queryKeys.projectTasks(projectId!), (current = []) => current.map((item) => item.id === updated.id ? updated : item));
+      toast.success('Task updated.');
+    } catch { queryClient.setQueryData(queryKeys.projectTasks(projectId!), previous); toast.error('Task update could not be saved.'); }
+  }
+
+  async function handleBulkUpdate(taskIds: string[], changes: Parameters<typeof updateTask>[1]) {
+    const previous = tasks;
+    queryClient.setQueryData<Task[]>(queryKeys.projectTasks(projectId!), (current = []) => current.map((task) => taskIds.includes(task.id) ? { ...task, ...changes } as Task : task));
+    try { const updated = await Promise.all(taskIds.map((id) => updateTask(id, changes))); queryClient.setQueryData<Task[]>(queryKeys.projectTasks(projectId!), (current = []) => current.map((task) => updated.find((item) => item.id === task.id) ?? task)); toast.success(`${updated.length} tasks updated.`); }
+    catch { queryClient.setQueryData(queryKeys.projectTasks(projectId!), previous); toast.error('Bulk update could not be saved.'); }
+  }
+
+  async function handleReorder(taskId: string, order: number) {
+    try { const updated = await reorderTask(taskId, order); queryClient.setQueryData<Task[]>(queryKeys.projectTasks(projectId!), (current = []) => current.map((task) => task.id === updated.id ? updated : task)); toast.success('Backlog priority updated.'); }
+    catch { toast.error('Task order could not be saved.'); }
+  }
+
   return (
     <>
       <button type="button" className="back-link" onClick={() => navigate(`/projects/${projectId}`)}><Icon name="arrow-left" size={15} /> Back to project</button>
@@ -142,6 +165,9 @@ export default function ProjectBacklogPage() {
         canDelete={isAdmin}
         onDeleteSelected={handleDeleteSelected}
         onMoveSelectedToBoard={handleMoveSelectedToBoard}
+        onTaskUpdate={handleTaskUpdate}
+        onBulkUpdate={handleBulkUpdate}
+        onReorder={handleReorder}
         onTaskClick={(task) => setSelectedTaskId(task.id)}
         projectId={projectId}
       />

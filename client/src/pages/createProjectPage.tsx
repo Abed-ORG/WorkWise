@@ -5,13 +5,17 @@ import PageHeader from '../components/PageHeader';
 import Icon from '../components/Icon';
 import { Button, Card, Input, Textarea } from '../components/ui';
 import { createProject } from '../services/projectService';
+import { useToast } from '../hooks/useToast';
+import { saveProjectIcon } from '../services/projectIconStorage';
 
 export default function CreateProjectPage() {
   const navigate = useNavigate();
+  const toast = useToast();
   const [searchParams] = useSearchParams();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [form, setForm] = useState({ name: '', key: '', description: '' });
+  const [form, setForm] = useState({ name: '', key: '', description: '', icon: '📁' });
+  const projectIcons = ['📁', '🚀', '💻', '🧭', '⚡', '🛠️', '🎯', '🧪'];
 
   function handleNameChange(name: string) {
     const autoKey = name.toUpperCase().replace(/[^A-Z]/g, '').slice(0, 5);
@@ -26,12 +30,15 @@ export default function CreateProjectPage() {
 
     setLoading(true);
     try {
-      const project = await createProject({ name: form.name.trim(), key: form.key, description: form.description.trim() || undefined });
+      const project = await createProject({ name: form.name.trim(), key: form.key, description: form.description.trim() || undefined, icon: form.icon });
+      saveProjectIcon(project.id, form.icon);
       const onboardingQuery = searchParams.get('onboarding') === 'true' ? '?onboarding=true' : '';
       navigate(`/projects/${project.id}${onboardingQuery}`);
     } catch (requestError: unknown) {
       const message = axios.isAxiosError<{ message?: string }>(requestError) ? requestError.response?.data?.message : undefined;
-      setError(message === 'Project key already exists' ? 'That project key is already in use.' : 'We could not create the project. Please try again.');
+      const errorText = message === 'Project key already exists' ? 'That project key is already in use.' : 'We could not create the project. Please try again.';
+      setError(errorText);
+      toast.error(errorText);
     } finally {
       setLoading(false);
     }
@@ -47,6 +54,7 @@ export default function CreateProjectPage() {
             <Input label="Project name" placeholder="e.g. AI Project Management Hub" value={form.name} onChange={(event) => handleNameChange(event.target.value)} autoFocus />
             <Input label="Project key" placeholder="AIPM" value={form.key} onChange={(event) => setForm((current) => ({ ...current, key: event.target.value.toUpperCase().replace(/[^A-Z]/g, '').slice(0, 5) }))} helperText="2-5 uppercase letters. This becomes the task prefix, such as AIPM-24." maxLength={5} />
             <Textarea label="Description" placeholder="What is this project trying to achieve?" rows={5} value={form.description} onChange={(event) => setForm((current) => ({ ...current, description: event.target.value }))} helperText="Optional, but useful context for teammates and AI planning." />
+            <fieldset className="project-icon-picker"><legend>Project icon</legend><div>{projectIcons.map((icon) => <button type="button" key={icon} className={form.icon === icon ? 'is-selected' : ''} onClick={() => setForm((current) => ({ ...current, icon }))} aria-label={`Use ${icon} as project icon`}>{icon}</button>)}</div></fieldset>
             {error && <div className="alert alert-error">{error}</div>}
             <div className="form-actions"><Button type="button" variant="secondary" onClick={() => navigate('/projects')}>Cancel</Button><Button type="submit" loading={loading}>Create project <Icon name="arrow-right" size={16} /></Button></div>
           </form>

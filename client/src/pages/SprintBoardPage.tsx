@@ -7,6 +7,7 @@ import KanbanBoard from '../components/KanbanBoard';
 import { BurndownChart } from '../components/ProjectAnalyticsWidgets';
 import SprintBacklogPanel from '../components/SprintBacklogPanel';
 import { Button, Spinner } from '../components/ui';
+import PageSkeleton from '../components/PageSkeleton';
 import { useAuth } from '../hooks/useAuth';
 import { useToast } from '../hooks/useToast';
 import { getProjectById, getSprintById } from '../services/projectService';
@@ -78,7 +79,7 @@ export default function SprintBoardPage() {
   }
 
   if (loading) {
-    return <div className="empty-panel"><Spinner size="lg" /><p className="mt-4">Loading sprint board...</p></div>;
+    return <PageSkeleton variant="board" />;
   }
   if (!project || !sprint || !projectId || !sprintId) return null;
 

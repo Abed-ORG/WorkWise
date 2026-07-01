@@ -3,7 +3,8 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import PageHeader from '../components/PageHeader';
 import Icon from '../components/Icon';
-import { Input, Button, Card, Spinner } from '../components/ui';
+import { Input, Button, Card } from '../components/ui';
+import PageSkeleton from '../components/PageSkeleton';
 import Modal from '../components/ui/Modal';
 import { getMyProfile, updateMyProfile } from '../services/userService';
 import type { UserProfile } from '../services/userService';
@@ -149,7 +150,7 @@ export default function ProfilePage() {
     }
   }
 
-  if (profileQuery.isLoading) return <div className="empty-panel"><Spinner size="lg" /><p className="mt-4">Loading your profile...</p></div>;
+  if (profileQuery.isLoading) return <PageSkeleton variant="cards" />;
   if (!profile) return <div className="app-card empty-panel"><h3>Profile unavailable</h3><p>We could not load your account details right now.</p></div>;
 
   return (

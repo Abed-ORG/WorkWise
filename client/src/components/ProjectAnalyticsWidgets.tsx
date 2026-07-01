@@ -1,5 +1,5 @@
 import Icon from './Icon';
-import type { ProjectHealth, BurndownPoint, ContributionMetric, VelocityPoint } from '../utils/projectAnalytics';
+import type { ProjectHealth, BurndownPoint, ContributionMetric, VelocityPoint, CumulativeFlowPoint } from '../utils/projectAnalytics';
 
 interface BurndownChartProps {
   points: BurndownPoint[];
@@ -151,4 +151,12 @@ export function ProjectHealthOverview({ health }: ProjectHealthOverviewProps) {
       </div>
     </section>
   );
+}
+
+export function CumulativeFlowChart({ points }: { points: CumulativeFlowPoint[] }) {
+  const max = Math.max(1, ...points.map((point) => point.backlog + point.active + point.done));
+  return <div className="cfd-chart" role="img" aria-label="Cumulative flow diagram">
+    <div className="analytics-chart-legend"><span><i className="legend-dot cfd-backlog" /> Backlog</span><span><i className="legend-dot cfd-active" /> Active</span><span><i className="legend-dot cfd-done" /> Done</span></div>
+    <div className="cfd-columns">{points.map((point) => <div className="cfd-column" key={point.label} title={`${point.label}: ${point.backlog} backlog, ${point.active} active, ${point.done} done`}><div className="cfd-segment cfd-done" style={{ height: `${(point.done / max) * 100}%` }} /><div className="cfd-segment cfd-active" style={{ height: `${(point.active / max) * 100}%` }} /><div className="cfd-segment cfd-backlog" style={{ height: `${(point.backlog / max) * 100}%` }} /><span>{point.label}</span></div>)}</div>
+  </div>;
 }

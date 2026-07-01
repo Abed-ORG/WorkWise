@@ -5,12 +5,13 @@ import CreateTaskModal from '../components/CreateTaskModal';
 import Icon from '../components/Icon';
 import KanbanBoard from '../components/KanbanBoard';
 import TaskDetailModal from '../components/TaskDetailModal';
-import { Button, Spinner } from '../components/ui';
+import { Button } from '../components/ui';
+import PageSkeleton from '../components/PageSkeleton';
 import { useAuth } from '../hooks/useAuth';
 import { useToast } from '../hooks/useToast';
 import { getProjectById } from '../services/projectService';
 import { joinProjectRoom, leaveProjectRoom } from '../services/realtimeService';
-import { getProjectTasks } from '../services/taskService';
+import { getProjectTasks, updateTask } from '../services/taskService';
 import type { Task } from '../services/taskService';
 import { queryKeys, queryTimes } from '../services/queryOptions';
 
@@ -84,11 +85,18 @@ export default function ProjectBoardPage() {
     queryClient.setQueryData(queryKeys.projectTasks(projectId), nextTasks);
   };
 
-  if (loading) return <div className="empty-panel"><Spinner size="lg" /><p className="mt-4">Opening board...</p></div>;
+  if (loading) return <PageSkeleton variant="board" />;
   if (!project || !projectId) return null;
 
   const currentMember = project.members?.find((member) => member.user.id === user.id);
   const isAdmin = currentMember?.role === 'ADMIN';
+
+  async function handleBulkUpdate(taskIds: string[], changes: Parameters<typeof updateTask>[1]) {
+    const previous = tasks;
+    setTasks(tasks.map((task) => taskIds.includes(task.id) ? { ...task, ...changes } as Task : task));
+    try { const updated = await Promise.all(taskIds.map((id) => updateTask(id, changes))); setTasks(tasks.map((task) => updated.find((item) => item.id === task.id) ?? task)); toast.success(`${updated.length} board tasks updated.`); }
+    catch { setTasks(previous); toast.error('Board changes could not be saved.'); }
+  }
 
   return (
     <>
@@ -107,6 +115,7 @@ export default function ProjectBoardPage() {
             name: member.user.name,
             avatarUrl: member.user.avatarUrl,
           }))}
+          onBulkUpdate={handleBulkUpdate}
         />
       </section>
       <CreateTaskModal isOpen={createOpen} projectId={projectId} members={project.members ?? []} onClose={() => setCreateOpen(false)} onCreated={(task) => {
