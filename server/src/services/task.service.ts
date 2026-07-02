@@ -11,6 +11,18 @@ const taskSummaryInclude = {
   sprint: { select: { id: true, name: true } },
   assignee: { select: { id: true, name: true, email: true, avatarUrl: true } },
   creator: { select: { id: true, name: true, email: true } },
+  comments: {
+    include: {
+      author: { select: { id: true, name: true, email: true, avatarUrl: true } },
+    },
+    orderBy: { createdAt: "asc" },
+  },
+  activities: {
+    include: {
+      user: { select: { id: true, name: true, email: true, avatarUrl: true } },
+    },
+    orderBy: { createdAt: "desc" },
+  },
 } as const;
 
 const linkedDocumentSelect = {
