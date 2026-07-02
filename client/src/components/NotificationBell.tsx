@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import Icon from './Icon';
 import {
@@ -30,6 +31,7 @@ function formatTime(value: string) {
 
 export default function NotificationBell() {
   const { user, updateUser } = useAuth();
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [isOpen, setIsOpen] = useState(false);
   const [preference, setPreference] = useState<NotificationPreference>(user.notificationPreference ?? 'ALL');
@@ -100,6 +102,11 @@ export default function NotificationBell() {
     }
   }
 
+  function handleOpenNotificationSettings() {
+    setIsOpen(false);
+    navigate('/profile#notification-preferences');
+  }
+
   function renderNotificationPanel(className: string) {
     return (
       <div className={`${className} animate-enter`}>
@@ -121,6 +128,10 @@ export default function NotificationBell() {
             ))}
           </select>
         </label>
+
+        <button type="button" className="text-button notification-settings-link" onClick={handleOpenNotificationSettings}>
+          <Icon name="settings" size={14} /> Per-project notification settings
+        </button>
 
         <div className="notification-list">
           {items.length ? (

@@ -49,3 +49,12 @@ export interface ChangePasswordPayload {
 export async function changeMyPassword(payload: ChangePasswordPayload): Promise<void> {
   await apiClient.patch('/api/users/me/password', payload);
 }
+
+export async function requestEmailChange(newEmail: string): Promise<void> {
+  await apiClient.post('/api/users/me/email-change/request', { newEmail });
+}
+
+export async function confirmEmailChange(code: string): Promise<UserProfile> {
+  const { data } = await apiClient.post<{ success: boolean; data: UserProfile }>('/api/users/me/email-change/confirm', { code });
+  return data.data;
+}

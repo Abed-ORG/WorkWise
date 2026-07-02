@@ -834,6 +834,55 @@ export class ProjectsService {
     });
   }
 
+  // ── Notification Preferences ───────────────────────────────
+  async getNotificationPreferences(projectId: string, userId: string) {
+    await this.requireProjectMember(projectId, userId);
+
+    const preference = await prisma.projectNotificationPreference.findUnique({
+      where: { userId_projectId: { userId, projectId } },
+    });
+
+    // Absence of a saved row means every toggle defaults to "on" — matches current behavior.
+    return {
+      taskAssigned: preference?.taskAssigned ?? true,
+      taskMoved: preference?.taskMoved ?? true,
+      commentAdded: preference?.commentAdded ?? true,
+      mention: preference?.mention ?? true,
+      sprintStarted: preference?.sprintStarted ?? true,
+      sprintCompleted: preference?.sprintCompleted ?? true,
+    };
+  }
+
+  async updateNotificationPreferences(
+    projectId: string,
+    userId: string,
+    updates: Partial<{
+      taskAssigned: boolean;
+      taskMoved: boolean;
+      commentAdded: boolean;
+      mention: boolean;
+      sprintStarted: boolean;
+      sprintCompleted: boolean;
+    }>
+  ) {
+    await this.requireProjectMember(projectId, userId);
+
+    const preference = await prisma.projectNotificationPreference.upsert({
+      where: { userId_projectId: { userId, projectId } },
+      create: { userId, projectId, ...updates },
+      update: { ...updates },
+    });
+
+    return {
+      taskAssigned: preference.taskAssigned,
+      taskMoved: preference.taskMoved,
+      commentAdded: preference.commentAdded,
+      mention: preference.mention,
+      sprintStarted: preference.sprintStarted,
+      sprintCompleted: preference.sprintCompleted,
+    };
+  }
+
   // ── Create Sprint (inactive) ───────────────────────────────
   async createSprint(projectId: string, userId: string, data: {
     name: string;

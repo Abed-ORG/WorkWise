@@ -1,12 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
 import PageHeader from '../components/PageHeader';
 import Icon from '../components/Icon';
 import { Input, Button, Card, Spinner } from '../components/ui';
 import Modal from '../components/ui/Modal';
-import { changeMyPassword, getMyProfile, updateMyProfile } from '../services/userService';
+import ProjectNotificationPreferences from '../components/ProjectNotificationPreferences';
+import { changeMyPassword, confirmEmailChange, getMyProfile, requestEmailChange, updateMyProfile } from '../services/userService';
 import type { UserProfile } from '../services/userService';
 import { useAuth } from '../hooks/useAuth';
 import { useToast } from '../hooks/useToast';
@@ -15,6 +16,7 @@ import { queryKeys, queryTimes } from '../services/queryOptions';
 interface FormState { name: string; avatarUrl: string; }
 interface PasswordFormState { currentPassword: string; newPassword: string; confirmPassword: string; }
 interface PasswordFormErrors { currentPassword?: string; newPassword?: string; confirmPassword?: string; }
+interface EmailChangeErrors { newEmail?: string; code?: string; }
 
 const MAX_AVATAR_FILE_SIZE = 5 * 1024 * 1024;
 const AVATAR_SIZE = 256;
@@ -66,6 +68,7 @@ function getInitials(name: string): string {
 
 export default function ProfilePage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
   const { user, updateUser } = useAuth();
   const toast = useToast();
@@ -80,6 +83,14 @@ export default function ProfilePage() {
   const [passwordForm, setPasswordForm] = useState<PasswordFormState>({ currentPassword: '', newPassword: '', confirmPassword: '' });
   const [passwordErrors, setPasswordErrors] = useState<PasswordFormErrors>({});
   const [changingPassword, setChangingPassword] = useState(false);
+  const [emailStep, setEmailStep] = useState<'request' | 'confirm'>('request');
+  const [newEmailInput, setNewEmailInput] = useState('');
+  const [verificationCode, setVerificationCode] = useState('');
+  const [pendingEmail, setPendingEmail] = useState('');
+  const [emailChangeErrors, setEmailChangeErrors] = useState<EmailChangeErrors>({});
+  const [requestingEmailChange, setRequestingEmailChange] = useState(false);
+  const [confirmingEmailChange, setConfirmingEmailChange] = useState(false);
+  const notificationPreferencesRef = useRef<HTMLDivElement>(null);
   const profileQuery = useQuery({
     queryKey: queryKeys.profile,
     queryFn: getMyProfile,
@@ -90,6 +101,12 @@ export default function ProfilePage() {
   useEffect(() => {
     setShortcutsOpen(searchParams.get('shortcuts') === 'true');
   }, [searchParams]);
+
+  useEffect(() => {
+    if (location.hash === '#notification-preferences' && profile) {
+      notificationPreferencesRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  }, [location.hash, profile]);
 
   useEffect(() => {
     if (profileQuery.data) setForm({ name: profileQuery.data.name, avatarUrl: profileQuery.data.avatarUrl ?? '' });
@@ -159,6 +176,73 @@ export default function ProfilePage() {
     } finally {
       setChangingPassword(false);
     }
+  }
+
+  async function handleRequestEmailChange(event: React.FormEvent) {
+    event.preventDefault();
+    const trimmedEmail = newEmailInput.trim();
+
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)) {
+      setEmailChangeErrors({ newEmail: 'Enter a valid email address' });
+      return;
+    }
+
+    setRequestingEmailChange(true);
+    try {
+      await requestEmailChange(trimmedEmail);
+      setPendingEmail(trimmedEmail);
+      setEmailStep('confirm');
+      setEmailChangeErrors({});
+      toast.success(`Verification code sent to ${trimmedEmail}.`);
+    } catch (error: unknown) {
+      if (axios.isAxiosError(error) && error.response?.status === 409) {
+        setEmailChangeErrors({ newEmail: 'That email address is already in use' });
+      } else if (axios.isAxiosError(error) && error.response?.status === 400) {
+        setEmailChangeErrors({ newEmail: error.response.data?.message || 'Enter a valid email address' });
+      } else {
+        toast.error('Failed to send verification code. Please try again.');
+      }
+    } finally {
+      setRequestingEmailChange(false);
+    }
+  }
+
+  async function handleConfirmEmailChange(event: React.FormEvent) {
+    event.preventDefault();
+
+    if (!verificationCode.trim()) {
+      setEmailChangeErrors({ code: 'Enter the verification code' });
+      return;
+    }
+
+    setConfirmingEmailChange(true);
+    try {
+      const updated = await confirmEmailChange(verificationCode.trim());
+      queryClient.setQueryData<UserProfile | undefined>(queryKeys.profile, (current) => current ? { ...current, ...updated } : current);
+      updateUser(updated);
+      setEmailStep('request');
+      setNewEmailInput('');
+      setVerificationCode('');
+      setPendingEmail('');
+      setEmailChangeErrors({});
+      toast.success('Email address updated successfully.');
+    } catch (error: unknown) {
+      if (axios.isAxiosError(error) && error.response?.status === 409) {
+        setEmailChangeErrors({ code: 'That email address is already in use' });
+      } else if (axios.isAxiosError(error) && error.response?.status === 400) {
+        setEmailChangeErrors({ code: 'This code is invalid or has expired' });
+      } else {
+        toast.error('Failed to confirm the email change. Please try again.');
+      }
+    } finally {
+      setConfirmingEmailChange(false);
+    }
+  }
+
+  function handleUseDifferentEmail() {
+    setEmailStep('request');
+    setVerificationCode('');
+    setEmailChangeErrors({});
   }
 
   function closeShortcuts() {
@@ -266,36 +350,77 @@ export default function ProfilePage() {
           </div>
         </Card>
 
-        <Card title="Security" className="tip-card">
-          <form className="form-stack" onSubmit={handleChangePassword} noValidate>
-            <Input
-              label="Current password"
-              type="password"
-              value={passwordForm.currentPassword}
-              onChange={(event) => handlePasswordFieldChange('currentPassword', event.target.value)}
-              error={passwordErrors.currentPassword}
-              autoComplete="current-password"
-            />
-            <Input
-              label="New password"
-              type="password"
-              value={passwordForm.newPassword}
-              onChange={(event) => handlePasswordFieldChange('newPassword', event.target.value)}
-              error={passwordErrors.newPassword}
-              helperText={passwordErrors.newPassword ? undefined : 'At least 8 characters.'}
-              autoComplete="new-password"
-            />
-            <Input
-              label="Confirm new password"
-              type="password"
-              value={passwordForm.confirmPassword}
-              onChange={(event) => handlePasswordFieldChange('confirmPassword', event.target.value)}
-              error={passwordErrors.confirmPassword}
-              autoComplete="new-password"
-            />
-            <div><Button type="submit" loading={changingPassword}>Update password</Button></div>
-          </form>
-        </Card>
+        <div className="settings-stack">
+          <Card title="Email address" className="tip-card">
+            {emailStep === 'request' ? (
+              <form className="form-stack" onSubmit={handleRequestEmailChange} noValidate>
+                <p className="field-help">Current email: <strong>{profile.email}</strong></p>
+                <Input
+                  label="New email address"
+                  type="email"
+                  value={newEmailInput}
+                  onChange={(event) => { setNewEmailInput(event.target.value); setEmailChangeErrors((current) => ({ ...current, newEmail: undefined })); }}
+                  error={emailChangeErrors.newEmail}
+                  autoComplete="email"
+                />
+                <div><Button type="submit" loading={requestingEmailChange}>Send verification code</Button></div>
+              </form>
+            ) : (
+              <form className="form-stack" onSubmit={handleConfirmEmailChange} noValidate>
+                <div className="auth-note mt-0">
+                  <Icon name="sparkles" size={17} />
+                  <span className="focus-copy">We sent a verification code to <strong>{pendingEmail}</strong>. Enter it below to confirm the change.</span>
+                </div>
+                <Input
+                  label="Verification code"
+                  value={verificationCode}
+                  onChange={(event) => { setVerificationCode(event.target.value); setEmailChangeErrors((current) => ({ ...current, code: undefined })); }}
+                  error={emailChangeErrors.code}
+                  autoComplete="one-time-code"
+                />
+                <div className="flex gap-2">
+                  <Button type="submit" loading={confirmingEmailChange}>Confirm change</Button>
+                  <Button type="button" variant="secondary" onClick={handleUseDifferentEmail} disabled={confirmingEmailChange}>Use a different email</Button>
+                </div>
+              </form>
+            )}
+          </Card>
+
+          <Card title="Change password" className="tip-card">
+            <form className="form-stack" onSubmit={handleChangePassword} noValidate>
+              <Input
+                label="Current password"
+                type="password"
+                value={passwordForm.currentPassword}
+                onChange={(event) => handlePasswordFieldChange('currentPassword', event.target.value)}
+                error={passwordErrors.currentPassword}
+                autoComplete="current-password"
+              />
+              <Input
+                label="New password"
+                type="password"
+                value={passwordForm.newPassword}
+                onChange={(event) => handlePasswordFieldChange('newPassword', event.target.value)}
+                error={passwordErrors.newPassword}
+                helperText={passwordErrors.newPassword ? undefined : 'At least 8 characters.'}
+                autoComplete="new-password"
+              />
+              <Input
+                label="Confirm new password"
+                type="password"
+                value={passwordForm.confirmPassword}
+                onChange={(event) => handlePasswordFieldChange('confirmPassword', event.target.value)}
+                error={passwordErrors.confirmPassword}
+                autoComplete="new-password"
+              />
+              <div><Button type="submit" loading={changingPassword}>Update password</Button></div>
+            </form>
+          </Card>
+
+          <div id="notification-preferences" ref={notificationPreferencesRef}>
+            <ProjectNotificationPreferences />
+          </div>
+        </div>
       </div>
 
       <Modal isOpen={shortcutsOpen} onClose={closeShortcuts} className="shortcuts-modal">

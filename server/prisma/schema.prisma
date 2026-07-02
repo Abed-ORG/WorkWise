@@ -73,6 +73,8 @@ model User {
   documents           Document[]
   invitationsSent     Invitation[]         @relation("InvitationSender")
   passwordResetTokens PasswordResetToken[]
+  emailChangeRequests EmailChangeRequest[]
+  projectNotificationPreferences ProjectNotificationPreference[]
   generatedDigests    DailyDigest[]        @relation("DailyDigestGenerator")
   generatedRetros     SprintRetrospective[] @relation("SprintRetroGenerator")
   uploadedAttachments Attachment[]
@@ -96,6 +98,7 @@ model Project {
   activities  ProjectActivity[]
   dailyDigests DailyDigest[]
   retrospectives SprintRetrospective[]
+  notificationPreferences ProjectNotificationPreference[]
 
   @@index([updatedAt])
   @@map("projects")
@@ -329,6 +332,27 @@ model Notification {
   @@map("notifications")
 }
 
+model ProjectNotificationPreference {
+  id              String   @id @default(cuid())
+  taskAssigned    Boolean  @default(true)
+  taskMoved       Boolean  @default(true)
+  commentAdded    Boolean  @default(true)
+  mention         Boolean  @default(true)
+  sprintStarted   Boolean  @default(true)
+  sprintCompleted Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  userId    String
+  projectId String
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, projectId])
+  @@map("project_notification_preferences")
+}
+
 model Invitation {
   id        String           @id @default(cuid())
   email     String
@@ -360,6 +384,20 @@ model PasswordResetToken {
 
   @@index([userId])
   @@map("password_reset_tokens")
+}
+
+model EmailChangeRequest {
+  id        String   @id @default(cuid())
+  newEmail  String
+  codeHash  String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("email_change_requests")
 }
 
 model ProjectActivity {

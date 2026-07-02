@@ -644,6 +644,7 @@ textarea.field-control { resize: vertical; }
 .back-link:hover { color: var(--text); }
 
 .settings-stack { display: flex; flex-direction: column; gap: 18px; }
+.settings-stack .tip-card { position: static; }
 .settings-section { padding: 24px; }
 .settings-section-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 20px; }
 .settings-section-head h2 { margin: 0; font-size: 17px; }
@@ -1210,6 +1211,7 @@ input[type='checkbox'].themed-checkbox:disabled { cursor: not-allowed; opacity: 
 .notification-menu-header h3 { margin: 0; color: var(--text); font-size: 17px; font-weight: 780; letter-spacing: -.025em; }
 .notification-preference { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 11px 14px; border-bottom: 1px solid var(--border); color: var(--text-muted); background: var(--surface-muted); font-size: 11px; font-weight: 800; }
 .notification-preference select { min-height: 32px; padding: 0 10px; border: 1px solid var(--border); border-radius: 10px; color: var(--text); background: var(--surface); font-size: 11px; font-weight: 750; outline: none; }
+.notification-settings-link { display: flex; align-items: center; gap: 7px; padding: 11px 14px; border-bottom: 1px solid var(--border); }
 .notification-list { max-height: 360px; overflow-y: auto; padding: 8px; }
 .notification-item { display: grid; width: 100%; grid-template-columns: 9px 1fr; gap: 10px; padding: 11px; border: 0; border-radius: 12px; color: var(--text-muted); background: transparent; text-align: left; transition: background .2s ease, transform .2s ease; }
 .notification-item:hover { background: var(--surface-hover); transform: translateY(-1px); }

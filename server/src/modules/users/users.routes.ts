@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { usersController } from './users.controller';
 import { authenticate } from '../../middleware/auth.middleware';
+import { emailChangeRequestLimiter } from '../../middleware/email-rate-limit.middleware';
 
 const router = Router();
 
@@ -12,6 +13,12 @@ router.use(authenticate);
 router.get('/me', (req: Request, res: Response) => usersController.getMe(req, res));
 router.patch('/me', (req: Request, res: Response) => usersController.updateMe(req, res));
 router.patch('/me/password', (req: Request, res: Response) => usersController.changePassword(req, res));
+router.post(
+  '/me/email-change/request',
+  emailChangeRequestLimiter,
+  (req: Request, res: Response) => usersController.requestEmailChange(req, res)
+);
+router.post('/me/email-change/confirm', (req: Request, res: Response) => usersController.confirmEmailChange(req, res));
 router.patch('/me/onboarding', (req: Request, res: Response) => usersController.updateOnboarding(req, res));
 
 export default router;

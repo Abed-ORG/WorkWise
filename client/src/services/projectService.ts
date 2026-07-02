@@ -90,6 +90,15 @@ export interface DailyDigest {
   generatedBy?: { id: string; name: string; email: string } | null;
 }
 
+export interface ProjectNotificationPreferences {
+  taskAssigned: boolean;
+  taskMoved: boolean;
+  commentAdded: boolean;
+  mention: boolean;
+  sprintStarted: boolean;
+  sprintCompleted: boolean;
+}
+
 export interface SprintRetrospective {
   id: string;
   whatWentWell: string;
@@ -157,6 +166,21 @@ export const updateMemberRole = async (
 
 export const removeMember = async (projectId: string, memberId: string): Promise<void> => {
   await apiClient.delete(`/api/projects/${projectId}/members/${memberId}`);
+};
+
+// ── Notification Preferences ──────────────────────────────
+
+export const getProjectNotificationPreferences = async (projectId: string): Promise<ProjectNotificationPreferences> => {
+  const response = await apiClient.get(`/api/projects/${projectId}/notification-preferences`);
+  return response.data.data;
+};
+
+export const updateProjectNotificationPreferences = async (
+  projectId: string,
+  updates: Partial<ProjectNotificationPreferences>
+): Promise<ProjectNotificationPreferences> => {
+  const response = await apiClient.patch(`/api/projects/${projectId}/notification-preferences`, updates);
+  return response.data.data;
 };
 
 // ── Invitations ────────────────────────────────────────────
