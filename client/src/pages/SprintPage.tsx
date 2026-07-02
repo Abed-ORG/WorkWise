@@ -4,7 +4,8 @@ import axios from 'axios';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import Icon from '../components/Icon';
 import PageHeader from '../components/PageHeader';
-import { Button, Input, Modal, Spinner, Textarea } from '../components/ui';
+import { Button, Input, Modal, Textarea } from '../components/ui';
+import PageSkeleton from '../components/PageSkeleton';
 import { useAuth } from '../hooks/useAuth';
 import { useToast } from '../hooks/useToast';
 import {
@@ -288,7 +289,7 @@ export default function SprintPage() {
     }
   }
 
-  if (loading) return <div className="empty-panel"><Spinner size="lg" /><p className="mt-4">Loading sprints...</p></div>;
+  if (loading) return <PageSkeleton variant="cards" />;
   if (!project || !projectId) return null;
 
   const currentMember = project.members?.find((member) => member.user.id === user.id);

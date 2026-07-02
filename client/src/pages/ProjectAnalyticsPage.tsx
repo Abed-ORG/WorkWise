@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { BurndownChart, ContributionMetrics, VelocityChart } from '../components/ProjectAnalyticsWidgets';
+import { BurndownChart, ContributionMetrics, CumulativeFlowChart, VelocityChart } from '../components/ProjectAnalyticsWidgets';
 import Icon from '../components/Icon';
 import PageHeader from '../components/PageHeader';
-import { Button, Spinner } from '../components/ui';
+import { Button } from '../components/ui';
+import PageSkeleton from '../components/PageSkeleton';
 import { getProjectActivityFeed } from '../services/activityService';
 import { getProjectById, getProjectSprints } from '../services/projectService';
 import { getProjectTasks } from '../services/taskService';
@@ -14,6 +15,7 @@ import {
   buildContributionMetrics,
   buildVelocityData,
   calculateAverageVelocity,
+  buildCumulativeFlowData,
 } from '../utils/projectAnalytics';
 
 export default function ProjectAnalyticsPage() {
@@ -75,6 +77,7 @@ export default function ProjectAnalyticsPage() {
 
   const velocityPoints = useMemo(() => buildVelocityData(sprints, tasks), [sprints, tasks]);
   const averageVelocity = useMemo(() => calculateAverageVelocity(velocityPoints), [velocityPoints]);
+  const cumulativeFlowPoints = useMemo(() => buildCumulativeFlowData(tasks), [tasks]);
 
   const contributionMetrics = useMemo(
     () => buildContributionMetrics(project?.members ?? [], tasks, activities, {
@@ -85,7 +88,7 @@ export default function ProjectAnalyticsPage() {
     [activities, endDate, project?.members, selectedSprintId, startDate, tasks]
   );
 
-  if (loading) return <div className="empty-panel"><Spinner size="lg" /><p className="mt-4">Loading analytics...</p></div>;
+  if (loading) return <PageSkeleton variant="cards" />;
   if (!project || !projectId) return null;
 
   return (
@@ -156,6 +159,10 @@ export default function ProjectAnalyticsPage() {
           </div>
         </div>
         <ContributionMetrics metrics={contributionMetrics} />
+      </section>
+      <section className="app-card card-padding analytics-section">
+        <div className="section-heading"><div><p className="section-kicker">Flow analytics</p><h2>Cumulative flow</h2><p>Backlog, active, and completed work across the last 14 days.</p></div></div>
+        <CumulativeFlowChart points={cumulativeFlowPoints} />
       </section>
     </>
   );
