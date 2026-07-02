@@ -26,6 +26,7 @@ import type { Task, TaskAttachment, TaskChecklistItem, TaskStatus, TaskTimeLog }
 import { generateAcceptanceCriteria } from '../services/aiService';
 import type { ProjectDocument, ProjectMember, Sprint } from '../services/projectService';
 import { queryKeys, queryTimes } from '../services/queryOptions';
+import RichTextEditor from './RichTextEditor';
 import { isOpenSprintMoveTarget, isPastSprintMoveTarget } from '../utils/sprintOptions';
 
 interface TaskDetailModalProps {
@@ -171,6 +172,9 @@ export default function TaskDetailModal({ taskId, onClose, onTaskUpdated }: Task
   const [sprintMessage, setSprintMessage] = useState('');
   const [savingDetails, setSavingDetails] = useState(false);
   const [detailsMessage, setDetailsMessage] = useState('');
+  const [editingTitle, setEditingTitle] = useState(false);
+  const [titleDraft, setTitleDraft] = useState('');
+  const [savingTitle, setSavingTitle] = useState(false);
   const [error, setError] = useState('');
 
   const taskQuery = useQuery({
@@ -476,6 +480,23 @@ export default function TaskDetailModal({ taskId, onClose, onTaskUpdated }: Task
     }
   }
 
+  async function saveTitle() {
+    const trimmed = titleDraft.trim();
+    setEditingTitle(false);
+    if (!taskId || !task || !trimmed || trimmed === task.title) return;
+    setSavingTitle(true);
+    const previousTask = task;
+    cacheTask({ ...task, title: trimmed });
+    try {
+      const updatedTask = await updateTask(taskId, { title: trimmed });
+      cacheTask({ ...task, ...updatedTask });
+    } catch {
+      cacheTask(previousTask);
+    } finally {
+      setSavingTitle(false);
+    }
+  }
+
   async function saveEstimatedHours() {
     if (!taskId || !task) return;
     const nextValue = estimatedHoursDraft.trim() ? Number(estimatedHoursDraft) : null;
@@ -705,7 +726,25 @@ export default function TaskDetailModal({ taskId, onClose, onTaskUpdated }: Task
           <div className="task-detail-content">
             <main className="task-detail-main">
               <section className="task-title-panel">
-                <h2>{task.title}</h2>
+                {editingTitle ? (
+                  <textarea
+                    className="task-title-edit"
+                    value={titleDraft}
+                    autoFocus
+                    rows={Math.max(1, Math.ceil(titleDraft.length / 40))}
+                    onChange={(e) => setTitleDraft(e.target.value)}
+                    onBlur={saveTitle}
+                    onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void saveTitle(); } if (e.key === 'Escape') { setEditingTitle(false); } }}
+                    aria-label="Edit task title"
+                  />
+                ) : (
+                  <h2
+                    onDoubleClick={() => { setTitleDraft(task.title); setEditingTitle(true); }}
+                    title="Double-click to edit title"
+                    style={{ cursor: 'text' }}
+                    className={savingTitle ? 'task-title-saving' : ''}
+                  >{task.title}</h2>
+                )}
                 {task.labels?.length > 0 && (
                   <div className="task-label-list">{task.labels.map((label) => <span key={label}>{label}</span>)}</div>
                 )}
@@ -716,18 +755,15 @@ export default function TaskDetailModal({ taskId, onClose, onTaskUpdated }: Task
                   <h3>Description</h3>
                   <span>{savingDescription ? 'Saving...' : descriptionMessage}</span>
                 </div>
-                <textarea
-                  className="task-description-field"
+                <RichTextEditor
                   value={descriptionDraft}
-                  onChange={(event) => {
-                    setDescriptionDraft(event.target.value);
+                  onChange={(value) => {
+                    setDescriptionDraft(value);
                     setDescriptionMessage('');
                   }}
-                  onBlur={saveDescription}
                   disabled={savingDescription}
-                  rows={5}
-                  placeholder="Add context, scope, or implementation notes."
                 />
+                <div className="task-description-actions"><Button onClick={saveDescription} loading={savingDescription} disabled={descriptionDraft === (task.description ?? '')}>Save description</Button></div>
               </section>
 
               <section className="task-detail-section">

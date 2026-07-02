@@ -12,7 +12,7 @@ describe('TaskCard', () => {
     expect(screen.getByRole('heading', { name: 'Write tests' })).toBeInTheDocument();
     expect(screen.getByText('high')).toBeInTheDocument();
     expect(screen.getByText('in progress')).toBeInTheDocument();
-    expect(screen.getByText('Ada Lovelace')).toBeInTheDocument();
+    expect(screen.getByTitle('Ada Lovelace')).toBeInTheDocument();
     expect(screen.getByLabelText(/Write tests, high priority/i)).toBeInTheDocument();
   });
 });

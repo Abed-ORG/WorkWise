@@ -56,4 +56,7 @@ router.get('/:projectId/members/invitations', (req: Request, res: Response) => p
 router.patch('/:projectId/members/:memberId/role', updateMemberRoleValidation, (req: Request, res: Response) => projectsController.updateMemberRole(req, res));
 router.delete('/:projectId/members/:memberId', (req: Request, res: Response) => projectsController.removeMember(req, res));
 
+router.get('/:projectId/notification-preferences', (req: Request, res: Response) => projectsController.getNotificationPreferences(req, res));
+router.patch('/:projectId/notification-preferences', (req: Request, res: Response) => projectsController.updateNotificationPreferences(req, res));
+
 export default router;

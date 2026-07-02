@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties, type DragEven
 import Icon from './Icon';
 import TaskCard from './TaskCard';
 import { Button } from './ui';
-import type { Task, TaskStatus } from '../services/taskService';
+import type { Task, TaskPriority, TaskStatus } from '../services/taskService';
 import { updateTaskStatus } from '../services/taskService';
 
 const columns: { status: TaskStatus; label: string }[] = [
@@ -31,6 +31,7 @@ interface KanbanBoardProps {
   description?: string;
   headerAction?: ReactNode;
   assignees?: AssigneeOption[];
+  onBulkUpdate?: (taskIds: string[], changes: { status?: TaskStatus; priority?: TaskPriority; assigneeId?: string | null }) => Promise<void>;
   activeSprintId?: string | null;
   onCreateTask?: (input: { title: string; status: TaskStatus; sprintId: string }) => Promise<Task>;
 }
@@ -46,9 +47,6 @@ function getInitials(name?: string) {
   return name.split(' ').map((part) => part[0]).join('').slice(0, 2).toUpperCase();
 }
 
-function formatPriority(priority: string) {
-  return priority.toLowerCase();
-}
 
 export default function KanbanBoard({
   tasks,
@@ -59,6 +57,7 @@ export default function KanbanBoard({
   description = 'Move work across the board and keep delivery visible.',
   headerAction,
   assignees: assigneeOptions,
+  onBulkUpdate,
   activeSprintId = null,
   onCreateTask,
 }: KanbanBoardProps) {
@@ -75,6 +74,11 @@ export default function KanbanBoard({
   const [advancedFiltersOpen, setAdvancedFiltersOpen] = useState(false);
   const [openFilterSection, setOpenFilterSection] = useState<FilterSection | null>(null);
   const [overflowOpen, setOverflowOpen] = useState(false);
+  const [selectedTaskIds, setSelectedTaskIds] = useState<string[]>([]);
+  const [bulkStatus, setBulkStatus] = useState('');
+  const [bulkPriority, setBulkPriority] = useState('');
+  const [bulkAssignee, setBulkAssignee] = useState('');
+  const [bulkSaving, setBulkSaving] = useState(false);
   const advancedFiltersRef = useRef<HTMLDivElement>(null);
   const overflowRef = useRef<HTMLDivElement>(null);
   const boardTasks = useMemo(() => tasks.filter((task) => Boolean(task.sprintId)).map(boardWorkflowTask), [tasks]);
@@ -123,6 +127,16 @@ export default function KanbanBoard({
   }), [assigneeFilters, boardTasks, labelFilter, localSearch, priorityFilter]);
   const advancedFilterCount = assigneeFilters.length + [priorityFilter, labelFilter].filter(Boolean).length;
   const hasActiveFilters = Boolean(localSearch || assigneeFilters.length || priorityFilter || labelFilter);
+  const swimlanes = [{ key: 'all', label: '', tasks: filteredTasks }];
+
+  async function applyBulkUpdate() {
+    if (!onBulkUpdate || !selectedTaskIds.length) return;
+    const changes = { ...(bulkStatus && { status: bulkStatus as TaskStatus }), ...(bulkPriority && { priority: bulkPriority as TaskPriority }), ...(bulkAssignee && { assigneeId: bulkAssignee === '__unassigned__' ? null : bulkAssignee }) };
+    if (!Object.keys(changes).length) return;
+    setBulkSaving(true);
+    try { await onBulkUpdate(selectedTaskIds, changes); setSelectedTaskIds([]); setBulkStatus(''); setBulkPriority(''); setBulkAssignee(''); }
+    finally { setBulkSaving(false); }
+  }
 
   useEffect(() => {
     if (!advancedFiltersOpen && !overflowOpen) return undefined;
@@ -352,17 +366,20 @@ export default function KanbanBoard({
         </div>
       </div>
 
+      {selectedTaskIds.length > 0 && <div className="backlog-bulk-actions"><span>{selectedTaskIds.length} selected</span><select value={bulkStatus} onChange={(event) => setBulkStatus(event.target.value)}><option value="">— status —</option>{columns.map((column) => <option key={column.status} value={column.status}>{column.label}</option>)}</select><select value={bulkPriority} onChange={(event) => setBulkPriority(event.target.value)}><option value="">— priority —</option>{priorityOptions.slice(1).map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select><select value={bulkAssignee} onChange={(event) => setBulkAssignee(event.target.value)}><option value="">— assignee —</option><option value="__unassigned__">Unassigned</option>{assignees.map((assignee) => <option key={assignee.id} value={assignee.id}>{assignee.name}</option>)}</select><Button variant="secondary" loading={bulkSaving} onClick={applyBulkUpdate}>Apply</Button><Button variant="ghost" onClick={() => setSelectedTaskIds([])}>Clear</Button></div>}
+
       {hasActiveFilters && <div className="filter-chips">
         {localSearch && <FilterChip label={`Board search: ${localSearch}`} onRemove={() => setLocalSearch('')} />}
         {assigneeFilters.map((assignee) => <FilterChip key={assignee} label={`Assignee: ${assignee === unassignedFilterValue ? 'Unassigned' : assignee}`} onRemove={() => toggleAssigneeFilter(assignee)} />)}
-        {priorityFilter && <FilterChip label={`Priority: ${formatPriority(priorityFilter)}`} onRemove={() => setPriorityFilter('')} />}
+        {priorityFilter && <FilterChip label={`Priority: ${priorityFilter.toLowerCase()}`} onRemove={() => setPriorityFilter('')} />}
         {labelFilter && <FilterChip label={`Label: ${labelFilter}`} onRemove={() => setLabelFilter('')} />}
         <button type="button" className="clear-filters-button" onClick={clearFilters}>Clear all</button>
       </div>}
 
-      <div className="kanban-board" aria-label="Project task status board">
+      <div className="kanban-swimlanes">
+      {swimlanes.map((lane) => <section className="kanban-swimlane" key={lane.key}>{lane.label && <header className="swimlane-heading"><h3>{lane.label}</h3><span>{lane.tasks.length} tasks</span></header>}<div className="kanban-board" aria-label={`${lane.label || 'Project'} task status board`}>
         {columns.map((column, index) => {
-          const columnTasks = filteredTasks.filter((task) => task.status === column.status);
+          const columnTasks = lane.tasks.filter((task) => task.status === column.status);
           const isTarget = dropTarget === column.status && draggedTaskId !== null;
           const limit = wipLimits[column.status];
           const wipExceeded = typeof limit === 'number' && columnTasks.length > limit;
@@ -390,6 +407,8 @@ export default function KanbanBoard({
                     task={task}
                     dragging={draggedTaskId === task.id}
                     onClick={onTaskClick ? () => onTaskClick(task) : undefined}
+                    selected={selectedTaskIds.includes(task.id)}
+                    onSelect={(selected) => setSelectedTaskIds((current) => selected ? Array.from(new Set([...current, task.id])) : current.filter((id) => id !== task.id))}
                     onDragStart={(event) => handleDragStart(event, task.id)}
                     onDragEnd={() => { setDraggedTaskId(null); setDropTarget(null); }}
                   />
@@ -428,6 +447,7 @@ export default function KanbanBoard({
             </section>
           );
         })}
+      </div></section>)}
       </div>
     </div>
   );

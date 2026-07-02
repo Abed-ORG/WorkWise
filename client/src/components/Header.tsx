@@ -19,7 +19,8 @@ interface HeaderProps { onMenuToggle: () => void; }
 type SearchResult =
   | { id: string; type: 'project'; title: string; meta: string; detail?: string; to: string }
   | { id: string; type: 'task'; title: string; meta: string; detail?: string; to: string }
-  | { id: string; type: 'document'; title: string; meta: string; detail?: string; to: string };
+  | { id: string; type: 'document'; title: string; meta: string; detail?: string; to: string }
+  | { id: string; type: 'member'; title: string; meta: string; detail?: string; to: string };
 
 function isTypingTarget(target: EventTarget | null) {
   if (!(target instanceof HTMLElement)) return false;
@@ -88,7 +89,18 @@ export default function Header({ onMenuToggle }: HeaderProps) {
     .filter(({ document }: { document: ProjectDocument; project: Project }) => `${document.title} ${document.content ?? ''}`.toLowerCase().includes(normalizedSearch))
     .slice(0, 4)
     .map(({ document, project }) => ({ id: document.id, type: 'document', title: document.title, meta: `${project.key} - ${project.name}`, to: `/projects/${project.id}/docs` }));
-  const searchResults = [...projectResults, ...taskResults, ...documentResults].slice(0, 10);
+  const memberResults: SearchResult[] = Array.from(
+    (projectsQuery.data ?? []).reduce((membersById, project) => {
+      project.members.forEach((member) => {
+        if (!membersById.has(member.user.id)) membersById.set(member.user.id, { member, project });
+      });
+      return membersById;
+    }, new Map<string, { member: Project['members'][number]; project: Project }>()).values()
+  )
+    .filter(({ member }) => `${member.user.name} ${member.user.email}`.toLowerCase().includes(normalizedSearch))
+    .slice(0, 5)
+    .map(({ member, project }) => ({ id: member.user.id, type: 'member', title: member.user.name, meta: member.user.email, detail: `${project.key} - ${project.name}`, to: `/projects/${project.id}` }));
+  const searchResults = [...projectResults, ...taskResults, ...documentResults, ...memberResults].slice(0, 10);
   const searchLoading = searchEnabled && (projectsQuery.isLoading || tasksQuery.isLoading || documentsQuery.isLoading);
 
   useEffect(() => {
@@ -172,7 +184,7 @@ export default function Header({ onMenuToggle }: HeaderProps) {
         <div className="search-result-section-label">{label}</div>
         {results.map((result) => (
           <button key={`${result.type}-${result.id}`} type="button" className="search-result-item" role="option" onClick={() => navigateToResult(result)}>
-            <span className="search-result-icon"><Icon name={result.type === 'project' ? 'folder' : result.type === 'task' ? 'tasks' : 'document'} size={15} /></span>
+            <span className="search-result-icon"><Icon name={result.type === 'project' ? 'folder' : result.type === 'task' ? 'tasks' : result.type === 'document' ? 'document' : 'user'} size={15} /></span>
             <span className="search-result-copy">
               <strong>{result.title}</strong>
               <small>{result.detail ? `${result.meta} - ${result.detail}` : result.meta}</small>
@@ -216,9 +228,10 @@ export default function Header({ onMenuToggle }: HeaderProps) {
                   {renderSearchSection('Projects', projectResults)}
                   {renderSearchSection('Tasks', taskResults)}
                   {renderSearchSection('Documents', documentResults)}
+                  {renderSearchSection('Team members', memberResults)}
                   {searchResults.map((result) => (
                   <button key={`${result.type}-${result.id}`} type="button" className="search-result-item" role="option" onClick={() => navigateToResult(result)}>
-                    <span className="search-result-icon"><Icon name={result.type === 'project' ? 'folder' : result.type === 'task' ? 'tasks' : 'document'} size={15} /></span>
+                    <span className="search-result-icon"><Icon name={result.type === 'project' ? 'folder' : result.type === 'task' ? 'tasks' : result.type === 'document' ? 'document' : 'user'} size={15} /></span>
                     <span className="search-result-copy">
                       <strong>{result.title}</strong>
                       <small>{result.type} · {result.meta}</small>

@@ -3,10 +3,16 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { jsPDF } from 'jspdf';
 import Breadcrumbs from '../components/Breadcrumbs';
-import { BurndownChart, ContributionMetrics, VelocityChart } from '../components/ProjectAnalyticsWidgets';
+import {
+  BurndownChart,
+  ContributionMetrics,
+  CumulativeFlowChart,
+  VelocityChart,
+} from '../components/ProjectAnalyticsWidgets';
 import Icon from '../components/Icon';
 import PageHeader from '../components/PageHeader';
-import { Button, Select, Spinner } from '../components/ui';
+import PageSkeleton from '../components/PageSkeleton';
+import { Button, Select } from '../components/ui';
 import { getProjectActivityFeed } from '../services/activityService';
 import { getProjectById, getProjectSprints } from '../services/projectService';
 import { getProjectTasks } from '../services/taskService';
@@ -20,6 +26,9 @@ import {
   buildVelocityData,
   calculateAverageVelocity,
   calculateProjectHealth,
+  buildAnalyticsCsv,
+  buildAnalyticsExportBaseName,
+  createAnalyticsPdfReport,
 } from '../utils/projectAnalytics';
 import type { ProjectHealth } from '../utils/projectAnalytics';
 
@@ -560,6 +569,7 @@ export default function ProjectAnalyticsPage() {
 
   const velocityPoints = useMemo(() => buildVelocityData(sprints, tasks), [sprints, tasks]);
   const averageVelocity = useMemo(() => calculateAverageVelocity(velocityPoints), [velocityPoints]);
+  const cumulativeFlowPoints = useMemo(() => buildCumulativeFlowData(tasks), [tasks]);
 
   const contributionMetrics = useMemo(
     () => buildContributionMetrics(project?.members ?? [], tasks, activities, {
@@ -570,58 +580,66 @@ export default function ProjectAnalyticsPage() {
     [activities, endDate, project?.members, selectedSprintId, startDate, tasks]
   );
 
-  const projectHealth = useMemo(
-    () => (project ? calculateProjectHealth(project, tasks) : null),
-    [project, tasks]
-  );
+const projectHealth = useMemo(
+  () => (project ? calculateProjectHealth(project, tasks) : null),
+  [project, tasks]
+);
 
-  function handleExportCsv() {
-    if (!project) return;
-    const exportBaseName = buildAnalyticsExportBaseName({
-      projectKey: project.key,
-      projectName: project.name,
-      sprintName: selectedSprintId ? selectedSprint?.name : undefined,
-      startDate,
-      endDate,
-    });
-    const csv = buildAnalyticsCsv(project.name, burndownPoints, velocityPoints, averageVelocity, contributionMetrics);
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `${exportBaseName}.csv`;
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-    URL.revokeObjectURL(url);
-  }
+function handleExportCsv() {
+  if (!project) return;
 
-  function handleExportPdf() {
-    if (!project || !projectHealth) return;
-    const exportBaseName = buildAnalyticsExportBaseName({
-      projectKey: project.key,
-      projectName: project.name,
-      sprintName: selectedSprintId ? selectedSprint?.name : undefined,
-      startDate,
-      endDate,
-    });
-    const report = createAnalyticsPdfReport({
-      projectName: project.name,
-      projectKey: project.key,
-      selectedSprintName: selectedSprintId ? selectedSprint?.name : undefined,
-      startDate,
-      endDate,
-      burndownPoints,
-      velocityPoints,
-      averageVelocity,
-      contributionMetrics,
-      projectHealth,
-    });
-    report.save(`${exportBaseName}.pdf`);
-  }
+  const exportBaseName = buildAnalyticsExportBaseName({
+    projectKey: project.key,
+    projectName: project.name,
+    sprintName: selectedSprintId ? selectedSprint?.name : undefined,
+    startDate,
+    endDate,
+  });
 
-  if (loading) return <div className="empty-panel"><Spinner size="lg" /><p className="mt-4">Loading analytics...</p></div>;
-  if (!project || !projectId) return null;
+  const csv = buildAnalyticsCsv(project.name, burndownPoints, velocityPoints, averageVelocity, contributionMetrics);
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+
+  link.href = url;
+  link.download = `${exportBaseName}.csv`;
+
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+
+  URL.revokeObjectURL(url);
+}
+
+function handleExportPdf() {
+  if (!project || !projectHealth) return;
+
+  const exportBaseName = buildAnalyticsExportBaseName({
+    projectKey: project.key,
+    projectName: project.name,
+    sprintName: selectedSprintId ? selectedSprint?.name : undefined,
+    startDate,
+    endDate,
+  });
+
+  const report = createAnalyticsPdfReport({
+    projectName: project.name,
+    projectKey: project.key,
+    selectedSprintName: selectedSprintId ? selectedSprint?.name : undefined,
+    startDate,
+    endDate,
+    burndownPoints,
+    velocityPoints,
+    averageVelocity,
+    contributionMetrics,
+    projectHealth,
+  });
+
+  report.save(`${exportBaseName}.pdf`);
+}
+
+if (loading) return <PageSkeleton variant="cards" />;
+if (!project || !projectId) return null;
 
   return (
     <>
@@ -629,7 +647,8 @@ export default function ProjectAnalyticsPage() {
         { label: 'Projects', to: '/projects' },
         { label: project.name, to: `/projects/${projectId}` },
         { label: 'Analytics' },
-      ]} />
+      ]}
+    />
 
       <PageHeader
         eyebrow={project.key}
@@ -704,6 +723,10 @@ export default function ProjectAnalyticsPage() {
           </div>
         </div>
         <ContributionMetrics metrics={contributionMetrics} />
+      </section>
+      <section className="app-card card-padding analytics-section">
+        <div className="section-heading"><div><p className="section-kicker">Flow analytics</p><h2>Cumulative flow</h2><p>Backlog, active, and completed work across the last 14 days.</p></div></div>
+        <CumulativeFlowChart points={cumulativeFlowPoints} />
       </section>
     </>
   );

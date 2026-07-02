@@ -9,6 +9,7 @@ import { BurndownChart } from '../components/ProjectAnalyticsWidgets';
 import SprintBacklogPanel from '../components/SprintBacklogPanel';
 import SprintCapacitySummary from '../components/SprintCapacitySummary';
 import { Button, Spinner } from '../components/ui';
+import PageSkeleton from '../components/PageSkeleton';
 import { useAuth } from '../hooks/useAuth';
 import { useToast } from '../hooks/useToast';
 import { getProjectById, getSprintById } from '../services/projectService';
@@ -87,7 +88,7 @@ export default function SprintBoardPage() {
   }
 
   if (loading) {
-    return <div className="empty-panel"><Spinner size="lg" /><p className="mt-4">Loading sprint board...</p></div>;
+    return <PageSkeleton variant="board" />;
   }
   if (!project || !sprint || !projectId || !sprintId) return null;
 
@@ -141,12 +142,14 @@ export default function SprintBoardPage() {
 
   return (
     <>
-      <Breadcrumbs items={[
-        { label: 'Projects', to: '/projects' },
-        { label: project.name, to: `/projects/${projectId}` },
-        { label: 'Sprints', to: `/projects/${projectId}/sprints` },
-        { label: sprint.name },
-      ]} />
+      <Breadcrumbs
+        items={[
+          { label: 'Projects', to: '/projects' },
+          { label: project.name, to: `/projects/${projectId}` },
+          { label: 'Sprints', to: `/projects/${projectId}/sprints` },
+          { label: sprint.name },
+        ]}
+      />
 
       {/* Sprint board header */}
       <div className="sprint-board-header app-card">

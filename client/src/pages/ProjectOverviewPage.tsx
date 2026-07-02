@@ -10,6 +10,7 @@ import Icon from '../components/Icon';
 import PageHeader from '../components/PageHeader';
 import { ProjectHealthOverview } from '../components/ProjectAnalyticsWidgets';
 import { Button, Spinner } from '../components/ui';
+import PageSkeleton from '../components/PageSkeleton';
 import { useAuth } from '../hooks/useAuth';
 import { useToast } from '../hooks/useToast';
 import {
@@ -121,7 +122,7 @@ export default function ProjectOverviewPage() {
   const digests = Array.isArray(digestsQuery.data) ? digestsQuery.data : [];
   const loading = projectQuery.isLoading || tasksQuery.isLoading;
 
-  if (loading) return <div className="empty-panel"><Spinner size="lg" /><p className="mt-4">Opening project...</p></div>;
+  if (loading) return <PageSkeleton variant="cards" />;
   if (!project || !projectId) return null;
 
   const currentMember = project.members?.find((member) => member.user.id === user.id);
@@ -149,10 +150,12 @@ export default function ProjectOverviewPage() {
 
   return (
     <>
-      <Breadcrumbs items={[
-        { label: 'Projects', to: '/projects' },
-        { label: project.name },
-      ]} />
+      <Breadcrumbs
+        items={[
+          { label: 'Projects', to: '/projects' },
+          { label: project.name },
+        ]}
+      />
       <PageHeader
         eyebrow={project.key}
         title={project.name}

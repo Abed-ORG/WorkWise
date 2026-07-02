@@ -5,6 +5,8 @@ import Breadcrumbs from '../components/Breadcrumbs';
 import Icon from '../components/Icon';
 import RichTextEditor from '../components/RichTextEditor';
 import { Button, Spinner } from '../components/ui';
+import PageSkeleton from '../components/PageSkeleton';
+import { useToast } from '../hooks/useToast';
 import {
   createProjectDocument,
   deleteProjectDocument,
@@ -19,6 +21,7 @@ export default function ProjectDocsPage() {
   const { projectId } = useParams<{ projectId: string }>();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const toast = useToast();
   const [documentSaving, setDocumentSaving] = useState(false);
   const [documentDeleting, setDocumentDeleting] = useState(false);
   const [selectedDocumentId, setSelectedDocumentId] = useState<string | null>(null);
@@ -68,7 +71,7 @@ export default function ProjectDocsPage() {
   const project = projectQuery.data ?? null;
   const documentLoading = documentsQuery.isLoading;
 
-  if (projectQuery.isLoading) return <div className="empty-panel"><Spinner size="lg" /><p className="mt-4">Opening documentation...</p></div>;
+  if (projectQuery.isLoading) return <PageSkeleton variant="table" />;
   if (!project || !projectId) return null;
 
   const selectedDocument = documents.find((document) => document.id === selectedDocumentId) ?? null;
@@ -128,9 +131,11 @@ export default function ProjectDocsPage() {
       setDocumentTitle(savedDocument.title);
       setDocumentContent(savedDocument.content || '');
       setDocumentMessage({ type: 'success', text: 'Document saved.' });
+      toast.success('Document saved.');
     } catch {
       queryClient.setQueryData(queryKeys.projectDocuments(projectId), previousDocuments);
       setDocumentMessage({ type: 'error', text: 'Document could not be saved.' });
+      toast.error('Document could not be saved.');
     } finally {
       setDocumentSaving(false);
     }
@@ -203,9 +208,11 @@ export default function ProjectDocsPage() {
       setDocumentContent(nextDocument?.content || '');
       await deleteProjectDocument(projectId, selectedDocumentId);
       setDocumentMessage({ type: 'success', text: 'Document deleted.' });
+      toast.success('Document deleted.');
     } catch {
       queryClient.setQueryData(queryKeys.projectDocuments(projectId), previousDocuments);
       setDocumentMessage({ type: 'error', text: 'Document could not be deleted.' });
+      toast.error('Document could not be deleted.');
     } finally {
       setDocumentDeleting(false);
     }
@@ -248,12 +255,16 @@ export default function ProjectDocsPage() {
         setDraftReturnDocumentId(null);
       }
 
-      setDocumentMessage(deletedIds.size === selectedDocumentIds.length
+      const allDeleted = deletedIds.size === selectedDocumentIds.length;
+      setDocumentMessage(allDeleted
         ? { type: 'success', text: 'Selected documents deleted.' }
         : { type: 'error', text: 'Some documents could not be deleted.' });
+      if (allDeleted) toast.success('Selected documents deleted.');
+      else toast.error('Some documents could not be deleted.');
     } catch {
       queryClient.setQueryData(queryKeys.projectDocuments(projectId), previousDocuments);
       setDocumentMessage({ type: 'error', text: 'Selected documents could not be deleted.' });
+      toast.error('Selected documents could not be deleted.');
     } finally {
       setDocumentDeleting(false);
     }
@@ -261,11 +272,20 @@ export default function ProjectDocsPage() {
 
   return (
     <>
-      <Breadcrumbs items={[
-        { label: 'Projects', to: '/projects' },
-        { label: project.name, to: `/projects/${projectId}` },
-        { label: 'Docs' },
-      ]} />
+      <Breadcrumbs
+        items={[
+          { label: 'Projects', to: '/projects' },
+          { label: project.name, to: `/projects/${projectId}` },
+          { label: 'Docs' },
+        ]}
+      />
+
+      <PageHeader
+        eyebrow={project.key}
+        title="Documentation"
+        description="Capture the project brief, decisions, implementation notes, and sprint context."
+      />
+
       <section className="app-card card-padding animate-enter-delay project-document-card">
         <div className="section-heading">
           <div>

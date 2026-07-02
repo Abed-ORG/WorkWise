@@ -133,6 +133,7 @@ export const createTask = async (input: CreateTaskInput) => {
   if (task.assigneeId && task.assigneeId !== input.creatorId) {
     await createNotification({
       userId: task.assigneeId,
+      projectId: task.projectId,
       type: NotificationType.TASK_ASSIGNED,
       message: `You were assigned to "${task.title}" in ${task.project.name}.`,
     });
@@ -400,6 +401,7 @@ estimatedHours: input.estimatedHours,
   if (input.assigneeId && input.assigneeId !== existingTask.assigneeId && input.assigneeId !== input.userId) {
     await createNotification({
       userId: input.assigneeId,
+      projectId: existingTask.projectId,
       type: NotificationType.TASK_ASSIGNED,
       message: `You were assigned to "${updatedTask.title}" in ${updatedTask.project.name}.`,
     });

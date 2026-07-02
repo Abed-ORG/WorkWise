@@ -5,6 +5,14 @@ import { Role } from '@prisma/client';
 
 const aiReportStorageMessage = 'AI report storage is not ready yet. Run the latest Prisma migration, then restart the server.';
 
+type NotificationToggleKey =
+  | 'taskAssigned'
+  | 'taskMoved'
+  | 'commentAdded'
+  | 'mention'
+  | 'sprintStarted'
+  | 'sprintCompleted';
+
 export class ProjectsController {
 
   // ── Create Project ─────────────────────────────────────────
@@ -618,6 +626,50 @@ export class ProjectsController {
         content: req.body.content,
       });
       return res.status(200).json({ success: true, data: document });
+    } catch (error: any) {
+      if (error.message === 'PROJECT_NOT_FOUND') {
+        return res.status(404).json({ success: false, message: 'Project not found' });
+      }
+      return res.status(500).json({ success: false, message: 'Internal server error' });
+    }
+  }
+
+  // ── Notification Preferences ───────────────────────────────
+  async getNotificationPreferences(req: Request, res: Response) {
+    try {
+      const projectId = String(req.params['projectId']);
+      const userId = String((req as any).user?.userId);
+      const preferences = await projectsService.getNotificationPreferences(projectId, userId);
+      return res.status(200).json({ success: true, data: preferences });
+    } catch (error: any) {
+      if (error.message === 'PROJECT_NOT_FOUND') {
+        return res.status(404).json({ success: false, message: 'Project not found' });
+      }
+      return res.status(500).json({ success: false, message: 'Internal server error' });
+    }
+  }
+
+  async updateNotificationPreferences(req: Request, res: Response) {
+    try {
+      const projectId = String(req.params['projectId']);
+      const userId = String((req as any).user?.userId);
+      const body = req.body as Record<string, unknown>;
+
+      const toggleKeys: NotificationToggleKey[] = [
+        'taskAssigned',
+        'taskMoved',
+        'commentAdded',
+        'mention',
+        'sprintStarted',
+        'sprintCompleted',
+      ];
+      const updates: Partial<Record<NotificationToggleKey, boolean>> = {};
+      for (const key of toggleKeys) {
+        if (typeof body[key] === 'boolean') updates[key] = body[key] as boolean;
+      }
+
+      const preferences = await projectsService.updateNotificationPreferences(projectId, userId, updates);
+      return res.status(200).json({ success: true, data: preferences });
     } catch (error: any) {
       if (error.message === 'PROJECT_NOT_FOUND') {
         return res.status(404).json({ success: false, message: 'Project not found' });

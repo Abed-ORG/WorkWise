@@ -5,11 +5,12 @@ import Icon from '../components/Icon';
 import { Button } from '../components/ui';
 import { useAuth } from '../hooks/useAuth';
 import { getUserInvitations, getUserProjects } from '../services/projectService';
+import { getAssignedTasks } from '../services/taskService';
 import { queryKeys, queryTimes } from '../services/queryOptions';
 
 export default function DashboardPage() {
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, isInitializing } = useAuth();
   const projectsQuery = useQuery({
     queryKey: queryKeys.projects,
     queryFn: getUserProjects,
@@ -20,13 +21,28 @@ export default function DashboardPage() {
     queryFn: getUserInvitations,
     staleTime: queryTimes.activity,
   });
+  const assignedTasksQuery = useQuery({ queryKey: queryKeys.assignedTasks, queryFn: getAssignedTasks, staleTime: queryTimes.tasks });
   const projects = Array.isArray(projectsQuery.data) ? projectsQuery.data : [];
   const invitations = Array.isArray(invitationsQuery.data) ? invitationsQuery.data : [];
-  const loading = projectsQuery.isLoading || invitationsQuery.isLoading;
+  const assignedTasks = Array.isArray(assignedTasksQuery.data) ? assignedTasksQuery.data : [];
+  const loading = isInitializing || projectsQuery.isLoading || invitationsQuery.isLoading;
 
   const openTasks = projects.reduce((total, project) => total + (project._count?.tasks ?? 0), 0);
   const memberCount = new Set(projects.flatMap((project) => project.members?.map((member) => member.user.id) ?? [])).size;
-  const firstName = user.name.split(' ')[0] || 'there';
+  const firstName = user?.name.trim().split(/\s+/)[0] ?? 'there';
+
+  const hour = new Date().getHours();
+  const timeGreeting = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
+
+  const startToday = new Date();
+  startToday.setHours(0, 0, 0, 0);
+  const endToday = new Date(startToday);
+  endToday.setHours(23, 59, 59, 999);
+
+  const focusTasks = assignedTasks
+    .filter((task) => task.status !== 'DONE' && task.dueDate && new Date(task.dueDate) <= endToday)
+    .sort((a, b) => new Date(a.dueDate!).getTime() - new Date(b.dueDate!).getTime())
+    .slice(0, 5);
 
   const stats = [
     { label: 'Active projects', value: projects.length, icon: 'folder' as const },
@@ -37,10 +53,14 @@ export default function DashboardPage() {
 
   return (
     <>
+      {loading ? <DashboardSkeleton /> : null}
+
+      {!loading && (
+        <>
       <PageHeader
         eyebrow="Workspace overview"
-        title={`Good to see you, ${firstName}.`}
-        description="Here is a calm snapshot of your projects, tasks, and the work that needs attention."
+        title={`${timeGreeting}, ${firstName}`}
+        description="Here is a focused snapshot of your projects, priorities, and team activity."
         actions={<Button onClick={() => navigate('/projects/create')}><Icon name="plus" size={16} /> New project</Button>}
       />
 
@@ -48,7 +68,7 @@ export default function DashboardPage() {
         {stats.map((stat) => (
           <article className="app-card stat-card" key={stat.label}>
             <div className="stat-head"><span>{stat.label}</span><span className="stat-icon"><Icon name={stat.icon} size={18} /></span></div>
-            {loading ? <div className="skeleton mt-5 h-9 w-14" /> : <p className="stat-value">{stat.value}</p>}
+            <p className="stat-value">{stat.value}</p>
             <p className="stat-label">Across your workspace</p>
           </article>
         ))}
@@ -86,12 +106,87 @@ export default function DashboardPage() {
         <aside className="app-card card-padding">
           <div className="section-heading"><div><h2>Today&apos;s focus</h2><p>A simple plan for a clear day.</p></div></div>
           <div className="focus-list">
-            <div className="focus-item"><span className="focus-check"><Icon name="check" size={15} /></span><span className="focus-copy"><strong>Review project priorities</strong><span>Keep the next milestone clear</span></span></div>
-            <div className="focus-item"><span className="focus-check"><Icon name="team" size={15} /></span><span className="focus-copy"><strong>Check team updates</strong><span>Unblock work early</span></span></div>
-            <div className="focus-item"><span className="focus-check"><Icon name="sparkles" size={15} /></span><span className="focus-copy"><strong>Plan with AI</strong><span>Break the next idea into tasks</span></span></div>
+            {assignedTasksQuery.isLoading ? <><div className="skeleton h-16" /><div className="skeleton h-16" /></> : focusTasks.length ? focusTasks.map((task) => {
+              const overdue = new Date(task.dueDate!) < startToday;
+              return <button type="button" className="focus-item text-left" key={task.id} onClick={() => navigate(`/projects/${task.projectId}/backlog`)}><span className="focus-check"><Icon name={overdue ? 'activity' : 'check'} size={15} /></span><span className="focus-copy"><strong>{task.title}</strong><span>{overdue ? 'Overdue' : 'Due today'} · {task.project?.name ?? 'Project'}</span></span><Icon name="arrow-right" size={15} /></button>;
+            }) : <div className="empty-panel compact-empty"><h3>You are clear for today</h3><p>No assigned tasks are due or overdue.</p></div>}
           </div>
         </aside>
       </section>
+        </>
+      )}
     </>
+  );
+}
+
+function DashboardSkeleton() {
+  return (
+    <div className="dashboard-skeleton animate-enter-delay" aria-label="Loading dashboard" aria-busy="true">
+      <section className="dashboard-skeleton-header app-card">
+        <div>
+          <div className="skeleton skeleton-line skeleton-line-sm" />
+          <div className="skeleton skeleton-line skeleton-line-title" />
+          <div className="skeleton skeleton-line skeleton-line-copy" />
+        </div>
+        <div className="skeleton skeleton-button" />
+      </section>
+
+      <section className="stats-grid" aria-hidden="true">
+        {Array.from({ length: 4 }, (_, index) => (
+          <article className="app-card stat-card dashboard-skeleton-card" key={index}>
+            <div className="stat-head">
+              <div className="skeleton skeleton-line skeleton-line-label" />
+              <div className="skeleton skeleton-icon" />
+            </div>
+            <div className="skeleton skeleton-line skeleton-line-value" />
+            <div className="skeleton skeleton-line skeleton-line-caption" />
+          </article>
+        ))}
+      </section>
+
+      <section className="dashboard-grid" aria-hidden="true">
+        <article className="app-card card-padding">
+          <div className="section-heading">
+            <div>
+              <div className="skeleton skeleton-line skeleton-line-heading" />
+              <div className="skeleton skeleton-line skeleton-line-caption" />
+            </div>
+            <div className="skeleton skeleton-button skeleton-button-sm" />
+          </div>
+          <div className="focus-list">
+            {Array.from({ length: 3 }, (_, index) => (
+              <div className="focus-item dashboard-skeleton-project" key={index}>
+                <div className="skeleton skeleton-key" />
+                <div className="focus-copy">
+                  <div className="skeleton skeleton-line skeleton-line-project" />
+                  <div className="skeleton skeleton-line skeleton-line-caption" />
+                </div>
+                <div className="skeleton skeleton-chevron" />
+              </div>
+            ))}
+          </div>
+        </article>
+
+        <aside className="app-card card-padding">
+          <div className="section-heading">
+            <div>
+              <div className="skeleton skeleton-line skeleton-line-heading" />
+              <div className="skeleton skeleton-line skeleton-line-caption" />
+            </div>
+          </div>
+          <div className="focus-list">
+            {Array.from({ length: 3 }, (_, index) => (
+              <div className="focus-item" key={index}>
+                <div className="skeleton skeleton-check" />
+                <div className="focus-copy">
+                  <div className="skeleton skeleton-line skeleton-line-project" />
+                  <div className="skeleton skeleton-line skeleton-line-caption" />
+                </div>
+              </div>
+            ))}
+          </div>
+        </aside>
+      </section>
+    </div>
   );
 }
