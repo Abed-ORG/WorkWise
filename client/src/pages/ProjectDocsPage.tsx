@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useParams } from 'react-router-dom';
+import Breadcrumbs from '../components/Breadcrumbs';
 import Icon from '../components/Icon';
-import PageHeader from '../components/PageHeader';
 import RichTextEditor from '../components/RichTextEditor';
 import { Button, Spinner } from '../components/ui';
 import {
@@ -261,18 +261,17 @@ export default function ProjectDocsPage() {
 
   return (
     <>
-      <button type="button" className="back-link" onClick={() => navigate(`/projects/${projectId}`)}><Icon name="arrow-left" size={15} /> Back to project</button>
-      <PageHeader
-        eyebrow={project.key}
-        title="Documentation"
-        description="Capture the project brief, decisions, implementation notes, and sprint context."
-      />
-
+      <Breadcrumbs items={[
+        { label: 'Projects', to: '/projects' },
+        { label: project.name, to: `/projects/${projectId}` },
+        { label: 'Docs' },
+      ]} />
       <section className="app-card card-padding animate-enter-delay project-document-card">
         <div className="section-heading">
           <div>
-            <h2>Project documentation</h2>
-            <p>Capture the project brief, decisions, and implementation notes.</p>
+            <p className="section-kicker">{project.key}</p>
+            <h2>Documentation</h2>
+            <p>Capture the project brief, decisions, implementation notes, and sprint context.</p>
           </div>
           <Button onClick={handleNewDocument} disabled={documentLoading || documentSaving || documentDeleting}>
             <Icon name="plus" size={16} /> New document

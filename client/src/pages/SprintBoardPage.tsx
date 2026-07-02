@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import Breadcrumbs from '../components/Breadcrumbs';
 import CompleteSprintModal from '../components/CompleteSprintModal';
 import Icon from '../components/Icon';
 import KanbanBoard from '../components/KanbanBoard';
@@ -140,9 +141,12 @@ export default function SprintBoardPage() {
 
   return (
     <>
-      <button type="button" className="back-link" onClick={() => navigate(`/projects/${projectId}/sprints`)}>
-        <Icon name="arrow-left" size={15} /> Back to sprints
-      </button>
+      <Breadcrumbs items={[
+        { label: 'Projects', to: '/projects' },
+        { label: project.name, to: `/projects/${projectId}` },
+        { label: 'Sprints', to: `/projects/${projectId}/sprints` },
+        { label: sprint.name },
+      ]} />
 
       {/* Sprint board header */}
       <div className="sprint-board-header app-card">

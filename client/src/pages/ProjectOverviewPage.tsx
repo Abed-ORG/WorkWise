@@ -4,6 +4,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import ReactMarkdown from 'react-markdown';
 import { useNavigate, useParams } from 'react-router-dom';
 import AITaskBreakdownModal from '../components/AITaskBreakdownModal';
+import Breadcrumbs from '../components/Breadcrumbs';
 import CreateTaskModal from '../components/CreateTaskModal';
 import Icon from '../components/Icon';
 import PageHeader from '../components/PageHeader';
@@ -148,7 +149,10 @@ export default function ProjectOverviewPage() {
 
   return (
     <>
-      <button type="button" className="back-link" onClick={() => navigate('/projects')}><Icon name="arrow-left" size={15} /> All projects</button>
+      <Breadcrumbs items={[
+        { label: 'Projects', to: '/projects' },
+        { label: project.name },
+      ]} />
       <PageHeader
         eyebrow={project.key}
         title={project.name}

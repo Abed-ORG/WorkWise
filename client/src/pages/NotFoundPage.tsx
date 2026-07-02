@@ -11,7 +11,7 @@ export default function NotFoundPage() {
         <p className="page-eyebrow">Error 404</p>
         <h1 className="page-title text-3xl">This page wandered off.</h1>
         <p>The link may be outdated, or the page might have moved to a new workspace.</p>
-        <Link to="/" className="btn btn-primary">Return home <Icon name="arrow-right" size={16} /></Link>
+        <Link to="/dashboard" className="btn btn-primary">Back to Dashboard <Icon name="arrow-right" size={16} /></Link>
       </div>
     </main>
   );
