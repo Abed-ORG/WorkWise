@@ -7,6 +7,7 @@ export const queryTimes = {
   documents: 60 * 1000,
   activity: 15 * 1000,
   notifications: 15 * 1000,
+  notificationPreferences: 60 * 1000,
   ai: 45 * 1000,
 } as const;
 
@@ -27,4 +28,5 @@ export const queryKeys = {
   sprintRetrospective: (projectId: string, sprintId: string) => ['projects', projectId, 'sprints', sprintId, 'retrospective'] as const,
   task: (taskId: string) => ['tasks', taskId] as const,
   notifications: ['notifications'] as const,
+  projectNotificationPreferences: (projectId: string) => ['projects', projectId, 'notification-preferences'] as const,
 } as const;

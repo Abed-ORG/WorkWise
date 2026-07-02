@@ -23,3 +23,12 @@ export const invitationEmailLimiter = rateLimit({
   keyGenerator: (req) => String((req as any).user?.userId || "anonymous"),
   message,
 });
+
+export const emailChangeRequestLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  limit: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => String((req as any).user?.userId || "anonymous"),
+  message,
+});
