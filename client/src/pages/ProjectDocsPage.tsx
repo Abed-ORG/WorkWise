@@ -272,7 +272,6 @@ export default function ProjectDocsPage() {
 
   return (
     <>
-      <button type="button" className="back-link" onClick={() => navigate(`/projects/${projectId}`)}><Icon name="arrow-left" size={15} /> Back to project</button>
       <PageHeader
         eyebrow={project.key}
         title="Documentation"

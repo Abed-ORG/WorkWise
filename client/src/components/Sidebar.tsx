@@ -17,10 +17,11 @@ interface NavItem {
   label: string;
   to: string;
   icon: IconName;
+  end?: boolean;
 }
 
 const navItems: NavItem[] = [
-  { label: 'Overview', to: '/dashboard', icon: 'home' },
+  { label: 'Dashboard', to: '/dashboard', icon: 'home' },
   { label: 'Projects', to: '/projects', icon: 'folder' },
   { label: 'My tasks', to: '/tasks', icon: 'tasks' },
 ];
@@ -29,27 +30,28 @@ export default function Sidebar({ isOpen, onClose, collapsed, onCollapseToggle }
   const location = useLocation();
   const projectMatch = location.pathname.match(/^\/projects\/([^/]+)/);
   const projectId = projectMatch && projectMatch[1] !== 'create' ? projectMatch[1] : null;
-  const [currentProjectName, setCurrentProjectName] = useState<string | null>(null);
+  const [currentProject, setCurrentProject] = useState<{ name: string; key: string } | null>(null);
 
   useEffect(() => {
     if (!projectId) {
-      setCurrentProjectName(null);
+      setCurrentProject(null);
       return;
     }
 
     let active = true;
     getProjectById(projectId)
       .then((project) => {
-        if (active) setCurrentProjectName(project.name);
+        if (active) setCurrentProject({ name: project.name, key: project.key });
       })
       .catch(() => {
-        if (active) setCurrentProjectName(null);
+        if (active) setCurrentProject(null);
       });
 
     return () => { active = false; };
   }, [projectId]);
 
   const projectNavItems: NavItem[] = projectId ? [
+    { label: 'Overview', to: `/projects/${projectId}`, icon: 'home', end: true },
     { label: 'Board', to: `/projects/${projectId}/board`, icon: 'board' },
     { label: 'Backlog', to: `/projects/${projectId}/backlog`, icon: 'tasks' },
     { label: 'Docs', to: `/projects/${projectId}/docs`, icon: 'document' },
@@ -72,29 +74,41 @@ export default function Sidebar({ isOpen, onClose, collapsed, onCollapseToggle }
         <nav className="sidebar-nav" aria-label="Primary navigation">
           <p className="nav-label">Workspace</p>
           {navItems.map((item) => (
-            <div key={item.to}>
+            <div key={item.to} className={item.to === '/projects' && projectNavItems.length > 0 ? 'nav-project-group' : undefined}>
               <NavLink
                 to={item.to}
-                end={item.to === '/dashboard'}
+                end={item.to === '/dashboard' || item.to === '/projects'}
                 onClick={onClose}
                 className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
               >
                 <Icon name={item.icon} size={19} />
-                <span>{item.to === '/projects' && projectId ? currentProjectName ?? 'Projects' : item.label}</span>
+                {item.label}
               </NavLink>
+
               {item.to === '/projects' && projectNavItems.length > 0 && (
-                <div className="project-subnav" aria-label="Project navigation">
-                  {projectNavItems.map((projectItem) => (
-                    <NavLink
-                      key={projectItem.to}
-                      to={projectItem.to}
-                      onClick={onClose}
-                      className={({ isActive }) => `nav-link nav-link-sub ${isActive ? 'active' : ''}`}
-                    >
-                      <Icon name={projectItem.icon} size={17} />
-                      <span>{projectItem.label}</span>
-                    </NavLink>
-                  ))}
+                <div className="project-context" aria-label="Current project navigation">
+                  <div className="project-context-label" title={currentProject?.name ?? 'Loading project'}>
+                    <span className="project-context-marker" />
+                    <span className="project-context-copy">
+                      <strong>{currentProject?.name ?? 'Loading project'}</strong>
+                      {currentProject?.key && <small>{currentProject.key}</small>}
+                    </span>
+                  </div>
+                  <div className="project-subnav">
+                    {projectNavItems.map((projectItem, index) => (
+                      <NavLink
+                        key={projectItem.to}
+                        to={projectItem.to}
+                        end={projectItem.end}
+                        onClick={onClose}
+                        className={({ isActive }) => `nav-link nav-link-sub ${isActive ? 'active' : ''}`}
+                        style={{ animationDelay: `${index * 18}ms` }}
+                      >
+                        <Icon name={projectItem.icon} size={17} />
+                        {projectItem.label}
+                      </NavLink>
+                    ))}
+                  </div>
                 </div>
               )}
             </div>

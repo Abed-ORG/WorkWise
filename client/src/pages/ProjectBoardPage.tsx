@@ -127,7 +127,6 @@ export default function ProjectBoardPage() {
 
   return (
     <>
-      <button type="button" className="back-link" onClick={() => navigate(`/projects/${projectId}`)}><Icon name="arrow-left" size={15} /> Back to project</button>
       <section className="animate-enter-delay">
         <KanbanBoard
           tasks={tasks}

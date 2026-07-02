@@ -141,10 +141,6 @@ export default function SprintBoardPage() {
 
   return (
     <>
-      <button type="button" className="back-link" onClick={() => navigate(`/projects/${projectId}/sprints`)}>
-        <Icon name="arrow-left" size={15} /> Back to sprints
-      </button>
-
       {/* Sprint board header */}
       <div className="sprint-board-header app-card">
         {/* Top row: eyebrow context + complete action */}
