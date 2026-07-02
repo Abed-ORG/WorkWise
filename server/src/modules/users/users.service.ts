@@ -1,3 +1,4 @@
+import bcrypt from 'bcryptjs';
 import prisma from '../../utils/prisma';
 
 export class UsersService {
@@ -55,6 +56,28 @@ export class UsersService {
     });
 
     return user;
+  }
+
+  async changePassword(userId: string, currentPassword: string, newPassword: string) {
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { password: true },
+    });
+
+    if (!user) {
+      throw new Error('USER_NOT_FOUND');
+    }
+
+    const isCurrentPasswordValid = await bcrypt.compare(currentPassword, user.password);
+    if (!isCurrentPasswordValid) {
+      throw new Error('INVALID_CURRENT_PASSWORD');
+    }
+
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+    await prisma.user.update({
+      where: { id: userId },
+      data: { password: hashedPassword },
+    });
   }
 
   async updateOnboarding(userId: string, status: 'COMPLETED' | 'DISMISSED') {

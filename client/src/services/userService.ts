@@ -40,3 +40,12 @@ export async function updateOnboardingStatus(status: 'COMPLETED' | 'DISMISSED'):
   const { data } = await apiClient.patch('/api/users/me/onboarding', { status });
   return data.data;
 }
+
+export interface ChangePasswordPayload {
+  currentPassword: string;
+  newPassword: string;
+}
+
+export async function changeMyPassword(payload: ChangePasswordPayload): Promise<void> {
+  await apiClient.patch('/api/users/me/password', payload);
+}

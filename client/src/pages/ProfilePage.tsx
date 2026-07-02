@@ -1,17 +1,20 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import axios from 'axios';
 import PageHeader from '../components/PageHeader';
 import Icon from '../components/Icon';
 import { Input, Button, Card, Spinner } from '../components/ui';
 import Modal from '../components/ui/Modal';
-import { getMyProfile, updateMyProfile } from '../services/userService';
+import { changeMyPassword, getMyProfile, updateMyProfile } from '../services/userService';
 import type { UserProfile } from '../services/userService';
 import { useAuth } from '../hooks/useAuth';
 import { useToast } from '../hooks/useToast';
 import { queryKeys, queryTimes } from '../services/queryOptions';
 
 interface FormState { name: string; avatarUrl: string; }
+interface PasswordFormState { currentPassword: string; newPassword: string; confirmPassword: string; }
+interface PasswordFormErrors { currentPassword?: string; newPassword?: string; confirmPassword?: string; }
 
 const MAX_AVATAR_FILE_SIZE = 5 * 1024 * 1024;
 const AVATAR_SIZE = 256;
@@ -74,6 +77,9 @@ export default function ProfilePage() {
   const [avatarError, setAvatarError] = useState('');
   const [shortcutsOpen, setShortcutsOpen] = useState(searchParams.get('shortcuts') === 'true');
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [passwordForm, setPasswordForm] = useState<PasswordFormState>({ currentPassword: '', newPassword: '', confirmPassword: '' });
+  const [passwordErrors, setPasswordErrors] = useState<PasswordFormErrors>({});
+  const [changingPassword, setChangingPassword] = useState(false);
   const profileQuery = useQuery({
     queryKey: queryKeys.profile,
     queryFn: getMyProfile,
@@ -118,6 +124,41 @@ export default function ProfilePage() {
     setNameError('');
     setAvatarError('');
     setEditing(false);
+  }
+
+  function handlePasswordFieldChange(field: keyof PasswordFormState, value: string) {
+    setPasswordForm((current) => ({ ...current, [field]: value }));
+    if (passwordErrors[field]) setPasswordErrors((current) => ({ ...current, [field]: undefined }));
+  }
+
+  async function handleChangePassword(event: React.FormEvent) {
+    event.preventDefault();
+
+    const errors: PasswordFormErrors = {};
+    if (!passwordForm.currentPassword) errors.currentPassword = 'Current password is required';
+    if (passwordForm.newPassword.length < 8) errors.newPassword = 'New password must be at least 8 characters';
+    if (passwordForm.newPassword !== passwordForm.confirmPassword) errors.confirmPassword = 'Passwords do not match';
+
+    if (Object.keys(errors).length) {
+      setPasswordErrors(errors);
+      return;
+    }
+
+    setChangingPassword(true);
+    try {
+      await changeMyPassword({ currentPassword: passwordForm.currentPassword, newPassword: passwordForm.newPassword });
+      setPasswordForm({ currentPassword: '', newPassword: '', confirmPassword: '' });
+      setPasswordErrors({});
+      toast.success('Password updated successfully.');
+    } catch (error: unknown) {
+      if (axios.isAxiosError(error) && error.response?.status === 400) {
+        setPasswordErrors({ currentPassword: 'Current password is incorrect' });
+      } else {
+        toast.error('Failed to update password. Please try again.');
+      }
+    } finally {
+      setChangingPassword(false);
+    }
   }
 
   function closeShortcuts() {
@@ -223,6 +264,37 @@ export default function ProfilePage() {
             </div>
             <div className="auth-note mt-0"><Icon name="check" size={17} /> Your email is used for sign-in and project invitations.</div>
           </div>
+        </Card>
+
+        <Card title="Security" className="tip-card">
+          <form className="form-stack" onSubmit={handleChangePassword} noValidate>
+            <Input
+              label="Current password"
+              type="password"
+              value={passwordForm.currentPassword}
+              onChange={(event) => handlePasswordFieldChange('currentPassword', event.target.value)}
+              error={passwordErrors.currentPassword}
+              autoComplete="current-password"
+            />
+            <Input
+              label="New password"
+              type="password"
+              value={passwordForm.newPassword}
+              onChange={(event) => handlePasswordFieldChange('newPassword', event.target.value)}
+              error={passwordErrors.newPassword}
+              helperText={passwordErrors.newPassword ? undefined : 'At least 8 characters.'}
+              autoComplete="new-password"
+            />
+            <Input
+              label="Confirm new password"
+              type="password"
+              value={passwordForm.confirmPassword}
+              onChange={(event) => handlePasswordFieldChange('confirmPassword', event.target.value)}
+              error={passwordErrors.confirmPassword}
+              autoComplete="new-password"
+            />
+            <div><Button type="submit" loading={changingPassword}>Update password</Button></div>
+          </form>
         </Card>
       </div>
 
