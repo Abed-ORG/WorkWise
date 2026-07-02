@@ -5,6 +5,8 @@ import PageHeader from '../components/PageHeader';
 import Icon from '../components/Icon';
 import DocumentLinkPicker from '../components/DocumentLinkPicker';
 import { Button, Input, Modal, Select, Spinner, Textarea } from '../components/ui';
+import PageSkeleton from '../components/PageSkeleton';
+import { useToast } from '../hooks/useToast';
 import {
   getProjectById,
   updateProject,
@@ -27,14 +29,13 @@ const roleOptions = [
 export default function ProjectSettingsPage() {
   const { projectId } = useParams<{ projectId: string }>();
   const navigate = useNavigate();
+  const toast = useToast();
   const [project, setProject] = useState<Project | null>(null);
   const [invitations, setInvitations] = useState<Invitation[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showInviteForm, setShowInviteForm] = useState(false);
-  const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
   const [form, setForm] = useState({ name: '', description: '' });
   const [inviteForm, setInviteForm] = useState({ email: '', role: 'DEVELOPER' });
 
@@ -52,15 +53,13 @@ export default function ProjectSettingsPage() {
 
   async function handleSave() {
     if (!projectId || !form.name.trim()) return;
-    setError('');
-    setSuccess('');
     setSaving(true);
     try {
       const updated = await updateProject(projectId, { name: form.name.trim(), description: form.description.trim() });
       setProject(updated);
-      setSuccess('Project details updated.');
+      toast.success('Project details updated.');
     } catch {
-      setError('Failed to update project.');
+      toast.error('Failed to update project.');
     } finally {
       setSaving(false);
     }
@@ -69,16 +68,15 @@ export default function ProjectSettingsPage() {
   async function handleInvite(event: React.FormEvent) {
     event.preventDefault();
     if (!projectId) return;
-    setError('');
     try {
       const invitation = await inviteMember(projectId, inviteForm);
       setInvitations((current) => [...current, invitation]);
       setInviteForm({ email: '', role: 'DEVELOPER' });
       setShowInviteForm(false);
-      setSuccess('Invitation email sent successfully.');
+      toast.success('Invitation email sent successfully.');
     } catch (requestError: unknown) {
       const message = axios.isAxiosError<{ message?: string }>(requestError) ? requestError.response?.data?.message : undefined;
-      setError(message || 'Failed to send invitation.');
+      toast.error(message || 'Failed to send invitation.');
     }
   }
 
@@ -93,7 +91,7 @@ export default function ProjectSettingsPage() {
       await updateMemberRole(projectId, memberId, role);
       await refreshProject();
     } catch {
-      setError('Failed to update member role.');
+      toast.error('Failed to update member role.');
     }
   }
 
@@ -102,8 +100,9 @@ export default function ProjectSettingsPage() {
     try {
       await removeMember(projectId, memberId);
       await refreshProject();
+      toast.success('Member removed.');
     } catch {
-      setError('Failed to remove member.');
+      toast.error('Failed to remove member.');
     }
   }
 
@@ -113,12 +112,12 @@ export default function ProjectSettingsPage() {
       await deleteProject(projectId);
       navigate('/projects');
     } catch {
-      setError('Failed to delete project.');
+      toast.error('Failed to delete project.');
       setShowDeleteConfirm(false);
     }
   }
 
-  if (loading) return <div className="empty-panel"><Spinner size="lg" /><p className="mt-4">Loading project settings...</p></div>;
+  if (loading) return <PageSkeleton variant="cards" />;
   if (!project) return null;
 
   return (
@@ -127,9 +126,6 @@ export default function ProjectSettingsPage() {
       <PageHeader eyebrow={project.key} title="Project settings" description="Manage project details, teammate access, and permanent workspace actions." />
 
       <div className="settings-stack animate-enter-delay">
-        {error && <div className="alert alert-error">{error}</div>}
-        {success && <div className="alert alert-success">{success}</div>}
-
         <section className="app-card settings-section">
           <div className="settings-section-head"><div><h2>General details</h2><p className="field-help mt-1">Keep the project name and purpose clear for everyone.</p></div></div>
           <div className="form-stack">

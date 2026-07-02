@@ -6,10 +6,18 @@ import OnboardingWizard from './OnboardingWizard';
 
 export default function AppShell() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(() => localStorage.getItem('workwise-sidebar-collapsed') === 'true');
+
+  function toggleSidebarCollapsed() {
+    setIsSidebarCollapsed((current) => {
+      localStorage.setItem('workwise-sidebar-collapsed', String(!current));
+      return !current;
+    });
+  }
 
   return (
-    <div className="app-shell">
-      <Sidebar isOpen={isSidebarOpen} onClose={() => setIsSidebarOpen(false)} />
+    <div className={`app-shell${isSidebarCollapsed ? ' sidebar-collapsed' : ''}`}>
+      <Sidebar isOpen={isSidebarOpen} collapsed={isSidebarCollapsed} onCollapseToggle={toggleSidebarCollapsed} onClose={() => setIsSidebarOpen(false)} />
       <OnboardingWizard />
       <div className="app-main">
         <Header onMenuToggle={() => setIsSidebarOpen((current) => !current)} />

@@ -32,6 +32,23 @@ export interface ProjectHealth {
   upcomingDeadlines: Task[];
 }
 
+export interface CumulativeFlowPoint { label: string; backlog: number; active: number; done: number; }
+
+export function buildCumulativeFlowData(tasks: Task[], days = 14): CumulativeFlowPoint[] {
+  const today = startOfDay(new Date());
+  return Array.from({ length: days }, (_, index) => {
+    const day = new Date(today.getTime() - (days - index - 1) * DAY_MS);
+    const dayEnd = new Date(day.getTime() + DAY_MS - 1);
+    const existing = tasks.filter((task) => !task.createdAt || new Date(task.createdAt).getTime() <= dayEnd.getTime());
+    const completed = existing.filter((task) => {
+      const completedAt = completionDateFromActivities(task);
+      return Boolean(completedAt && completedAt.getTime() <= dayEnd.getTime());
+    }).length;
+    const backlog = existing.filter((task) => task.status === 'BACKLOG' && !completionDateFromActivities(task)).length;
+    return { label: day.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }), backlog, active: Math.max(0, existing.length - backlog - completed), done: completed };
+  });
+}
+
 function startOfDay(date: Date) {
   return new Date(date.getFullYear(), date.getMonth(), date.getDate());
 }

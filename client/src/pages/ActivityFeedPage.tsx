@@ -3,7 +3,9 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import Icon from '../components/Icon';
 import PageHeader from '../components/PageHeader';
-import { Button, Spinner } from '../components/ui';
+import { Button } from '../components/ui';
+import PageSkeleton from '../components/PageSkeleton';
+import { useToast } from '../hooks/useToast';
 import { getProjectById } from '../services/projectService';
 import { getProjectActivityFeed } from '../services/activityService';
 import type { ProjectActivity } from '../services/activityService';
@@ -31,6 +33,7 @@ export default function ActivityFeedPage() {
   const { projectId } = useParams<{ projectId: string }>();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const toast = useToast();
   const [loadingMore, setLoadingMore] = useState(false);
 
   const projectQuery = useQuery({
@@ -57,12 +60,17 @@ export default function ActivityFeedPage() {
   async function handleLoadMore() {
     if (!projectId || !activities.length) return;
     setLoadingMore(true);
-    const nextActivities = await getProjectActivityFeed(projectId, activities[activities.length - 1].id).catch(() => []);
-    queryClient.setQueryData<ProjectActivity[]>(queryKeys.projectActivity(projectId), (current = []) => [...current, ...nextActivities]);
-    setLoadingMore(false);
+    try {
+      const nextActivities = await getProjectActivityFeed(projectId, activities[activities.length - 1].id);
+      queryClient.setQueryData<ProjectActivity[]>(queryKeys.projectActivity(projectId), (current = []) => [...current, ...nextActivities]);
+    } catch {
+      toast.error('Could not load older activity.');
+    } finally {
+      setLoadingMore(false);
+    }
   }
 
-  if (loading) return <div className="empty-panel"><Spinner size="lg" /><p className="mt-4">Loading activity...</p></div>;
+  if (loading) return <PageSkeleton variant="table" />;
   if (!project || !projectId) return null;
 
   return (

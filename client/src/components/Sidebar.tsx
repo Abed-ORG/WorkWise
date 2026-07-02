@@ -9,6 +9,8 @@ import type { IconName } from './Icon';
 interface SidebarProps {
   isOpen: boolean;
   onClose: () => void;
+  collapsed: boolean;
+  onCollapseToggle: () => void;
 }
 
 interface NavItem {
@@ -23,7 +25,7 @@ const navItems: NavItem[] = [
   { label: 'My tasks', to: '/tasks', icon: 'tasks' },
 ];
 
-export default function Sidebar({ isOpen, onClose }: SidebarProps) {
+export default function Sidebar({ isOpen, onClose, collapsed, onCollapseToggle }: SidebarProps) {
   const location = useLocation();
   const projectMatch = location.pathname.match(/^\/projects\/([^/]+)/);
   const projectId = projectMatch && projectMatch[1] !== 'create' ? projectMatch[1] : null;
@@ -59,11 +61,13 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
   return (
     <>
       {isOpen && <button className="sidebar-overlay" type="button" onClick={onClose} aria-label="Close navigation" />}
-      <aside className={`sidebar ${isOpen ? 'open' : ''}`}>
+      <aside className={`sidebar ${isOpen ? 'open' : ''}${collapsed ? ' is-collapsed' : ''}`}>
         <div className="sidebar-brand">
-          <Brand />
+          <Brand compact={collapsed} />
           <ThemeToggle className="sidebar-theme-toggle" />
         </div>
+
+        <button type="button" className="sidebar-collapse-button" onClick={onCollapseToggle} aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'} title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}><Icon name="chevron-down" size={16} /></button>
 
         <nav className="sidebar-nav" aria-label="Primary navigation">
           <p className="nav-label">Workspace</p>
@@ -76,7 +80,7 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
                 className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
               >
                 <Icon name={item.icon} size={19} />
-                {item.to === '/projects' && projectId ? currentProjectName ?? 'Projects' : item.label}
+                <span>{item.to === '/projects' && projectId ? currentProjectName ?? 'Projects' : item.label}</span>
               </NavLink>
               {item.to === '/projects' && projectNavItems.length > 0 && (
                 <div className="project-subnav" aria-label="Project navigation">
@@ -88,7 +92,7 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
                       className={({ isActive }) => `nav-link nav-link-sub ${isActive ? 'active' : ''}`}
                     >
                       <Icon name={projectItem.icon} size={17} />
-                      {projectItem.label}
+                      <span>{projectItem.label}</span>
                     </NavLink>
                   ))}
                 </div>
@@ -97,13 +101,6 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
           ))}
         </nav>
 
-        <div className="sidebar-footer">
-          <strong>AI work assistant</strong>
-          <p>Turn project updates into clear next steps for your team.</p>
-          <NavLink to="/projects/create" className="btn btn-primary w-full" onClick={onClose}>
-            <Icon name="plus" size={16} /> New project
-          </NavLink>
-        </div>
       </aside>
     </>
   );

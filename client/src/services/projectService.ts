@@ -5,6 +5,7 @@ export interface Project {
   name: string;
   key: string;
   description?: string;
+  icon?: string;
   createdAt: string;
   updatedAt: string;
   members: ProjectMember[];
@@ -58,6 +59,7 @@ export interface CreateProjectDto {
   name: string;
   key: string;
   description?: string;
+  icon?: string;
 }
 
 export interface ProjectDocument {

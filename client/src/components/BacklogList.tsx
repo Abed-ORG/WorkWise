@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { CSSProperties, Dispatch, DragEvent, FormEvent, ReactNode, SetStateAction } from 'react';
+import type { CSSProperties, Dispatch, DragEvent, FormEvent, MouseEvent, ReactNode, SetStateAction } from 'react';
 import { createPortal } from 'react-dom';
 import { useSearchParams } from 'react-router-dom';
 import Icon from './Icon';
 import { Button, Select } from './ui';
 import type { SelectOption } from './ui';
-import type { Task } from '../services/taskService';
+import type { Task, TaskPriority, TaskStatus } from '../services/taskService';
 import { parseTaskQuery } from '../services/aiService';
 import type { TaskSearchFilters } from '../services/aiService';
 import { isOpenSprintMoveTarget } from '../utils/sprintOptions';
@@ -34,6 +34,9 @@ interface BacklogListProps {
   onMoveTasks?: (taskIds: string[], target: BacklogMoveTarget) => Promise<void>;
   onQuickAddTask?: (title: string) => Promise<void>;
   onTaskClick?: (task: Task) => void;
+  onTaskUpdate?: (task: Task, changes: { title?: string; priority?: TaskPriority; assigneeId?: string | null }) => Promise<void>;
+  onReorder?: (taskId: string, order: number) => Promise<void>;
+  onBulkUpdate?: (taskIds: string[], changes: { status?: TaskStatus; priority?: TaskPriority; assigneeId?: string | null }) => Promise<void>;
   projectId?: string;
   sprints?: SprintOption[];
   activeSprint?: SprintOption | null;
@@ -89,6 +92,9 @@ export default function BacklogList({
   onMoveTasks,
   onQuickAddTask,
   onTaskClick,
+  onTaskUpdate,
+  onReorder,
+  onBulkUpdate,
   projectId,
   sprints = [],
   activeSprint = null,
@@ -118,6 +124,11 @@ export default function BacklogList({
   const [backlogDropOver, setBacklogDropOver] = useState(false);
   const [activeSprintCollapsed, setActiveSprintCollapsed] = useState(false);
   const [productBacklogCollapsed, setProductBacklogCollapsed] = useState(false);
+  const [bulkStatus, setBulkStatus] = useState('');
+  const [bulkPriority, setBulkPriority] = useState('');
+  const [bulkAssignee, setBulkAssignee] = useState('');
+  const [editingCell, setEditingCell] = useState<{ taskId: string; field: 'title' | 'priority' | 'assignee' } | null>(null);
+  const clickTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const advancedFiltersRef = useRef<HTMLDivElement>(null);
   const [dueBefore, setDueBefore] = useState<string | null>(null);
   const [nlInput, setNlInput] = useState('');
@@ -188,6 +199,7 @@ export default function BacklogList({
   const visibleTasks = showSectionLayout ? [...activeSprintTasks, ...productBacklogTasks] : sortedTasks;
   const allVisibleTasksSelected = visibleTasks.length > 0 && visibleTasks.every((task) => selectedTaskIds.includes(task.id));
   const canShowActions = canDelete && Boolean(onDeleteSelected || onMoveTasks);
+  const canShowBottomBar = canDelete && Boolean(onDeleteSelected || onMoveTasks || onBulkUpdate);
   const isProcessing = deleting || moving;
   const filteredProductBacklogCount = productBacklogTasks.length;
   const filteredActiveSprintCount = activeSprintTasks.length;
@@ -312,6 +324,33 @@ export default function BacklogList({
     setSelectedTaskIds([]);
     setOpenActionMenu(null);
   }
+  async function applyBulkUpdate() {
+    if (!onBulkUpdate || !selectedTaskIds.length) return;
+    const changes = {
+      ...(bulkStatus && { status: bulkStatus as TaskStatus }),
+      ...(bulkPriority && { priority: bulkPriority as TaskPriority }),
+      ...(bulkAssignee && { assigneeId: bulkAssignee === '__unassigned__' ? null : bulkAssignee }),
+    };
+    if (!Object.keys(changes).length) return;
+    setMoving(true);
+    try { await onBulkUpdate(selectedTaskIds, changes); setSelectedTaskIds([]); setBulkStatus(''); setBulkPriority(''); setBulkAssignee(''); }
+    finally { setMoving(false); }
+  }
+
+  function handleTitleClick(e: MouseEvent, task: Task) {
+    if (e.detail === 2 && onTaskUpdate) {
+      if (clickTimerRef.current) { clearTimeout(clickTimerRef.current); clickTimerRef.current = null; }
+      setEditingCell({ taskId: task.id, field: 'title' });
+      return;
+    }
+    if (e.detail === 1 && onTaskClick) {
+      if (onTaskUpdate) {
+        clickTimerRef.current = setTimeout(() => { clickTimerRef.current = null; onTaskClick(task); }, 250);
+      } else {
+        onTaskClick(task);
+      }
+    }
+  }
 
   async function handleQuickAddSubmit(event: FormEvent) {
     event.preventDefault();
@@ -329,6 +368,7 @@ export default function BacklogList({
   }
 
   function canDragTask(task: Task) {
+    if (onReorder) return true;
     if (!onMoveTasks) return false;
     if (!task.sprintId) return Boolean(activeSprint);
     return task.sprintId === activeSprint?.id;
@@ -342,6 +382,24 @@ export default function BacklogList({
     event.dataTransfer.effectAllowed = 'move';
     event.dataTransfer.setData('text/plain', task.id);
     setDraggedTaskId(task.id);
+  }
+
+  function handleRowDragOver(event: DragEvent<HTMLTableRowElement>, task: Task, sectionTasks: Task[]) {
+    if (!onReorder || !draggedTaskId || draggedTaskId === task.id) return;
+    if (!sectionTasks.some((sectionTask) => sectionTask.id === draggedTaskId)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    event.dataTransfer.dropEffect = 'move';
+  }
+
+  async function handleRowDrop(event: DragEvent<HTMLTableRowElement>, task: Task, sectionTasks: Task[]) {
+    const taskId = draggedTaskId ?? event.dataTransfer.getData('text/plain');
+    if (!onReorder || !taskId || taskId === task.id) return;
+    if (!sectionTasks.some((sectionTask) => sectionTask.id === taskId)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    setDraggedTaskId(null);
+    await onReorder(taskId, task.order ?? sectionTasks.indexOf(task));
   }
 
   function handleActiveDropDragOver(event: DragEvent<HTMLDivElement>) {
@@ -433,13 +491,81 @@ export default function BacklogList({
         draggable={canDragTask(task)}
         onDragStart={(event) => handleRowDragStart(event, task)}
         onDragEnd={() => { setDraggedTaskId(null); setActiveDropOver(false); setBacklogDropOver(false); }}
+        onDragOver={(event) => handleRowDragOver(event, task, sectionTasks)}
+        onDrop={(event) => void handleRowDrop(event, task, sectionTasks)}
       >
         {canDelete && <td className="checkbox-cell"><input className="themed-checkbox" type="checkbox" checked={selectedTaskIds.includes(task.id)} onChange={() => toggleTaskSelection(task.id)} aria-label={`Select ${task.title}`} /></td>}
-        <td data-label="Task">{onTaskClick ? <button type="button" className="task-table-link" onClick={() => onTaskClick(task)}>{task.title}</button> : <strong className="task-table-title">{task.title}</strong>}</td>
+        <td data-label="Task">
+          {editingCell?.taskId === task.id && editingCell?.field === 'title' ? (
+            <input
+              className="backlog-inline-input"
+              defaultValue={task.title}
+              autoFocus
+              aria-label={`Edit title for ${task.title}`}
+              onClick={(event) => event.stopPropagation()}
+              onBlur={(event) => {
+                const title = event.target.value.trim();
+                if (title && title !== task.title) void onTaskUpdate!(task, { title });
+                setEditingCell(null);
+              }}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') event.currentTarget.blur();
+                if (event.key === 'Escape') setEditingCell(null);
+              }}
+            />
+          ) : onTaskClick ? (
+            <button type="button" className="task-table-link" onClick={(event) => handleTitleClick(event, task)} title={onTaskUpdate ? 'Double-click to edit' : undefined}>{task.title}</button>
+          ) : (
+            <strong className="task-table-title" onDoubleClick={() => onTaskUpdate && setEditingCell({ taskId: task.id, field: 'title' })} style={onTaskUpdate ? { cursor: 'pointer' } : undefined}>{task.title}</strong>
+          )}
+        </td>
         {showProject && <td data-label="Project"><span className="project-key">{task.project?.key}</span> {task.project?.name}</td>}
         <td data-label="Status"><span className={`status-badge status-${workflowStatus(task.status).toLowerCase()}`}>{formatStatus(workflowStatus(task.status))}</span></td>
-        <td data-label="Priority"><span className={`priority-badge priority-${task.priority.toLowerCase()}`}><span />{task.priority.toLowerCase()}</span></td>
-        <td data-label="Assignee"><span className="table-assignee"><span className="mini-avatar">{getInitials(task.assignee?.name)}</span>{task.assignee?.name ?? 'Unassigned'}</span></td>
+        <td data-label="Priority">
+          {editingCell?.taskId === task.id && editingCell?.field === 'priority' && onTaskUpdate ? (
+            <select
+              className="backlog-inline-select"
+              value={task.priority}
+              autoFocus
+              aria-label={`Edit priority for ${task.title}`}
+              onChange={(event) => { void onTaskUpdate(task, { priority: event.target.value as TaskPriority }); setEditingCell(null); }}
+              onBlur={() => setEditingCell(null)}
+            >
+              {priorityOptions.slice(1).map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+            </select>
+          ) : (
+            <span
+              className={`priority-badge priority-${task.priority.toLowerCase()}`}
+              onDoubleClick={() => onTaskUpdate && setEditingCell({ taskId: task.id, field: 'priority' })}
+              style={onTaskUpdate ? { cursor: 'pointer' } : undefined}
+            >
+              <span />{task.priority.toLowerCase()}
+            </span>
+          )}
+        </td>
+        <td data-label="Assignee">
+          {editingCell?.taskId === task.id && editingCell?.field === 'assignee' && onTaskUpdate ? (
+            <select
+              className="backlog-inline-select"
+              value={task.assignee?.id ?? ''}
+              autoFocus
+              aria-label={`Edit assignee for ${task.title}`}
+              onChange={(event) => { void onTaskUpdate(task, { assigneeId: event.target.value || null }); setEditingCell(null); }}
+              onBlur={() => setEditingCell(null)}
+            >
+              <option value="">Unassigned</option>
+              {assignees.map((assignee) => <option key={assignee.id} value={assignee.id}>{assignee.name}</option>)}
+            </select>
+          ) : (
+            <span
+              className="table-assignee"
+              onDoubleClick={() => onTaskUpdate && setEditingCell({ taskId: task.id, field: 'assignee' })}
+              style={onTaskUpdate ? { cursor: 'pointer' } : undefined}
+            >
+              <span className="mini-avatar">{getInitials(task.assignee?.name)}</span>{task.assignee?.name ?? 'Unassigned'}
+            </span>
+          )}
+        </td>
         <td data-label="Due date"><span className="due-date"><Icon name="calendar" size={14} />{formatDate(task.dueDate)}</span></td>
         {canShowActions && (
           <td className="backlog-actions-cell" data-label="Actions">
@@ -491,7 +617,7 @@ export default function BacklogList({
   const overlayRoot = typeof document === 'undefined' ? null : document.body;
   const overlays = (
     <>
-      {canShowActions && selectedTaskIds.length > 0 && (
+      {canShowBottomBar && selectedTaskIds.length > 0 && (
         <div className="backlog-bottom-actions" aria-label="Selected task actions">
           <span className="backlog-bottom-count">{selectedTaskIds.length} selected</span>
           {onMoveTasks && (
@@ -508,6 +634,26 @@ export default function BacklogList({
             <button type="button" className="backlog-bottom-action is-danger" disabled={isProcessing} onClick={() => handleDeleteTasks(selectedTaskIds)}>
               <Icon name="trash" size={15} /> Delete
             </button>
+          )}
+          {onBulkUpdate && (
+            <div className="backlog-bulk-update-fields" aria-label="Bulk update fields">
+              <select aria-label="Bulk status" value={bulkStatus} onChange={(event) => setBulkStatus(event.target.value)} disabled={isProcessing}>
+                <option value="">— status —</option>
+                {statusOptions.slice(1).map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+              </select>
+              <select aria-label="Bulk priority" value={bulkPriority} onChange={(event) => setBulkPriority(event.target.value)} disabled={isProcessing}>
+                <option value="">— priority —</option>
+                {priorityOptions.slice(1).map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+              </select>
+              <select aria-label="Bulk assignee" value={bulkAssignee} onChange={(event) => setBulkAssignee(event.target.value)} disabled={isProcessing}>
+                <option value="">— assignee —</option>
+                <option value="__unassigned__">Unassigned</option>
+                {assignees.map((assignee) => <option key={assignee.id} value={assignee.id}>{assignee.name}</option>)}
+              </select>
+              <button type="button" className="backlog-bottom-action" disabled={isProcessing || (!bulkStatus && !bulkPriority && !bulkAssignee)} onClick={applyBulkUpdate}>
+                Apply changes
+              </button>
+            </div>
           )}
           <button type="button" className="icon-button backlog-bottom-clear" disabled={isProcessing} onClick={clearSelection} aria-label="Clear selection">
             <Icon name="close" size={15} />
