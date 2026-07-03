@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import axios from 'axios';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import Breadcrumbs from '../components/Breadcrumbs';
 import Icon from '../components/Icon';
 import PageHeader from '../components/PageHeader';
 import { Button, Input, Modal, Textarea } from '../components/ui';
@@ -297,6 +298,13 @@ export default function SprintPage() {
 
   return (
     <>
+      <Breadcrumbs
+        items={[
+          { label: 'Projects', to: '/projects' },
+          { label: project.name, to: `/projects/${projectId}` },
+          { label: 'Sprints' },
+        ]}
+      />
       <PageHeader
         eyebrow={project.key}
         title="Sprints"

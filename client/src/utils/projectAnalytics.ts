@@ -121,15 +121,47 @@ export function calculateAverageVelocity(points: VelocityPoint[]) {
 
 function activityIsWithinRange(activity: ProjectActivity, start?: string, end?: string) {
   const createdAt = parseDate(activity.createdAt);
+  return dateIsWithinRange(createdAt, start, end);
+}
+
+function dateIsWithinRange(value: Date | null, start?: string, end?: string) {
   const startDate = parseDate(start);
   const endDate = parseDate(end);
-  if (!createdAt) return false;
-  if (startDate && createdAt.getTime() < startOfDay(startDate).getTime()) return false;
+  if (!value) return false;
+  if (startDate && value.getTime() < startOfDay(startDate).getTime()) return false;
   if (endDate) {
     const endOfDay = new Date(startOfDay(endDate).getTime() + DAY_MS - 1);
-    if (createdAt.getTime() > endOfDay.getTime()) return false;
+    if (value.getTime() > endOfDay.getTime()) return false;
   }
   return true;
+}
+
+function isDoneTransition(action: string, details?: string | null) {
+  return action === 'TASK_MOVED' && /\bto\s+DONE\b/i.test(details ?? '');
+}
+
+function taskMatchesSprint(task: Task, sprintId?: string) {
+  return !sprintId || task.sprintId === sprintId;
+}
+
+function taskCompletedInFilter(task: Task, options: { sprintId?: string; startDate?: string; endDate?: string }) {
+  if (task.status !== 'DONE' || !taskMatchesSprint(task, options.sprintId)) return false;
+
+  const hasActivityHistory = Array.isArray(task.activities) && task.activities.length > 0;
+  if (hasActivityHistory) {
+    return task.activities?.some((activity) => (
+      isDoneTransition(activity.action, activity.details)
+      && dateIsWithinRange(parseDate(activity.createdAt), options.startDate, options.endDate)
+    )) ?? false;
+  }
+
+  if (!options.startDate && !options.endDate) return true;
+  return dateIsWithinRange(parseDate(task.updatedAt), options.startDate, options.endDate);
+}
+
+function activityMatchesSprintTask(activity: ProjectActivity, sprintTasks: Task[], sprintId?: string) {
+  if (!sprintId) return true;
+  return sprintTasks.some((task) => task.title === activity.target);
 }
 
 export function buildContributionMetrics(
@@ -138,28 +170,26 @@ export function buildContributionMetrics(
   activities: ProjectActivity[],
   options: { sprintId?: string; startDate?: string; endDate?: string } = {}
 ): ContributionMetric[] {
-  const filteredTasks = tasks.filter((task) => {
-    if (options.sprintId && task.sprintId !== options.sprintId) return false;
-    const completedAt = completionDateFromActivities(task);
-    if (!completedAt) return task.status === 'DONE';
-    if (options.startDate && completedAt.getTime() < startOfDay(parseDate(options.startDate) ?? completedAt).getTime()) return false;
-    if (options.endDate) {
-      const endOfDay = new Date(startOfDay(parseDate(options.endDate) ?? completedAt).getTime() + DAY_MS - 1);
-      if (completedAt.getTime() > endOfDay.getTime()) return false;
-    }
-    return true;
-  });
+  const deliveryMembers = members.filter((member) => member.role !== 'VIEWER');
+  const sprintTasks = options.sprintId ? tasks.filter((task) => task.sprintId === options.sprintId) : tasks;
+  const completedTasks = tasks.filter((task) => taskCompletedInFilter(task, options));
+  const comments = tasks
+    .filter((task) => taskMatchesSprint(task, options.sprintId))
+    .flatMap((task) => task.comments ?? [])
+    .filter((comment) => dateIsWithinRange(parseDate(comment.createdAt), options.startDate, options.endDate));
+  const filteredActivities = activities.filter((activity) => (
+    activityIsWithinRange(activity, options.startDate, options.endDate)
+    && activityMatchesSprintTask(activity, sprintTasks, options.sprintId)
+  ));
 
-  const filteredActivities = activities.filter((activity) => activityIsWithinRange(activity, options.startDate, options.endDate));
-
-  return members.map((member) => {
+  return deliveryMembers.map((member) => {
     const userId = member.user.id;
     return {
       userId,
       name: member.user.name,
       role: member.role,
-      tasksCompleted: filteredTasks.filter((task) => task.status === 'DONE' && task.assignee?.id === userId).length,
-      commentsMade: filteredActivities.filter((activity) => activity.user.id === userId && activity.action === 'COMMENT_ADDED').length,
+      tasksCompleted: completedTasks.filter((task) => task.assignee?.id === userId).length,
+      commentsMade: comments.filter((comment) => comment.author.id === userId).length,
       prsMerged: filteredActivities.filter((activity) => activity.user.id === userId && /PR_MERGED|PULL_REQUEST_MERGED/i.test(activity.action)).length,
     };
   });

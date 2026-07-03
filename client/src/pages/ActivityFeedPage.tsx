@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import Breadcrumbs from '../components/Breadcrumbs';
 import Icon from '../components/Icon';
 import PageHeader from '../components/PageHeader';
 import { Button } from '../components/ui';
@@ -75,6 +76,11 @@ export default function ActivityFeedPage() {
 
   return (
     <>
+      <Breadcrumbs items={[
+        { label: 'Projects', to: '/projects' },
+        { label: project.name, to: `/projects/${projectId}` },
+        { label: 'Activity' },
+      ]} />
       <PageHeader
         eyebrow={project.key}
         title="Activity feed"
