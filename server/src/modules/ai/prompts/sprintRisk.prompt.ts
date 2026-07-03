@@ -4,11 +4,9 @@ export interface SprintRiskPromptInput {
   endDate: string | null;
   daysRemaining: number | null;
   totalTasks: number;
-  byStatus: {
-    BACKLOG: number;
+  byCategory: {
     TODO: number;
     IN_PROGRESS: number;
-    IN_REVIEW: number;
     DONE: number;
   };
   byPriority: {
@@ -29,7 +27,7 @@ export const buildSprintRiskPrompt = (input: SprintRiskPromptInput): string => {
     endDate,
     daysRemaining,
     totalTasks,
-    byStatus,
+    byCategory,
     byPriority,
     overdueTasks,
     workload,
@@ -48,9 +46,6 @@ export const buildSprintRiskPrompt = (input: SprintRiskPromptInput): string => {
     ? 'Days remaining: Last day (0)'
     : `Days remaining: ${daysRemaining}`;
 
-  const notStarted = byStatus.BACKLOG + byStatus.TODO;
-  const inFlight = byStatus.IN_PROGRESS + byStatus.IN_REVIEW;
-
   const workloadLines = workload.length > 0
     ? workload.map((w) => `  - ${w.name}: ${w.taskCount} task${w.taskCount !== 1 ? 's' : ''}`).join('\n')
     : '  (no assigned members)';
@@ -65,9 +60,9 @@ Dates: ${dateRange}
 ${daysLine}
 
 Task summary (total: ${totalTasks}):
-  - Not started (Backlog + To Do): ${notStarted}
-  - In progress + In review: ${inFlight}
-  - Done: ${byStatus.DONE}
+  - To do: ${byCategory.TODO}
+  - In progress: ${byCategory.IN_PROGRESS}
+  - Done: ${byCategory.DONE}
   - Overdue (past due date, not done): ${overdueTasks}
 
 Priority breakdown:

@@ -2,6 +2,7 @@ export interface TaskSearchPromptInput {
   query: string;
   memberNames: string[];
   labels: string[];
+  statusNames: string[];
   today: string;
 }
 
@@ -9,6 +10,7 @@ export const buildTaskSearchPrompt = ({
   query,
   memberNames,
   labels,
+  statusNames,
   today,
 }: TaskSearchPromptInput) => {
   const membersSection = memberNames.length > 0
@@ -19,6 +21,10 @@ export const buildTaskSearchPrompt = ({
     ? `Available labels: ${labels.map((l) => `"${l}"`).join(', ')}`
     : 'Available labels: none';
 
+  const statusesSection = statusNames.length > 0
+    ? `Available statuses: ${statusNames.map((s) => `"${s}"`).join(', ')}`
+    : 'Available statuses: none configured';
+
   return `
 You are a task filter assistant. Extract structured filter parameters from a natural language search query about project tasks.
 
@@ -26,7 +32,7 @@ Today's date: ${today}
 
 ${membersSection}
 ${labelsSection}
-Available statuses: "BACKLOG", "TODO", "IN_PROGRESS", "IN_REVIEW", "DONE"
+${statusesSection}
 Available priorities: "LOW", "MEDIUM", "HIGH", "URGENT"
 
 User query: "${query}"
@@ -34,7 +40,7 @@ User query: "${query}"
 Return only valid JSON with this exact shape:
 {
   "filters": {
-    "status": "IN_PROGRESS" | null,
+    "status": "<one of the available statuses>" | null,
     "priority": "HIGH" | null,
     "assigneeName": "John Smith" | null,
     "dueBefore": "2024-06-25" | null,

@@ -23,6 +23,7 @@ import { getProjectTasks } from '../services/taskService';
 import type { Task } from '../services/taskService';
 import { queryKeys, queryTimes } from '../services/queryOptions';
 import { calculateProjectHealth } from '../utils/projectAnalytics';
+import { isDone } from '../utils/taskStatus';
 
 
 function upsertTask(tasks: Task[], nextTask: Task) {
@@ -126,7 +127,7 @@ export default function ProjectOverviewPage() {
 
   const currentMember = project.members?.find((member) => member.user.id === user.id);
   const isAdmin = currentMember?.role === 'ADMIN';
-  const openTaskCount = tasks.filter((task) => task.status !== 'DONE').length;
+  const openTaskCount = tasks.filter((task) => !isDone(task)).length;
   const projectHealth = calculateProjectHealth(project, tasks);
 
   async function handleGenerateDigest() {

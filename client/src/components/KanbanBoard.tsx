@@ -1,29 +1,15 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent, type FormEvent, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import Icon from './Icon';
 import TaskCard from './TaskCard';
 import { Button } from './ui';
-import type { Task, TaskPriority, TaskStatus } from '../services/taskService';
-import { updateTaskStatus } from '../services/taskService';
-
-const columns: { status: TaskStatus; label: string }[] = [
-  { status: 'TODO', label: 'To do' },
-  { status: 'IN_PROGRESS', label: 'In progress' },
-  { status: 'IN_REVIEW', label: 'Review' },
-  { status: 'DONE', label: 'Done' },
-];
-
-const wipLimits: Partial<Record<TaskStatus, number>> = {
-  TODO: 20,
-  IN_PROGRESS: 8,
-  IN_REVIEW: 5,
-};
-
-function boardWorkflowTask(task: Task): Task {
-  return task.status === 'BACKLOG' ? { ...task, status: 'TODO' } : task;
-}
+import type { ProjectStatus, Task, TaskPriority } from '../services/taskService';
+import { getProjectStatuses, updateTaskStatus } from '../services/taskService';
+import { queryKeys, queryTimes } from '../services/queryOptions';
 
 interface KanbanBoardProps {
   tasks: Task[];
+  projectId: string;
   onTasksChange: (tasks: Task[]) => void;
   onTaskClick?: (task: Task) => void;
   eyebrow?: string;
@@ -31,9 +17,9 @@ interface KanbanBoardProps {
   description?: string;
   headerAction?: ReactNode;
   assignees?: AssigneeOption[];
-  onBulkUpdate?: (taskIds: string[], changes: { status?: TaskStatus; priority?: TaskPriority; assigneeId?: string | null }) => Promise<void>;
+  onBulkUpdate?: (taskIds: string[], changes: { statusId?: string; priority?: TaskPriority; assigneeId?: string | null }) => Promise<void>;
   activeSprintId?: string | null;
-  onCreateTask?: (input: { title: string; status: TaskStatus; sprintId: string }) => Promise<Task>;
+  onCreateTask?: (input: { title: string; statusId: string; sprintId: string }) => Promise<Task>;
 }
 
 interface AssigneeOption { id: string; name: string; avatarUrl?: string; }
@@ -50,6 +36,7 @@ function getInitials(name?: string) {
 
 export default function KanbanBoard({
   tasks,
+  projectId,
   onTasksChange,
   onTaskClick,
   eyebrow = 'Project',
@@ -62,13 +49,13 @@ export default function KanbanBoard({
   onCreateTask,
 }: KanbanBoardProps) {
   const [draggedTaskId, setDraggedTaskId] = useState<string | null>(null);
-  const [dropTarget, setDropTarget] = useState<TaskStatus | null>(null);
+  const [dropTarget, setDropTarget] = useState<string | null>(null);
   const [saveError, setSaveError] = useState(false);
   const [localSearch, setLocalSearch] = useState('');
   const [assigneeFilters, setAssigneeFilters] = useState<string[]>([]);
   const [priorityFilter, setPriorityFilter] = useState('');
   const [labelFilter, setLabelFilter] = useState('');
-  const [quickAddColumn, setQuickAddColumn] = useState<TaskStatus | null>(null);
+  const [quickAddColumn, setQuickAddColumn] = useState<string | null>(null);
   const [quickAddTitle, setQuickAddTitle] = useState('');
   const [quickAdding, setQuickAdding] = useState(false);
   const [advancedFiltersOpen, setAdvancedFiltersOpen] = useState(false);
@@ -81,7 +68,17 @@ export default function KanbanBoard({
   const [bulkSaving, setBulkSaving] = useState(false);
   const advancedFiltersRef = useRef<HTMLDivElement>(null);
   const overflowRef = useRef<HTMLDivElement>(null);
-  const boardTasks = useMemo(() => tasks.filter((task) => Boolean(task.sprintId)).map(boardWorkflowTask), [tasks]);
+  const statusesQuery = useQuery({
+    queryKey: queryKeys.projectStatuses(projectId),
+    queryFn: () => getProjectStatuses(projectId),
+    enabled: Boolean(projectId),
+    staleTime: queryTimes.statuses,
+  });
+  const columns = useMemo(
+    () => [...(statusesQuery.data ?? [])].sort((a, b) => a.order - b.order),
+    [statusesQuery.data],
+  );
+  const boardTasks = useMemo(() => tasks.filter((task) => Boolean(task.sprintId)), [tasks]);
   const boardTaskCount = boardTasks.length;
   const taskAssignees = Array.from(new Map(boardTasks
     .map((task) => task.assignee)
@@ -131,7 +128,7 @@ export default function KanbanBoard({
 
   async function applyBulkUpdate() {
     if (!onBulkUpdate || !selectedTaskIds.length) return;
-    const changes = { ...(bulkStatus && { status: bulkStatus as TaskStatus }), ...(bulkPriority && { priority: bulkPriority as TaskPriority }), ...(bulkAssignee && { assigneeId: bulkAssignee === '__unassigned__' ? null : bulkAssignee }) };
+    const changes = { ...(bulkStatus && { statusId: bulkStatus }), ...(bulkPriority && { priority: bulkPriority as TaskPriority }), ...(bulkAssignee && { assigneeId: bulkAssignee === '__unassigned__' ? null : bulkAssignee }) };
     if (!Object.keys(changes).length) return;
     setBulkSaving(true);
     try { await onBulkUpdate(selectedTaskIds, changes); setSelectedTaskIds([]); setBulkStatus(''); setBulkPriority(''); setBulkAssignee(''); }
@@ -169,22 +166,22 @@ export default function KanbanBoard({
     setSaveError(false);
   };
 
-  const handleDrop = async (status: TaskStatus) => {
+  const handleDrop = async (column: ProjectStatus) => {
     if (!draggedTaskId) return;
     const taskId = draggedTaskId;
     const previousTasks = tasks;
     const currentTask = tasks.find((task) => task.id === taskId);
 
     setDropTarget(null);
-    if (!currentTask || currentTask.status === status) {
+    if (!currentTask || currentTask.statusId === column.id) {
       setDraggedTaskId(null);
       return;
     }
 
-    onTasksChange(tasks.map((task) => task.id === taskId ? { ...task, status } : task));
+    onTasksChange(tasks.map((task) => task.id === taskId ? { ...task, statusId: column.id, status: column } : task));
 
     try {
-      await updateTaskStatus(taskId, status);
+      await updateTaskStatus(taskId, column.id);
     } catch {
       onTasksChange(previousTasks);
       setSaveError(true);
@@ -220,14 +217,14 @@ export default function KanbanBoard({
     setOpenFilterSection(null);
   }
 
-  async function handleQuickAddSubmit(event: FormEvent, status: TaskStatus) {
+  async function handleQuickAddSubmit(event: FormEvent, statusId: string) {
     event.preventDefault();
     const title = quickAddTitle.trim();
     if (!title || !activeSprintId || !onCreateTask || quickAdding) return;
 
     setQuickAdding(true);
     try {
-      await onCreateTask({ title, status, sprintId: activeSprintId });
+      await onCreateTask({ title, statusId, sprintId: activeSprintId });
       setQuickAddTitle('');
       setQuickAddColumn(null);
     } finally {
@@ -366,7 +363,7 @@ export default function KanbanBoard({
         </div>
       </div>
 
-      {selectedTaskIds.length > 0 && <div className="backlog-bulk-actions"><span>{selectedTaskIds.length} selected</span><select value={bulkStatus} onChange={(event) => setBulkStatus(event.target.value)}><option value="">— status —</option>{columns.map((column) => <option key={column.status} value={column.status}>{column.label}</option>)}</select><select value={bulkPriority} onChange={(event) => setBulkPriority(event.target.value)}><option value="">— priority —</option>{priorityOptions.slice(1).map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select><select value={bulkAssignee} onChange={(event) => setBulkAssignee(event.target.value)}><option value="">— assignee —</option><option value="__unassigned__">Unassigned</option>{assignees.map((assignee) => <option key={assignee.id} value={assignee.id}>{assignee.name}</option>)}</select><Button variant="secondary" loading={bulkSaving} onClick={applyBulkUpdate}>Apply</Button><Button variant="ghost" onClick={() => setSelectedTaskIds([])}>Clear</Button></div>}
+      {selectedTaskIds.length > 0 && <div className="backlog-bulk-actions"><span>{selectedTaskIds.length} selected</span><select value={bulkStatus} onChange={(event) => setBulkStatus(event.target.value)}><option value="">— status —</option>{columns.map((column) => <option key={column.id} value={column.id}>{column.name}</option>)}</select><select value={bulkPriority} onChange={(event) => setBulkPriority(event.target.value)}><option value="">— priority —</option>{priorityOptions.slice(1).map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select><select value={bulkAssignee} onChange={(event) => setBulkAssignee(event.target.value)}><option value="">— assignee —</option><option value="__unassigned__">Unassigned</option>{assignees.map((assignee) => <option key={assignee.id} value={assignee.id}>{assignee.name}</option>)}</select><Button variant="secondary" loading={bulkSaving} onClick={applyBulkUpdate}>Apply</Button><Button variant="ghost" onClick={() => setSelectedTaskIds([])}>Clear</Button></div>}
 
       {hasActiveFilters && <div className="filter-chips">
         {localSearch && <FilterChip label={`Board search: ${localSearch}`} onRemove={() => setLocalSearch('')} />}
@@ -379,27 +376,25 @@ export default function KanbanBoard({
       <div className="kanban-swimlanes">
       {swimlanes.map((lane) => <section className="kanban-swimlane" key={lane.key}>{lane.label && <header className="swimlane-heading"><h3>{lane.label}</h3><span>{lane.tasks.length} tasks</span></header>}<div className="kanban-board" aria-label={`${lane.label || 'Project'} task status board`}>
         {columns.map((column, index) => {
-          const columnTasks = lane.tasks.filter((task) => task.status === column.status);
-          const isTarget = dropTarget === column.status && draggedTaskId !== null;
-          const limit = wipLimits[column.status];
-          const wipExceeded = typeof limit === 'number' && columnTasks.length > limit;
+          const columnTasks = lane.tasks.filter((task) => task.statusId === column.id);
+          const isTarget = dropTarget === column.id && draggedTaskId !== null;
+          const categoryClass = `category-${column.category.toLowerCase()}`;
 
           return (
             <section
-              key={column.status}
-              className={`kanban-column${isTarget ? ' is-drop-target' : ''}${wipExceeded ? ' is-wip-exceeded' : ''}`}
+              key={column.id}
+              className={`kanban-column${isTarget ? ' is-drop-target' : ''}`}
               style={{ '--column-index': index } as CSSProperties}
-              onDragEnter={() => setDropTarget(column.status)}
+              onDragEnter={() => setDropTarget(column.id)}
               onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = 'move'; }}
               onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node)) setDropTarget(null); }}
-              onDrop={() => handleDrop(column.status)}
+              onDrop={() => handleDrop(column)}
             >
               <header className="kanban-column-head">
-                <span className={`status-marker status-${column.status.toLowerCase()}`} />
-                <h3>{column.label}</h3>
-                <span className={`kanban-count${wipExceeded ? ' is-warning' : ''}`}>{limit ? `${columnTasks.length} / ${limit}` : columnTasks.length}</span>
+                <span className={`status-marker ${categoryClass}`} style={column.color ? { backgroundColor: column.color, boxShadow: `0 0 0 4px ${column.color}22` } : undefined} />
+                <h3>{column.name}</h3>
+                <span className="kanban-count">{columnTasks.length}</span>
               </header>
-              {wipExceeded && <div className="board-wip-alert" role="status">WIP limit exceeded</div>}
               <div className="kanban-task-stack">
                 {columnTasks.map((task) => (
                   <TaskCard
@@ -415,8 +410,8 @@ export default function KanbanBoard({
                 ))}
                 {columnTasks.length === 0 && <div className="kanban-empty"><span />Drop tasks here</div>}
                 <div className="board-column-quick-add">
-                  {quickAddColumn === column.status ? (
-                    <form className="board-quick-add-form" onSubmit={(event) => handleQuickAddSubmit(event, column.status)}>
+                  {quickAddColumn === column.id ? (
+                    <form className="board-quick-add-form" onSubmit={(event) => handleQuickAddSubmit(event, column.id)}>
                       <input
                         autoFocus
                         type="text"
@@ -424,7 +419,7 @@ export default function KanbanBoard({
                         onChange={(event) => setQuickAddTitle(event.target.value)}
                         onKeyDown={handleQuickAddKeyDown}
                         placeholder="Task title"
-                        aria-label={`Add task to ${column.label}`}
+                        aria-label={`Add task to ${column.name}`}
                         disabled={quickAdding}
                       />
                       <Button type="submit" loading={quickAdding} disabled={!quickAddTitle.trim()}>Add</Button>
@@ -435,7 +430,7 @@ export default function KanbanBoard({
                       className="board-quick-add-trigger"
                       disabled={!activeSprintId || !onCreateTask}
                       onClick={() => {
-                        setQuickAddColumn(column.status);
+                        setQuickAddColumn(column.id);
                         setQuickAddTitle('');
                       }}
                     >

@@ -1,6 +1,7 @@
 import type { DragEvent } from 'react';
 import Icon from './Icon';
 import type { Task } from '../services/taskService';
+import { isDone } from '../utils/taskStatus';
 
 interface TaskCardProps {
   task: Task;
@@ -46,7 +47,7 @@ export default function TaskCard({ task, dragging = false, onDragStart, onDragEn
       <div className="task-card-topline">
         <span className="task-priority-dot" aria-hidden="true" />
         <span className="task-priority-label">{task.priority.toLowerCase()}</span>
-        <span className="task-status-label">{task.status.toLowerCase().replaceAll('_', ' ')}</span>
+        <span className="task-status-label">{task.status.name}</span>
         <span className="task-drag-handle" aria-hidden="true"><Icon name="menu" size={15} /></span>
       </div>
 
@@ -55,7 +56,7 @@ export default function TaskCard({ task, dragging = false, onDragStart, onDragEn
       {(task.labels?.length > 0 || dueDate) && <div className="task-card-details">
         {task.labels?.slice(0, 3).map((label) => <span className="task-label" key={label}>{label}</span>)}
         {(task.labels?.length ?? 0) > 3 && <span className="task-label">+{task.labels.length - 3}</span>}
-        {dueDate && <span className={`task-card-due${dueDate.overdue && task.status !== 'DONE' ? ' is-overdue' : ''}`}><Icon name="calendar" size={13} />{dueDate.label}</span>}
+        {dueDate && <span className={`task-card-due${dueDate.overdue && !isDone(task) ? ' is-overdue' : ''}`}><Icon name="calendar" size={13} />{dueDate.label}</span>}
       </div>}
 
       <footer className="task-card-footer">

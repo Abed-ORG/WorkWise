@@ -82,7 +82,7 @@ export default function Header({ onMenuToggle }: HeaderProps) {
       type: 'task',
       title: task.title,
       meta: task.project ? `${task.project.key} - ${task.project.name}` : 'Task',
-      detail: task.status.toLowerCase().replaceAll('_', ' '),
+      detail: task.status.name.toLowerCase(),
       to: task.projectId ? `/projects/${task.projectId}/board` : '/tasks',
     }));
   const documentResults: SearchResult[] = (documentsQuery.data ?? [])

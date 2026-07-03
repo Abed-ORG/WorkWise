@@ -1,6 +1,7 @@
 import type { Project, ProjectMember, Sprint } from '../services/projectService';
 import type { ProjectActivity } from '../services/activityService';
 import type { Task } from '../services/taskService';
+import { isDone } from './taskStatus';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -44,7 +45,7 @@ export function buildCumulativeFlowData(tasks: Task[], days = 14): CumulativeFlo
       const completedAt = completionDateFromActivities(task);
       return Boolean(completedAt && completedAt.getTime() <= dayEnd.getTime());
     }).length;
-    const backlog = existing.filter((task) => task.status === 'BACKLOG' && !completionDateFromActivities(task)).length;
+    const backlog = existing.filter((task) => task.status.isBacklogDefault && !completionDateFromActivities(task)).length;
     return { label: day.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }), backlog, active: Math.max(0, existing.length - backlog - completed), done: completed };
   });
 }
@@ -75,12 +76,17 @@ export function getSprintDays(sprint: Sprint): Date[] {
 }
 
 function completionDateFromActivities(task: Task): Date | null {
-  const doneMove = task.activities
-    ?.filter((activity) => activity.action === 'TASK_MOVED' && /to\s+DONE/i.test(activity.details ?? ''))
-    .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
+  if (!isDone(task)) return null;
+
+  // Status names are per-project and user-definable, so activity details can't be text-matched
+  // against a fixed "DONE" literal. The TASK_MOVED action itself is the reliable signal — the most
+  // recent status change on a task that's currently done is a good approximation of when it finished.
+  const lastMove = task.activities
+    ?.filter((activity) => activity.action === 'TASK_MOVED')
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
     [0];
 
-  return parseDate(doneMove?.createdAt) ?? (task.status === 'DONE' ? parseDate(task.updatedAt) : null);
+  return parseDate(lastMove?.createdAt) ?? parseDate(task.updatedAt);
 }
 
 export function buildBurndownData(sprint: Sprint, tasks: Task[]): BurndownPoint[] {
@@ -110,7 +116,7 @@ export function buildVelocityData(sprints: Sprint[], tasks: Task[]): VelocityPoi
     .map((sprint) => ({
       sprintId: sprint.id,
       sprintName: sprint.name,
-      completed: tasks.filter((task) => task.sprintId === sprint.id && task.status === 'DONE').length,
+      completed: tasks.filter((task) => task.sprintId === sprint.id && isDone(task)).length,
     }));
 }
 
@@ -141,7 +147,7 @@ export function buildContributionMetrics(
   const filteredTasks = tasks.filter((task) => {
     if (options.sprintId && task.sprintId !== options.sprintId) return false;
     const completedAt = completionDateFromActivities(task);
-    if (!completedAt) return task.status === 'DONE';
+    if (!completedAt) return isDone(task);
     if (options.startDate && completedAt.getTime() < startOfDay(parseDate(options.startDate) ?? completedAt).getTime()) return false;
     if (options.endDate) {
       const endOfDay = new Date(startOfDay(parseDate(options.endDate) ?? completedAt).getTime() + DAY_MS - 1);
@@ -158,7 +164,7 @@ export function buildContributionMetrics(
       userId,
       name: member.user.name,
       role: member.role,
-      tasksCompleted: filteredTasks.filter((task) => task.status === 'DONE' && task.assignee?.id === userId).length,
+      tasksCompleted: filteredTasks.filter((task) => isDone(task) && task.assignee?.id === userId).length,
       commentsMade: filteredActivities.filter((activity) => activity.user.id === userId && activity.action === 'COMMENT_ADDED').length,
       prsMerged: filteredActivities.filter((activity) => activity.user.id === userId && /PR_MERGED|PULL_REQUEST_MERGED/i.test(activity.action)).length,
     };
@@ -168,22 +174,22 @@ export function buildContributionMetrics(
 export function calculateProjectHealth(project: Project, tasks: Task[]): ProjectHealth {
   const today = startOfDay(new Date());
   const nextWeek = new Date(today.getTime() + 7 * DAY_MS);
-  const openTasks = tasks.filter((task) => task.status !== 'DONE').length;
+  const openTasks = tasks.filter((task) => !isDone(task)).length;
   const overdueTasks = tasks.filter((task) => {
     const dueDate = parseDate(task.dueDate);
-    return task.status !== 'DONE' && Boolean(dueDate && startOfDay(dueDate).getTime() < today.getTime());
+    return !isDone(task) && Boolean(dueDate && startOfDay(dueDate).getTime() < today.getTime());
   }).length;
 
   const activeSprintIds = new Set((project.sprints ?? []).filter((sprint) => sprint.isActive).map((sprint) => sprint.id));
   const activeSprintTasks = tasks.filter((task) => task.sprintId && activeSprintIds.has(task.sprintId));
   const sprintProgress = activeSprintTasks.length
-    ? Math.round((activeSprintTasks.filter((task) => task.status === 'DONE').length / activeSprintTasks.length) * 100)
+    ? Math.round((activeSprintTasks.filter((task) => isDone(task)).length / activeSprintTasks.length) * 100)
     : 0;
 
   const upcomingDeadlines = tasks
     .filter((task) => {
       const dueDate = parseDate(task.dueDate);
-      return task.status !== 'DONE' && Boolean(dueDate && dueDate >= today && dueDate <= nextWeek);
+      return !isDone(task) && Boolean(dueDate && dueDate >= today && dueDate <= nextWeek);
     })
     .sort((a, b) => (parseDate(a.dueDate)?.getTime() ?? 0) - (parseDate(b.dueDate)?.getTime() ?? 0))
     .slice(0, 6);

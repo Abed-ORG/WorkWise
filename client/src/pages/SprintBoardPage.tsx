@@ -120,13 +120,13 @@ export default function SprintBoardPage() {
     navigate(`/projects/${projectId}/sprints`);
   }
 
-  async function handleBoardQuickAdd(input: { title: string; status: Task['status']; sprintId: string }) {
+  async function handleBoardQuickAdd(input: { title: string; statusId: string; sprintId: string }) {
     if (!projectId) throw new Error('Project not found');
     try {
       const task = await createTask({
         projectId,
         title: input.title,
-        status: input.status,
+        statusId: input.statusId,
         sprintId: input.sprintId,
       });
       setAllTasks((current) => upsertTask(current, task));
@@ -284,6 +284,7 @@ export default function SprintBoardPage() {
       {activeTab === 'board' && (
         <KanbanBoard
           tasks={sprintTasks}
+          projectId={projectId}
           onTasksChange={(updated) =>
             setAllTasks((current) =>
               current.map((t) => updated.find((u) => u.id === t.id) ?? t)

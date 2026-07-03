@@ -7,6 +7,7 @@ import { useAuth } from '../hooks/useAuth';
 import { getUserInvitations, getUserProjects } from '../services/projectService';
 import { getAssignedTasks } from '../services/taskService';
 import { queryKeys, queryTimes } from '../services/queryOptions';
+import { isDone } from '../utils/taskStatus';
 
 export default function DashboardPage() {
   const navigate = useNavigate();
@@ -40,7 +41,7 @@ export default function DashboardPage() {
   endToday.setHours(23, 59, 59, 999);
 
   const focusTasks = assignedTasks
-    .filter((task) => task.status !== 'DONE' && task.dueDate && new Date(task.dueDate) <= endToday)
+    .filter((task) => !isDone(task) && task.dueDate && new Date(task.dueDate) <= endToday)
     .sort((a, b) => new Date(a.dueDate!).getTime() - new Date(b.dueDate!).getTime())
     .slice(0, 5);
 

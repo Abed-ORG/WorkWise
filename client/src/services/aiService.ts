@@ -71,7 +71,7 @@ export async function getSprintRisk(
 }
 
 export interface TaskSearchFilters {
-  status: 'BACKLOG' | 'TODO' | 'IN_PROGRESS' | 'IN_REVIEW' | 'DONE' | null;
+  status: string | null;
   priority: 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT' | null;
   assigneeName: string | null;
   dueBefore: string | null;

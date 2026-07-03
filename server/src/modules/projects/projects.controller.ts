@@ -352,6 +352,142 @@ export class ProjectsController {
     }
   }
 
+  // ── Get Project Statuses ───────────────────────────────────
+  async getProjectStatuses(req: Request, res: Response) {
+    try {
+      const projectId = String(req.params['projectId']);
+      const userId = String((req as any).user?.userId);
+      const statuses = await projectsService.getProjectStatuses(projectId, userId);
+      return res.status(200).json({ success: true, data: statuses });
+    } catch (error: any) {
+      if (error.message === 'PROJECT_NOT_FOUND') {
+        return res.status(404).json({ success: false, message: 'Project not found' });
+      }
+      return res.status(500).json({ success: false, message: 'Internal server error' });
+    }
+  }
+
+  // ── Create Project Status ──────────────────────────────────
+  async createProjectStatus(req: Request, res: Response) {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ success: false, errors: errors.array() });
+    }
+
+    try {
+      const projectId = String(req.params['projectId']);
+      const userId = String((req as any).user?.userId);
+      const { name, category, color } = req.body;
+      const status = await projectsService.createProjectStatus(projectId, userId, { name, category, color });
+      return res.status(201).json({ success: true, data: status });
+    } catch (error: any) {
+      if (error.message === 'FORBIDDEN') {
+        return res.status(403).json({ success: false, message: 'Only project admins can manage statuses' });
+      }
+      if (error.message === 'STATUS_NAME_EXISTS') {
+        return res.status(409).json({ success: false, message: 'A status with this name already exists in this project' });
+      }
+      return res.status(500).json({ success: false, message: 'Internal server error' });
+    }
+  }
+
+  // ── Update Project Status ──────────────────────────────────
+  async updateProjectStatus(req: Request, res: Response) {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ success: false, errors: errors.array() });
+    }
+
+    try {
+      const projectId = String(req.params['projectId']);
+      const statusId = String(req.params['statusId']);
+      const userId = String((req as any).user?.userId);
+      const { name, category, color, isBacklogDefault, isSprintDefault } = req.body;
+      const status = await projectsService.updateProjectStatus(projectId, userId, statusId, {
+        name,
+        category,
+        color,
+        isBacklogDefault,
+        isSprintDefault,
+      });
+      return res.status(200).json({ success: true, data: status });
+    } catch (error: any) {
+      if (error.message === 'FORBIDDEN') {
+        return res.status(403).json({ success: false, message: 'Only project admins can manage statuses' });
+      }
+      if (error.message === 'STATUS_NOT_FOUND') {
+        return res.status(404).json({ success: false, message: 'Status not found' });
+      }
+      if (error.message === 'STATUS_NAME_EXISTS') {
+        return res.status(409).json({ success: false, message: 'A status with this name already exists in this project' });
+      }
+      if (error.message === 'CANNOT_LEAVE_CATEGORY_EMPTY') {
+        return res.status(409).json({ success: false, message: 'This is the only status in its category — recategorize another status first' });
+      }
+      return res.status(500).json({ success: false, message: 'Internal server error' });
+    }
+  }
+
+  // ── Reorder Project Statuses ───────────────────────────────
+  async reorderProjectStatuses(req: Request, res: Response) {
+    try {
+      const projectId = String(req.params['projectId']);
+      const userId = String((req as any).user?.userId);
+      const orderedIds = req.body?.orderedIds;
+
+      if (!Array.isArray(orderedIds) || orderedIds.some((id) => typeof id !== 'string')) {
+        return res.status(400).json({ success: false, message: 'orderedIds must be an array of strings' });
+      }
+
+      const statuses = await projectsService.reorderProjectStatuses(projectId, userId, orderedIds);
+      return res.status(200).json({ success: true, data: statuses });
+    } catch (error: any) {
+      if (error.message === 'FORBIDDEN') {
+        return res.status(403).json({ success: false, message: 'Only project admins can manage statuses' });
+      }
+      if (error.message === 'REORDER_MISMATCH') {
+        return res.status(400).json({ success: false, message: "Reorder list must include exactly the project's current statuses" });
+      }
+      return res.status(500).json({ success: false, message: 'Internal server error' });
+    }
+  }
+
+  // ── Delete Project Status ───────────────────────────────────
+  async deleteProjectStatus(req: Request, res: Response) {
+    try {
+      const projectId = String(req.params['projectId']);
+      const statusId = String(req.params['statusId']);
+      const userId = String((req as any).user?.userId);
+      const reassignToStatusId = req.body?.reassignToStatusId ? String(req.body.reassignToStatusId) : undefined;
+
+      await projectsService.deleteProjectStatus(projectId, userId, statusId, reassignToStatusId);
+      return res.status(200).json({ success: true, message: 'Status deleted' });
+    } catch (error: any) {
+      if (error.message === 'FORBIDDEN') {
+        return res.status(403).json({ success: false, message: 'Only project admins can manage statuses' });
+      }
+      if (error.message === 'STATUS_NOT_FOUND') {
+        return res.status(404).json({ success: false, message: 'Status not found' });
+      }
+      if (error.message === 'CANNOT_DELETE_DEFAULT_STATUS') {
+        return res.status(409).json({ success: false, message: 'Set another status as the default before deleting this one' });
+      }
+      if (error.message === 'CANNOT_DELETE_ONLY_STATUS_IN_CATEGORY') {
+        return res.status(409).json({ success: false, message: 'Cannot delete the only status in this category' });
+      }
+      if (error.message === 'STATUS_HAS_TASKS') {
+        return res.status(409).json({ success: false, message: 'This status still has tasks — choose a status to move them to' });
+      }
+      if (error.message === 'REASSIGN_STATUS_SAME_AS_DELETED') {
+        return res.status(400).json({ success: false, message: 'Choose a different status to move tasks to' });
+      }
+      if (error.message === 'REASSIGN_STATUS_NOT_FOUND') {
+        return res.status(404).json({ success: false, message: 'Replacement status not found' });
+      }
+      return res.status(500).json({ success: false, message: 'Internal server error' });
+    }
+  }
+
   async getProjectDocuments(req: Request, res: Response) {
     try {
       const projectId = String(req.params['projectId']);

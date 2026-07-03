@@ -1,4 +1,4 @@
-import { TaskPriority, TaskStatus } from "@prisma/client";
+import { TaskPriority } from "@prisma/client";
 import { z } from "zod";
 
 export const createTaskSchema = z.object({
@@ -10,7 +10,7 @@ export const createTaskSchema = z.object({
   labels: z.array(z.string()).optional(),
   dueDate: z.string().datetime().optional(),
   projectId: z.string().min(1, "Project ID is required"),
-  status: z.nativeEnum(TaskStatus).optional(),
+  statusId: z.string().min(1).optional(),
   sprintId: z.string().optional(),
   assigneeId: z.string().optional(),
 });
@@ -20,7 +20,7 @@ export const updateTaskSchema = z.object({
   description: z.string().optional(),
   acceptanceCriteria: z.string().nullable().optional(),
   estimatedHours: z.number().nonnegative().nullable().optional(),
-  status: z.nativeEnum(TaskStatus).optional(),
+  statusId: z.string().min(1).optional(),
   priority: z.nativeEnum(TaskPriority).optional(),
   labels: z.array(z.string()).optional(),
   dueDate: z.string().datetime().nullable().optional(),

@@ -110,6 +110,43 @@ export const createSprintValidation = [
     .isLength({ max: 500 }).withMessage('Sprint goal must be under 500 characters'),
 ];
 
+const statusColorValidation = body('color')
+  .optional({ nullable: true, checkFalsy: true })
+  .trim()
+  .matches(/^#([0-9A-Fa-f]{3}|[0-9A-Fa-f]{6})$/).withMessage('Color must be a hex value like #6b8afd');
+
+export const createProjectStatusValidation = [
+  param('projectId').notEmpty().withMessage('Project ID is required'),
+  body('name')
+    .trim()
+    .notEmpty().withMessage('Status name is required')
+    .isLength({ max: 40 }).withMessage('Status name must be under 40 characters'),
+  body('category')
+    .notEmpty().withMessage('Category is required')
+    .isIn(['TODO', 'IN_PROGRESS', 'DONE']).withMessage('Category must be TODO, IN_PROGRESS, or DONE'),
+  statusColorValidation,
+];
+
+export const updateProjectStatusValidation = [
+  param('projectId').notEmpty().withMessage('Project ID is required'),
+  param('statusId').notEmpty().withMessage('Status ID is required'),
+  body('name')
+    .optional()
+    .trim()
+    .notEmpty().withMessage('Status name cannot be empty')
+    .isLength({ max: 40 }).withMessage('Status name must be under 40 characters'),
+  body('category')
+    .optional()
+    .isIn(['TODO', 'IN_PROGRESS', 'DONE']).withMessage('Category must be TODO, IN_PROGRESS, or DONE'),
+  statusColorValidation,
+  body('isBacklogDefault')
+    .optional()
+    .custom((value) => value === true).withMessage('isBacklogDefault can only be set to true — assign another status as the default instead'),
+  body('isSprintDefault')
+    .optional()
+    .custom((value) => value === true).withMessage('isSprintDefault can only be set to true — assign another status as the default instead'),
+];
+
 export const documentIdValidation = [
   param('projectId').notEmpty().withMessage('Project ID is required'),
   param('documentId').notEmpty().withMessage('Document ID is required'),
