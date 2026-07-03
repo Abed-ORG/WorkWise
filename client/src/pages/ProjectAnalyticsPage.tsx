@@ -25,7 +25,6 @@ import {
   buildContributionMetrics,
   buildCumulativeFlowData,
   buildVelocityData,
-  buildCumulativeFlowData,
   calculateAverageVelocity,
   calculateProjectHealth,
 } from '../utils/projectAnalytics';
