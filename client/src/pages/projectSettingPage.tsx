@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import axios from 'axios';
+import Breadcrumbs from '../components/Breadcrumbs';
 import PageHeader from '../components/PageHeader';
 import Icon from '../components/Icon';
 import DocumentLinkPicker from '../components/DocumentLinkPicker';
@@ -133,6 +134,14 @@ export default function ProjectSettingsPage() {
 
   return (
     <>
+      <Breadcrumbs
+        items={[
+          { label: 'Projects', to: '/projects' },
+          { label: project.name, to: `/projects/${projectId}` },
+          { label: 'Settings' },
+        ]}
+      />
+
       <PageHeader eyebrow={project.key} title="Project settings" description="Manage project details, teammate access, and permanent workspace actions." />
 
       <div className="settings-stack animate-enter-delay">

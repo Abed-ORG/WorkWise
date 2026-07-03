@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import BacklogList from '../components/BacklogList';
+import Breadcrumbs from '../components/Breadcrumbs';
 import type { BacklogMoveTarget } from '../components/BacklogList';
 import CreateTaskModal from '../components/CreateTaskModal';
 import Icon from '../components/Icon';
@@ -184,6 +185,11 @@ export default function ProjectBacklogPage() {
 
   return (
     <>
+      <Breadcrumbs items={[
+        { label: 'Projects', to: '/projects' },
+        { label: project.name, to: `/projects/${projectId}` },
+        { label: 'Backlog' },
+      ]} />
       <BacklogList
         tasks={tasks}
         eyebrow={project.key}

@@ -95,6 +95,17 @@ export function VelocityChart({ points, average }: VelocityChartProps) {
 
 export function ContributionMetrics({ metrics }: ContributionMetricsProps) {
   const maxValue = Math.max(1, ...metrics.map((metric) => metric.tasksCompleted + metric.commentsMade + metric.prsMerged));
+  const totalActivity = metrics.reduce((total, metric) => total + metric.tasksCompleted + metric.commentsMade + metric.prsMerged, 0);
+
+  if (metrics.length === 0 || totalActivity === 0) {
+    return (
+      <div className="analytics-empty">
+        <Icon name="team" size={22} />
+        <h3>No team contribution activity yet</h3>
+        <p>Delivery contributors will appear here after completed tasks, comments, or recorded PR merge activity match the current filters.</p>
+      </div>
+    );
+  }
 
   return (
     <div className="contribution-grid">
@@ -104,7 +115,7 @@ export function ContributionMetrics({ metrics }: ContributionMetricsProps) {
           <article className="contribution-card" key={metric.userId}>
             <div className="contribution-head">
               <span className="avatar">{metric.name.slice(0, 2).toUpperCase()}</span>
-              <span><strong>{metric.name}</strong><small>{metric.role.toLowerCase()}</small></span>
+              <span><strong>{metric.name}</strong><small>{metric.role.toLowerCase().replace(/^\w/, (letter) => letter.toUpperCase())}</small></span>
             </div>
             <div className="contribution-bar"><i style={{ width: `${Math.max(4, (total / maxValue) * 100)}%` }} /></div>
             <dl className="contribution-stats">
@@ -127,6 +138,7 @@ export function ProjectHealthOverview({ health }: ProjectHealthOverviewProps) {
           <p className="section-kicker">Project health</p>
           <h2>Delivery pulse</h2>
           <p>Live metrics for workload, risk, sprint progress, and nearby deadlines.</p>
+          <p className="analytics-guidance">Use this snapshot to catch delivery pressure early: open work shows load, overdue tasks show risk, and sprint progress shows current momentum.</p>
         </div>
       </div>
 

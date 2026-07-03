@@ -116,6 +116,10 @@ function formatCommentDate(value: string) {
   }).format(new Date(value));
 }
 
+function formatActivityAction(action: string) {
+  return action.replaceAll('_', ' ').toLowerCase().replace(/^\w/, (letter) => letter.toUpperCase());
+}
+
 export default function TaskDetailModal({ taskId, onClose, onTaskUpdated }: TaskDetailModalProps) {
   const queryClient = useQueryClient();
   const attachmentInputRef = useRef<HTMLInputElement>(null);
@@ -860,12 +864,12 @@ export default function TaskDetailModal({ taskId, onClose, onTaskUpdated }: Task
 
               <section className="task-detail-section">
                 <div className="task-detail-section-heading">
-                  <h3>Comments and activity</h3>
+                  <h3>Comments and task history</h3>
                   <span>{postingComment ? 'Posting...' : commentMessage}</span>
                 </div>
-                <div className="task-detail-tabs" role="tablist" aria-label="Task discussion">
+                <div className="task-detail-tabs" role="tablist" aria-label="Task discussion and history">
                   <button type="button" className={commentsView === 'comments' ? 'is-active' : ''} onClick={() => setCommentsView('comments')} role="tab" aria-selected={commentsView === 'comments'}>Comments ({task.comments?.length ?? 0})</button>
-                  <button type="button" className={commentsView === 'activity' ? 'is-active' : ''} onClick={() => setCommentsView('activity')} role="tab" aria-selected={commentsView === 'activity'}>Activity ({task.activities?.length ?? 0})</button>
+                  <button type="button" className={commentsView === 'activity' ? 'is-active' : ''} onClick={() => setCommentsView('activity')} role="tab" aria-selected={commentsView === 'activity'}>History ({task.activities?.length ?? 0})</button>
                 </div>
                 {commentsView === 'comments' ? (
                   <div className="task-comments-panel">
@@ -904,11 +908,12 @@ export default function TaskDetailModal({ taskId, onClose, onTaskUpdated }: Task
                   </div>
                 ) : (
                   <div className="task-activity-list">
+                    <p className="task-history-help">Status changes, comments, and task updates are recorded here in order.</p>
                     {task.activities?.length ? task.activities.map((activity) => (
                       <article className="task-activity-item" key={activity.id}>
                         <span><Icon name="activity" size={13} /></span>
                         <div>
-                          <strong>{activity.action.replaceAll('_', ' ').toLowerCase()}</strong>
+                          <strong>{formatActivityAction(activity.action)}</strong>
                           {activity.details && <p>{activity.details}</p>}
                           <time>{formatCommentDate(activity.createdAt)} by {activity.user.name}</time>
                         </div>
