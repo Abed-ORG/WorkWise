@@ -28,6 +28,7 @@ import { generateAcceptanceCriteria } from '../services/aiService';
 import type { ProjectDocument, ProjectMember, Sprint } from '../services/projectService';
 import { queryKeys, queryTimes } from '../services/queryOptions';
 import RichTextEditor from './RichTextEditor';
+import { getInitials } from '../utils/initials';
 import { isOpenSprintMoveTarget, isPastSprintMoveTarget } from '../utils/sprintOptions';
 
 interface TaskDetailModalProps {
@@ -876,7 +877,7 @@ export default function TaskDetailModal({ taskId, onClose, onTaskUpdated }: Task
                     <div className="task-comment-list">
                       {task.comments?.length ? task.comments.map((comment) => (
                         <article className="task-comment" key={comment.id}>
-                          <div className="task-comment-avatar">{comment.author.name.slice(0, 2).toUpperCase()}</div>
+                          <div className="task-comment-avatar">{getInitials(comment.author.name)}</div>
                           <div className="task-comment-body">
                             <div className="task-comment-meta">
                               <strong>{comment.author.name}</strong>

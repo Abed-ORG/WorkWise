@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '../hooks/useAuth';
 import Dropdown from './ui/Dropdown';
@@ -14,8 +14,12 @@ import type { Project, ProjectDocument } from '../services/projectService';
 import { getAssignedTasks } from '../services/taskService';
 import type { Task } from '../services/taskService';
 import { queryKeys, queryTimes } from '../services/queryOptions';
+import type { BreadcrumbItem } from '../context/breadcrumb-context';
 
-interface HeaderProps { onMenuToggle: () => void; }
+interface HeaderProps {
+  breadcrumbs?: BreadcrumbItem[];
+  onMenuToggle: () => void;
+}
 type SearchResult =
   | { id: string; type: 'project'; title: string; meta: string; detail?: string; to: string }
   | { id: string; type: 'task'; title: string; meta: string; detail?: string; to: string }
@@ -35,7 +39,7 @@ function isTypingTarget(target: EventTarget | null) {
   );
 }
 
-export default function Header({ onMenuToggle }: HeaderProps) {
+export default function Header({ breadcrumbs = [], onMenuToggle }: HeaderProps) {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const [logoutOpen, setLogoutOpen] = useState(false);
@@ -202,6 +206,25 @@ export default function Header({ onMenuToggle }: HeaderProps) {
           <button type="button" onClick={onMenuToggle} className="icon-button menu-button" aria-label="Open navigation">
             <Icon name="menu" size={19} />
           </button>
+          {breadcrumbs.length > 0 && (
+            <nav className="topbar-breadcrumbs" aria-label="Breadcrumb">
+              <ol>
+                {breadcrumbs.map((item, index) => {
+                  const isLast = index === breadcrumbs.length - 1;
+                  return (
+                    <li key={`${item.label}-${index}`}>
+                      {item.to && !isLast ? (
+                        <Link to={item.to}>{item.label}</Link>
+                      ) : (
+                        <span aria-current={isLast ? 'page' : undefined}>{item.label}</span>
+                      )}
+                      {!isLast && <Icon name="arrow-right" size={13} />}
+                    </li>
+                  );
+                })}
+              </ol>
+            </nav>
+          )}
         </div>
         <div className="topbar-actions">
           <div className="search-root" ref={searchRootRef}>

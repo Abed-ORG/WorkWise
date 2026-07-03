@@ -1,33 +1,20 @@
-import { Link } from 'react-router-dom';
-import Icon from './Icon';
-
-export interface BreadcrumbItem {
-  label: string;
-  to?: string;
-}
+import { useContext, useEffect } from 'react';
+import { BreadcrumbContext } from '../context/breadcrumb-context';
+import type { BreadcrumbItem } from '../context/breadcrumb-context';
 
 interface BreadcrumbsProps {
   items: BreadcrumbItem[];
 }
 
 export default function Breadcrumbs({ items }: BreadcrumbsProps) {
-  return (
-    <nav className="breadcrumbs" aria-label="Breadcrumb">
-      <ol>
-        {items.map((item, index) => {
-          const isLast = index === items.length - 1;
-          return (
-            <li key={`${item.label}-${index}`}>
-              {item.to && !isLast ? (
-                <Link to={item.to}>{item.label}</Link>
-              ) : (
-                <span aria-current={isLast ? 'page' : undefined}>{item.label}</span>
-              )}
-              {!isLast && <Icon name="arrow-right" size={13} />}
-            </li>
-          );
-        })}
-      </ol>
-    </nav>
-  );
+  const breadcrumbs = useContext(BreadcrumbContext);
+  const setBreadcrumbItems = breadcrumbs?.setItems;
+  const itemSignature = items.map((item) => `${item.label}:${item.to ?? ''}`).join('|');
+
+  useEffect(() => {
+    setBreadcrumbItems?.(items);
+    return () => setBreadcrumbItems?.([]);
+  }, [itemSignature, setBreadcrumbItems]);
+
+  return null;
 }

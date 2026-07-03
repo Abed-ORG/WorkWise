@@ -1,11 +1,14 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent, type FormEvent, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { useQuery } from '@tanstack/react-query';
 import Icon from './Icon';
 import TaskCard from './TaskCard';
-import { Button } from './ui';
+import { Button, Select } from './ui';
+import type { SelectOption } from './ui';
 import type { ProjectStatus, Task, TaskPriority } from '../services/taskService';
 import { getProjectStatuses, updateTaskStatus } from '../services/taskService';
 import { queryKeys, queryTimes } from '../services/queryOptions';
+import { getInitials } from '../utils/initials';
 
 interface KanbanBoardProps {
   tasks: Task[];
@@ -27,12 +30,6 @@ interface FilterOption { value: string; label: string; }
 
 const visibleAssigneeCount = 5;
 const unassignedFilterValue = '__unassigned__';
-
-function getInitials(name?: string) {
-  if (!name) return '?';
-  return name.split(' ').map((part) => part[0]).join('').slice(0, 2).toUpperCase();
-}
-
 
 export default function KanbanBoard({
   tasks,
@@ -96,6 +93,12 @@ export default function KanbanBoard({
     { value: 'URGENT', label: 'Urgent' },
   ];
   const labelOptions = [{ value: '', label: 'All labels' }, ...labels.map((value) => ({ value, label: value }))];
+  const bulkStatusOptions: SelectOption[] = columns.map((column) => ({ value: column.id, label: column.name }));
+  const bulkPriorityOptions: SelectOption[] = priorityOptions.slice(1);
+  const bulkAssigneeOptions: SelectOption[] = [
+    { value: '__unassigned__', label: 'Unassigned' },
+    ...assignees.map((assignee) => ({ value: assignee.id, label: assignee.name })),
+  ];
   const assigneeSummary = getAssigneeSummary(assigneeFilters);
   const prioritySummary = priorityOptions.find((option) => option.value === priorityFilter)?.label ?? 'All priorities';
   const labelSummary = labelOptions.find((option) => option.value === labelFilter)?.label ?? 'All labels';
@@ -239,7 +242,43 @@ export default function KanbanBoard({
     }
   }
 
+  const overlayRoot = typeof document === 'undefined' ? null : document.body;
+  const boardBulkActionBar = selectedTaskIds.length > 0 ? (
+    <div className="board-bottom-actions" aria-label="Selected board task actions">
+      <span className="backlog-bottom-count">{selectedTaskIds.length} selected</span>
+      <div className="bulk-update-fields" aria-label="Bulk update fields">
+        <Select
+          aria-label="Bulk status"
+          value={bulkStatus}
+          placeholder="Status"
+          options={bulkStatusOptions}
+          disabled={bulkSaving}
+          onChange={(event) => setBulkStatus(event.target.value)}
+        />
+        <Select
+          aria-label="Bulk priority"
+          value={bulkPriority}
+          placeholder="Priority"
+          options={bulkPriorityOptions}
+          disabled={bulkSaving}
+          onChange={(event) => setBulkPriority(event.target.value)}
+        />
+        <Select
+          aria-label="Bulk assignee"
+          value={bulkAssignee}
+          placeholder="Assignee"
+          options={bulkAssigneeOptions}
+          disabled={bulkSaving}
+          onChange={(event) => setBulkAssignee(event.target.value)}
+        />
+      </div>
+      <Button variant="secondary" loading={bulkSaving} disabled={!bulkStatus && !bulkPriority && !bulkAssignee} onClick={applyBulkUpdate}>Apply</Button>
+      <Button variant="ghost" disabled={bulkSaving} onClick={() => setSelectedTaskIds([])}>Clear</Button>
+    </div>
+  ) : null;
+
   return (
+    <>
     <div className="kanban-shell app-card">
       <div className="backlog-toolbar kanban-heading">
         <div>
@@ -363,8 +402,6 @@ export default function KanbanBoard({
         </div>
       </div>
 
-      {selectedTaskIds.length > 0 && <div className="backlog-bulk-actions"><span>{selectedTaskIds.length} selected</span><select value={bulkStatus} onChange={(event) => setBulkStatus(event.target.value)}><option value="">— status —</option>{columns.map((column) => <option key={column.id} value={column.id}>{column.name}</option>)}</select><select value={bulkPriority} onChange={(event) => setBulkPriority(event.target.value)}><option value="">— priority —</option>{priorityOptions.slice(1).map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select><select value={bulkAssignee} onChange={(event) => setBulkAssignee(event.target.value)}><option value="">— assignee —</option><option value="__unassigned__">Unassigned</option>{assignees.map((assignee) => <option key={assignee.id} value={assignee.id}>{assignee.name}</option>)}</select><Button variant="secondary" loading={bulkSaving} onClick={applyBulkUpdate}>Apply</Button><Button variant="ghost" onClick={() => setSelectedTaskIds([])}>Clear</Button></div>}
-
       {hasActiveFilters && <div className="filter-chips">
         {localSearch && <FilterChip label={`Board search: ${localSearch}`} onRemove={() => setLocalSearch('')} />}
         {assigneeFilters.map((assignee) => <FilterChip key={assignee} label={`Assignee: ${assignee === unassignedFilterValue ? 'Unassigned' : assignee}`} onRemove={() => toggleAssigneeFilter(assignee)} />)}
@@ -445,6 +482,8 @@ export default function KanbanBoard({
       </div></section>)}
       </div>
     </div>
+    {overlayRoot && boardBulkActionBar ? createPortal(boardBulkActionBar, overlayRoot) : boardBulkActionBar}
+    </>
   );
 }
 
