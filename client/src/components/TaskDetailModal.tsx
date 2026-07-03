@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type DragEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type DragEvent } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import DocumentLinkPicker from './DocumentLinkPicker';
 import Icon from './Icon';
@@ -13,6 +13,7 @@ import {
   deleteTaskTimeLog,
   downloadTaskAttachment,
   fetchTaskAttachmentBlob,
+  getProjectStatuses,
   getTaskAttachments,
   getTaskById,
   getTaskSubtasks,
@@ -22,7 +23,7 @@ import {
   updateTaskSubtask,
   uploadTaskAttachment,
 } from '../services/taskService';
-import type { Task, TaskAttachment, TaskChecklistItem, TaskStatus, TaskTimeLog } from '../services/taskService';
+import type { Task, TaskAttachment, TaskChecklistItem, TaskTimeLog } from '../services/taskService';
 import { generateAcceptanceCriteria } from '../services/aiService';
 import type { ProjectDocument, ProjectMember, Sprint } from '../services/projectService';
 import { queryKeys, queryTimes } from '../services/queryOptions';
@@ -119,17 +120,6 @@ function formatActivityAction(action: string) {
   return action.replaceAll('_', ' ').toLowerCase().replace(/^\w/, (letter) => letter.toUpperCase());
 }
 
-const statusOptions = [
-  { value: 'TODO', label: 'To do' },
-  { value: 'IN_PROGRESS', label: 'In progress' },
-  { value: 'IN_REVIEW', label: 'Review' },
-  { value: 'DONE', label: 'Done' },
-];
-
-function workflowStatus(status: TaskStatus): Exclude<TaskStatus, 'BACKLOG'> {
-  return status === 'BACKLOG' ? 'TODO' : status;
-}
-
 export default function TaskDetailModal({ taskId, onClose, onTaskUpdated }: TaskDetailModalProps) {
   const queryClient = useQueryClient();
   const attachmentInputRef = useRef<HTMLInputElement>(null);
@@ -195,6 +185,17 @@ export default function TaskDetailModal({ taskId, onClose, onTaskUpdated }: Task
     enabled: Boolean(taskQuery.data?.projectId),
     staleTime: queryTimes.sprints,
   });
+  const statusesQuery = useQuery({
+    queryKey: queryKeys.projectStatuses(taskQuery.data?.projectId ?? ''),
+    queryFn: () => getProjectStatuses(taskQuery.data!.projectId),
+    enabled: Boolean(taskQuery.data?.projectId),
+    staleTime: queryTimes.statuses,
+  });
+  const statuses = useMemo(
+    () => [...(statusesQuery.data ?? [])].sort((a, b) => a.order - b.order),
+    [statusesQuery.data],
+  );
+  const statusOptions = statuses.map((status) => ({ value: status.id, label: status.name }));
   const sprints = Array.isArray(sprintsQuery.data) ? sprintsQuery.data : [];
   const currentSprint = task?.sprintId ? sprints.find((sprint) => sprint.id === task.sprintId) ?? null : null;
   const currentPastSprint = currentSprint && isPastSprintMoveTarget(currentSprint) ? currentSprint : null;
@@ -294,8 +295,8 @@ export default function TaskDetailModal({ taskId, onClose, onTaskUpdated }: Task
   }, [projectQuery.data]);
 
   useEffect(() => {
-    if (taskQuery.isError || projectQuery.isError || sprintsQuery.isError) setError('Task details could not be loaded.');
-  }, [projectQuery.isError, sprintsQuery.isError, taskQuery.isError]);
+    if (taskQuery.isError || projectQuery.isError || sprintsQuery.isError || statusesQuery.isError) setError('Task details could not be loaded.');
+  }, [projectQuery.isError, sprintsQuery.isError, statusesQuery.isError, taskQuery.isError]);
 
   function cacheTask(nextTask: Task) {
     setTask(nextTask);
@@ -380,15 +381,16 @@ export default function TaskDetailModal({ taskId, onClose, onTaskUpdated }: Task
     }
   }
 
-  async function updateStatus(status: TaskStatus) {
-    if (!taskId || !task || status === task.status) return;
+  async function updateStatus(statusId: string) {
+    if (!taskId || !task || statusId === task.statusId) return;
 
     setSavingStatus(true);
     setStatusMessage('');
     const previousTask = task;
-    cacheTask({ ...task, status });
+    const nextStatus = statuses.find((status) => status.id === statusId) ?? task.status;
+    cacheTask({ ...task, statusId, status: nextStatus });
     try {
-      const updatedTask = await updateTask(taskId, { status });
+      const updatedTask = await updateTask(taskId, { statusId });
       cacheTask({ ...task, ...updatedTask });
       setStatusMessage('Saved');
     } catch {
@@ -413,20 +415,18 @@ export default function TaskDetailModal({ taskId, onClose, onTaskUpdated }: Task
     setSprintMessage('');
     const previousTask = task;
     const nextSprint = targetSprint;
-    const nextStatus = nextSprintId && task.status === 'BACKLOG' ? 'TODO' : task.status;
+    // Status is left as-is optimistically — if the task is sitting on the project's backlog-default
+    // status, the server auto-promotes it to the sprint-default status; cacheTask below applies the
+    // authoritative response once it arrives.
     const optimisticTask: Task = {
       ...task,
-      status: nextStatus,
       sprintId: nextSprintId,
       sprint: nextSprint ? { id: nextSprint.id, name: nextSprint.name } : null,
     };
 
     cacheTask(optimisticTask);
     try {
-      const updatedTask = await updateTask(taskId, {
-        sprintId: nextSprintId,
-        ...(nextStatus !== task.status ? { status: nextStatus } : {}),
-      });
+      const updatedTask = await updateTask(taskId, { sprintId: nextSprintId });
       cacheTask({ ...optimisticTask, ...updatedTask });
       setSprintMessage('Saved');
     } catch {
@@ -709,7 +709,7 @@ export default function TaskDetailModal({ taskId, onClose, onTaskUpdated }: Task
   return (
     <>
     <Modal isOpen={Boolean(taskId)} onClose={onClose} className="task-detail-modal">
-      {taskQuery.isLoading || projectQuery.isLoading || sprintsQuery.isLoading ? (
+      {taskQuery.isLoading || projectQuery.isLoading || sprintsQuery.isLoading || statusesQuery.isLoading ? (
         <div className="task-detail-loading"><Spinner /><span>Loading task details...</span></div>
       ) : error ? (
         <div className="empty-panel"><p>{error}</p></div>
@@ -1108,9 +1108,9 @@ export default function TaskDetailModal({ taskId, onClose, onTaskUpdated }: Task
                 <Select
                   label="Status"
                   className="task-status-select"
-                  value={workflowStatus(task.status)}
+                  value={task.statusId}
                   options={statusOptions}
-                  onChange={(event) => updateStatus(event.target.value as TaskStatus)}
+                  onChange={(event) => updateStatus(event.target.value)}
                   disabled={savingStatus}
                   helperText={savingStatus ? 'Saving status...' : statusMessage || 'Status does not move a task onto the board; assign it to a sprint for board visibility.'}
                 />

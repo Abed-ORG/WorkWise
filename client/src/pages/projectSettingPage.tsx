@@ -5,8 +5,10 @@ import Breadcrumbs from '../components/Breadcrumbs';
 import PageHeader from '../components/PageHeader';
 import Icon from '../components/Icon';
 import DocumentLinkPicker from '../components/DocumentLinkPicker';
+import ProjectStatusSettings from '../components/ProjectStatusSettings';
 import { Button, Input, Modal, Select, Spinner, Textarea } from '../components/ui';
 import PageSkeleton from '../components/PageSkeleton';
+import { useAuth } from '../hooks/useAuth';
 import { useToast } from '../hooks/useToast';
 import {
   getProjectById,
@@ -30,6 +32,7 @@ const roleOptions = [
 export default function ProjectSettingsPage() {
   const { projectId } = useParams<{ projectId: string }>();
   const navigate = useNavigate();
+  const { user } = useAuth();
   const toast = useToast();
   const [project, setProject] = useState<Project | null>(null);
   const [invitations, setInvitations] = useState<Invitation[]>([]);
@@ -126,6 +129,8 @@ export default function ProjectSettingsPage() {
   if (loading) return <PageSkeleton variant="cards" />;
   if (!project) return null;
   const canDeleteProject = deleteConfirmName === project.name;
+  const currentMember = project.members?.find((member) => member.user.id === user.id);
+  const isAdmin = currentMember?.role === 'ADMIN';
 
   return (
     <>
@@ -188,6 +193,8 @@ export default function ProjectSettingsPage() {
             </div>
           )}
         </section>
+
+        {isAdmin && <ProjectStatusSettings projectId={project.id} />}
 
         <section className="app-card settings-section">
           <div className="settings-section-head"><div><h2>Sprint documents</h2><p className="field-help mt-1">Attach project documentation to active sprint planning.</p></div></div>

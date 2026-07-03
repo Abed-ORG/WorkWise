@@ -23,6 +23,7 @@ import {
   type VelocityPoint,
   buildBurndownData,
   buildContributionMetrics,
+  buildCumulativeFlowData,
   buildVelocityData,
   buildCumulativeFlowData,
   calculateAverageVelocity,
@@ -454,7 +455,7 @@ function createAnalyticsPdfReport({
       projectHealth.upcomingDeadlines.map((task) => [
         task.title,
         task.dueDate ? formatReportDate(task.dueDate) : 'No due date',
-        task.status.replaceAll('_', ' '),
+        task.status.name,
       ])
     );
   }

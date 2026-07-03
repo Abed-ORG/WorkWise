@@ -5,6 +5,7 @@ import { Button, Modal, Select, Spinner } from './ui';
 import { completeSprint, getProjectSprints } from '../services/projectService';
 import type { Sprint } from '../services/projectService';
 import type { Task } from '../services/taskService';
+import { isDone } from '../utils/taskStatus';
 
 interface CompleteSprintModalProps {
   isOpen: boolean;
@@ -34,8 +35,8 @@ export default function CompleteSprintModal({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
-  const completedTasks = sprintTasks.filter((t) => t.status === 'DONE');
-  const incompleteTasks = sprintTasks.filter((t) => t.status !== 'DONE');
+  const completedTasks = sprintTasks.filter((t) => isDone(t));
+  const incompleteTasks = sprintTasks.filter((t) => !isDone(t));
   const hasIncomplete = incompleteTasks.length > 0;
 
   useEffect(() => {

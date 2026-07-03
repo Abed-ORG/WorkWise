@@ -119,9 +119,10 @@ export default function ProjectBacklogPage() {
     queryClient.setQueryData<Task[]>(queryKeys.projectTasks(projectId), (current = []) => current.map((task) => {
       if (!taskIds.includes(task.id)) return task;
       if (target.type === 'backlog') return { ...task, sprintId: null, sprint: null };
+      // Status is left as-is — the server auto-promotes a backlog-default status to the sprint
+      // default when a task enters a sprint; the response below applies the authoritative result.
       return {
         ...task,
-        status: task.status === 'BACKLOG' ? 'TODO' : task.status,
         sprintId: target.sprintId,
         sprint: sprint ? { id: sprint.id, name: sprint.name } : task.sprint,
       };
@@ -150,7 +151,7 @@ export default function ProjectBacklogPage() {
   async function handleQuickAddTask(title: string) {
     if (!projectId) return;
     try {
-      const task = await createTask({ projectId, title, status: 'TODO' });
+      const task = await createTask({ projectId, title });
       queryClient.setQueryData<Task[]>(queryKeys.projectTasks(projectId), (current = []) => upsertTask(current, task));
       queryClient.setQueryData(queryKeys.task(task.id), task);
       toast.success('Task added to the product backlog.');

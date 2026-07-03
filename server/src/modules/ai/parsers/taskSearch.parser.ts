@@ -12,27 +12,27 @@ const nullableDate = z
   .optional()
   .transform((v) => v ?? null);
 
-const taskSearchSchema = z.object({
-  filters: z.object({
-    status: z
-      .enum(["BACKLOG", "TODO", "IN_PROGRESS", "IN_REVIEW", "DONE"])
-      .nullable()
-      .optional()
-      .transform((v) => v ?? null),
-    priority: z
-      .enum(["LOW", "MEDIUM", "HIGH", "URGENT"])
-      .nullable()
-      .optional()
-      .transform((v) => v ?? null),
-    assigneeName: nullableString,
-    dueBefore: nullableDate,
-    dueAfter: nullableDate,
-    label: nullableString,
-    titleKeyword: nullableString,
-  }),
-});
+export const parseTaskSearchResponse = (rawResponse: string, statusNames: string[]): TaskSearchFilters => {
+  const statusSchema = statusNames.length > 0
+    ? z.enum(statusNames as [string, ...string[]]).nullable().optional().transform((v) => v ?? null)
+    : z.null().optional().transform(() => null);
 
-export const parseTaskSearchResponse = (rawResponse: string): TaskSearchFilters => {
+  const taskSearchSchema = z.object({
+    filters: z.object({
+      status: statusSchema,
+      priority: z
+        .enum(["LOW", "MEDIUM", "HIGH", "URGENT"])
+        .nullable()
+        .optional()
+        .transform((v) => v ?? null),
+      assigneeName: nullableString,
+      dueBefore: nullableDate,
+      dueAfter: nullableDate,
+      label: nullableString,
+      titleKeyword: nullableString,
+    }),
+  });
+
   const parsed = taskSearchSchema.safeParse(parseJsonObject(rawResponse));
 
   if (!parsed.success) {

@@ -1,9 +1,10 @@
-import { NotificationType, Prisma, PrismaClient, Role, Task } from '@prisma/client';
+import { NotificationType, Prisma, PrismaClient, Role, StatusCategory, Task } from '@prisma/client';
 import { sendProjectInvitationEmail } from '../../services/mail.service';
 import { createProjectActivity } from '../../services/activity.service';
 import { notifyProjectMembers } from '../../services/notification.service';
 import { emitProjectEvent } from '../../services/realtime.service';
 import { geminiService } from '../ai/gemini.service';
+import { DEFAULT_PROJECT_STATUSES, getBacklogDefaultStatus, getSprintDefaultStatus, isDone } from '../../utils/taskStatus';
 
 const prisma = new PrismaClient();
 
@@ -26,7 +27,8 @@ function todayUtc() {
   return new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()));
 }
 
-type DigestTask = Pick<Task, 'id' | 'title' | 'status' | 'priority' | 'dueDate' | 'updatedAt'> & {
+type DigestTask = Pick<Task, 'id' | 'title' | 'priority' | 'dueDate' | 'updatedAt'> & {
+  status: { category: StatusCategory };
   assignee?: { name: string } | null;
 };
 
@@ -135,23 +137,33 @@ export class ProjectsService {
       throw new Error('PROJECT_KEY_EXISTS');
     }
 
-    const project = await prisma.project.create({
-      data: {
-        name: data.name,
-        key: data.key,
-        description: data.description,
-        members: {
-          create: {
-            userId: data.creatorId,
-            role: Role.ADMIN,
+    const project = await prisma.$transaction(async (tx) => {
+      const createdProject = await tx.project.create({
+        data: {
+          name: data.name,
+          key: data.key,
+          description: data.description,
+          members: {
+            create: {
+              userId: data.creatorId,
+              role: Role.ADMIN,
+            },
           },
         },
-      },
-      include: {
-        members: {
-          include: { user: { select: { id: true, name: true, email: true } } },
+        include: {
+          members: {
+            include: { user: { select: { id: true, name: true, email: true } } },
+          },
         },
-      },
+      });
+
+      // A project can never exist without its default statuses — task creation and sprint
+      // entry both depend on a backlog-default and sprint-default status being present.
+      await tx.projectStatus.createMany({
+        data: DEFAULT_PROJECT_STATUSES.map((status) => ({ ...status, projectId: createdProject.id })),
+      });
+
+      return createdProject;
     });
 
     return project;
@@ -175,7 +187,7 @@ export class ProjectsService {
           select: {
             tasks: {
               where: {
-                status: { not: 'DONE' },
+                status: { category: { not: StatusCategory.DONE } },
               },
             },
           },
@@ -435,7 +447,7 @@ export class ProjectsService {
           projectId,
         },
       });
-      await this.promoteSprintBacklogTasksToTodo(tx, createdSprint.id);
+      await this.promoteSprintBacklogTasksToSprintDefault(tx, projectId, createdSprint.id);
       return createdSprint;
     });
 
@@ -619,7 +631,7 @@ export class ProjectsService {
       where: { id: projectId, members: { some: { userId } } },
       include: {
         tasks: {
-          include: { assignee: { select: { name: true } } },
+          include: { status: true, assignee: { select: { name: true } } },
           orderBy: [{ updatedAt: 'desc' }, { createdAt: 'desc' }],
         },
         activities: {
@@ -634,9 +646,9 @@ export class ProjectsService {
       throw new Error('PROJECT_NOT_FOUND');
     }
 
-    const completed = project.tasks.filter((task) => task.status === 'DONE' && task.updatedAt >= since);
-    const inProgress = project.tasks.filter((task) => ['TODO', 'IN_PROGRESS', 'IN_REVIEW'].includes(task.status)).slice(0, 8);
-    const blockers = project.tasks.filter((task) => task.status !== 'DONE' && (task.priority === 'URGENT' || Boolean(task.dueDate && task.dueDate < now))).slice(0, 8);
+    const completed = project.tasks.filter((task) => isDone(task) && task.updatedAt >= since);
+    const inProgress = project.tasks.filter((task) => !isDone(task)).slice(0, 8);
+    const blockers = project.tasks.filter((task) => !isDone(task) && (task.priority === 'URGENT' || Boolean(task.dueDate && task.dueDate < now))).slice(0, 8);
     const fallbackSummary = fallbackDigestSummary(project.name, completed, inProgress, blockers);
 
     let summary = fallbackSummary;
@@ -700,7 +712,7 @@ export class ProjectsService {
       where: { id: sprintId, projectId },
       include: {
         tasks: {
-          include: { assignee: { select: { name: true } } },
+          include: { status: true, assignee: { select: { name: true } } },
           orderBy: [{ updatedAt: 'desc' }, { createdAt: 'desc' }],
         },
       },
@@ -710,8 +722,8 @@ export class ProjectsService {
       throw new Error('SPRINT_NOT_FOUND');
     }
 
-    const completed = sprint.tasks.filter((task) => task.status === 'DONE');
-    const unfinished = sprint.tasks.filter((task) => task.status !== 'DONE');
+    const completed = sprint.tasks.filter((task) => isDone(task));
+    const unfinished = sprint.tasks.filter((task) => !isDone(task));
     const blockers = unfinished.filter((task) => task.priority === 'URGENT' || Boolean(task.dueDate && task.dueDate < new Date()));
     const fallback = fallbackRetroSections(sprint.name, completed.length, sprint.tasks.length, blockers.length);
 
@@ -972,7 +984,7 @@ export class ProjectsService {
       });
       if (!nextSprint) return null;
       const activated = await tx.sprint.update({ where: { id: nextSprint.id }, data: { isActive: true } });
-      await this.promoteSprintBacklogTasksToTodo(tx, activated.id);
+      await this.promoteSprintBacklogTasksToSprintDefault(tx, projectId, activated.id);
       return activated;
     });
 
@@ -997,9 +1009,9 @@ export class ProjectsService {
 
       const tasks = await tx.task.findMany({
         where: { sprintId },
-        select: { id: true, status: true },
+        select: { id: true, status: { select: { category: true } } },
       });
-      const completedCount = tasks.filter((t) => t.status === 'DONE').length;
+      const completedCount = tasks.filter((t) => isDone(t)).length;
       const incompleteCount = tasks.length - completedCount;
 
       if (data.incompleteTaskDestination === 'sprint' && data.targetSprintId) {
@@ -1010,7 +1022,7 @@ export class ProjectsService {
 
       if (incompleteCount > 0) {
         await tx.task.updateMany({
-          where: { sprintId, status: { not: 'DONE' } },
+          where: { sprintId, status: { category: { not: StatusCategory.DONE } } },
           data: { sprintId: data.incompleteTaskDestination === 'backlog' ? null : data.targetSprintId },
         });
       }
@@ -1033,7 +1045,7 @@ export class ProjectsService {
       const activatedSprint = nextSprint
         ? await tx.sprint.update({ where: { id: nextSprint.id }, data: { isActive: true } })
         : null;
-      if (activatedSprint) await this.promoteSprintBacklogTasksToTodo(tx, activatedSprint.id);
+      if (activatedSprint) await this.promoteSprintBacklogTasksToSprintDefault(tx, projectId, activatedSprint.id);
 
       return { sprint: completedSprint, nextSprint: activatedSprint, completedCount, incompleteCount };
     });
@@ -1071,6 +1083,158 @@ export class ProjectsService {
     if (overlappingSprint) throw new Error('SPRINT_DATES_OVERLAP');
   }
 
+  // ── Get Project Statuses ───────────────────────────────────
+  async getProjectStatuses(projectId: string, userId: string) {
+    await this.requireProjectMember(projectId, userId);
+
+    return prisma.projectStatus.findMany({
+      where: { projectId },
+      orderBy: { order: 'asc' },
+    });
+  }
+
+  // ── Create Project Status ──────────────────────────────────
+  async createProjectStatus(projectId: string, userId: string, data: { name: string; category: StatusCategory; color?: string | null }) {
+    await this.requireAdminRole(projectId, userId);
+
+    const name = data.name.trim();
+    const existing = await prisma.projectStatus.findUnique({ where: { projectId_name: { projectId, name } } });
+    if (existing) {
+      throw new Error('STATUS_NAME_EXISTS');
+    }
+
+    const maxOrder = await prisma.projectStatus.aggregate({
+      where: { projectId },
+      _max: { order: true },
+    });
+
+    return prisma.projectStatus.create({
+      data: {
+        name,
+        category: data.category,
+        color: data.color?.trim() || null,
+        order: (maxOrder._max.order ?? -1) + 1,
+        projectId,
+      },
+    });
+  }
+
+  // ── Update Project Status ──────────────────────────────────
+  async updateProjectStatus(
+    projectId: string,
+    userId: string,
+    statusId: string,
+    data: { name?: string; category?: StatusCategory; color?: string | null; isBacklogDefault?: true; isSprintDefault?: true },
+  ) {
+    await this.requireAdminRole(projectId, userId);
+
+    const status = await prisma.projectStatus.findFirst({ where: { id: statusId, projectId } });
+    if (!status) {
+      throw new Error('STATUS_NOT_FOUND');
+    }
+
+    if (data.name !== undefined) {
+      const name = data.name.trim();
+      const existing = await prisma.projectStatus.findUnique({ where: { projectId_name: { projectId, name } } });
+      if (existing && existing.id !== statusId) {
+        throw new Error('STATUS_NAME_EXISTS');
+      }
+    }
+
+    if (data.category !== undefined && data.category !== status.category) {
+      const remainingInOldCategory = await prisma.projectStatus.count({
+        where: { projectId, category: status.category, id: { not: statusId } },
+      });
+      if (remainingInOldCategory === 0) {
+        throw new Error('CANNOT_LEAVE_CATEGORY_EMPTY');
+      }
+    }
+
+    return prisma.$transaction(async (tx) => {
+      // Setting a default flag transfers it — it never creates a second holder or leaves zero.
+      if (data.isBacklogDefault) {
+        await tx.projectStatus.updateMany({ where: { projectId, isBacklogDefault: true }, data: { isBacklogDefault: false } });
+      }
+      if (data.isSprintDefault) {
+        await tx.projectStatus.updateMany({ where: { projectId, isSprintDefault: true }, data: { isSprintDefault: false } });
+      }
+
+      return tx.projectStatus.update({
+        where: { id: statusId },
+        data: {
+          ...(data.name !== undefined && { name: data.name.trim() }),
+          ...(data.category !== undefined && { category: data.category }),
+          ...(data.color !== undefined && { color: data.color?.trim() || null }),
+          ...(data.isBacklogDefault && { isBacklogDefault: true as const }),
+          ...(data.isSprintDefault && { isSprintDefault: true as const }),
+        },
+      });
+    });
+  }
+
+  // ── Reorder Project Statuses ───────────────────────────────
+  async reorderProjectStatuses(projectId: string, userId: string, orderedIds: string[]) {
+    await this.requireAdminRole(projectId, userId);
+
+    const existing = await prisma.projectStatus.findMany({ where: { projectId }, select: { id: true } });
+    const existingIds = new Set(existing.map((row) => row.id));
+    const isExactMatch = orderedIds.length === existingIds.size && orderedIds.every((id) => existingIds.has(id));
+    if (!isExactMatch) {
+      throw new Error('REORDER_MISMATCH');
+    }
+
+    await prisma.$transaction(
+      orderedIds.map((id, index) => prisma.projectStatus.update({ where: { id }, data: { order: index } })),
+    );
+
+    return prisma.projectStatus.findMany({ where: { projectId }, orderBy: { order: 'asc' } });
+  }
+
+  // ── Delete Project Status ──────────────────────────────────
+  async deleteProjectStatus(projectId: string, userId: string, statusId: string, reassignToStatusId?: string) {
+    await this.requireAdminRole(projectId, userId);
+
+    const status = await prisma.projectStatus.findFirst({ where: { id: statusId, projectId } });
+    if (!status) {
+      throw new Error('STATUS_NOT_FOUND');
+    }
+
+    if (status.isBacklogDefault || status.isSprintDefault) {
+      throw new Error('CANNOT_DELETE_DEFAULT_STATUS');
+    }
+
+    const remainingInCategory = await prisma.projectStatus.count({
+      where: { projectId, category: status.category, id: { not: statusId } },
+    });
+    if (remainingInCategory === 0) {
+      throw new Error('CANNOT_DELETE_ONLY_STATUS_IN_CATEGORY');
+    }
+
+    const taskCount = await prisma.task.count({ where: { statusId } });
+
+    if (taskCount > 0) {
+      if (!reassignToStatusId) {
+        throw new Error('STATUS_HAS_TASKS');
+      }
+      if (reassignToStatusId === statusId) {
+        throw new Error('REASSIGN_STATUS_SAME_AS_DELETED');
+      }
+
+      const target = await prisma.projectStatus.findFirst({ where: { id: reassignToStatusId, projectId } });
+      if (!target) {
+        throw new Error('REASSIGN_STATUS_NOT_FOUND');
+      }
+
+      await prisma.$transaction([
+        prisma.task.updateMany({ where: { statusId }, data: { statusId: reassignToStatusId } }),
+        prisma.projectStatus.delete({ where: { id: statusId } }),
+      ]);
+      return;
+    }
+
+    await prisma.projectStatus.delete({ where: { id: statusId } });
+  }
+
   private async requireProjectMember(projectId: string, userId: string) {
     const member = await prisma.projectMember.findUnique({
       where: { userId_projectId: { userId, projectId } },
@@ -1098,10 +1262,15 @@ export class ProjectsService {
     return sprint;
   }
 
-  private async promoteSprintBacklogTasksToTodo(tx: Prisma.TransactionClient, sprintId: string) {
+  private async promoteSprintBacklogTasksToSprintDefault(tx: Prisma.TransactionClient, projectId: string, sprintId: string) {
+    const [backlogStatus, sprintStatus] = await Promise.all([
+      getBacklogDefaultStatus(projectId),
+      getSprintDefaultStatus(projectId),
+    ]);
+
     await tx.task.updateMany({
-      where: { sprintId, status: 'BACKLOG' },
-      data: { status: 'TODO' },
+      where: { sprintId, statusId: backlogStatus.id },
+      data: { statusId: sprintStatus.id },
     });
   }
 }

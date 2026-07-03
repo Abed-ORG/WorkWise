@@ -53,10 +53,11 @@ class GeminiService {
     query: string;
     memberNames: string[];
     labels: string[];
+    statusNames: string[];
     today: string;
   }): Promise<TaskSearchFilters> {
     const responseText = await this.generateJson(buildTaskSearchPrompt(input));
-    return parseTaskSearchResponse(responseText);
+    return parseTaskSearchResponse(responseText, input.statusNames);
   }
 
   async generateAcceptanceCriteria(

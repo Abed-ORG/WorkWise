@@ -5,10 +5,11 @@ import PageHeader from '../components/PageHeader';
 import TaskDetailModal from '../components/TaskDetailModal';
 import Icon from '../components/Icon';
 import { Button, Select } from '../components/ui';
-import { getAssignedTasks, updateTask } from '../services/taskService';
+import { getAssignedTasks, getProjectStatuses, updateTask } from '../services/taskService';
 import type { Task } from '../services/taskService';
 import { queryKeys, queryTimes } from '../services/queryOptions';
 import { useToast } from '../hooks/useToast';
+import { isDone } from '../utils/taskStatus';
 
 export default function TasksPage() {
   const queryClient = useQueryClient();
@@ -27,9 +28,9 @@ export default function TasksPage() {
   const filteredTasks = useMemo(() => tasks.filter((task) => {
     const due = task.dueDate ? new Date(task.dueDate) : null;
     if (due) due.setHours(0, 0, 0, 0);
-    if (filter === 'completed') return task.status === 'DONE';
-    if (filter === 'today') return task.status !== 'DONE' && due?.getTime() === today.getTime();
-    if (filter === 'overdue') return task.status !== 'DONE' && Boolean(due && due < today);
+    if (filter === 'completed') return isDone(task);
+    if (filter === 'today') return !isDone(task) && due?.getTime() === today.getTime();
+    if (filter === 'overdue') return !isDone(task) && Boolean(due && due < today);
     return true;
   }), [filter, tasks]);
 
@@ -50,6 +51,15 @@ export default function TasksPage() {
     catch { toast.error('Task update could not be saved.'); }
   }
 
+  async function toggleTaskDone(task: Task) {
+    const statuses = await getProjectStatuses(task.projectId);
+    const targetStatus = isDone(task)
+      ? statuses.find((status) => status.isBacklogDefault) ?? statuses.find((status) => status.category === 'TODO')
+      : statuses.find((status) => status.category === 'DONE');
+    if (!targetStatus) return;
+    await quickUpdate(task, { statusId: targetStatus.id });
+  }
+
   return (
     <>
       <PageHeader eyebrow="Personal queue" title="My tasks" description="Every task assigned to you, grouped across all of your projects." />
@@ -68,7 +78,7 @@ export default function TasksPage() {
           <BacklogList tasks={group.tasks} showProject title={group.label ? undefined : 'Assigned to me'} description={group.label ? undefined : 'Your real assignments across every project you can access.'} onTaskClick={(task) => setSelectedTaskId(task.id)} />
           {group.tasks.length > 0 && <div className="task-quick-actions" aria-label="Quick task actions">
             <span><Icon name="sparkles" size={14} /> Quick actions are available from each selected task.</span>
-            {group.tasks.slice(0, 4).map((task) => <div key={task.id} className="task-quick-row"><strong>{task.title}</strong><Button variant="secondary" onClick={() => quickUpdate(task, { status: task.status === 'DONE' ? 'TODO' : 'DONE' })}>{task.status === 'DONE' ? 'Reopen' : 'Mark done'}</Button><input aria-label={`Due date for ${task.title}`} type="date" value={task.dueDate?.slice(0, 10) ?? ''} onChange={(event) => quickUpdate(task, { dueDate: event.target.value ? new Date(`${event.target.value}T12:00:00`).toISOString() : null })} /></div>)}
+            {group.tasks.slice(0, 4).map((task) => <div key={task.id} className="task-quick-row"><strong>{task.title}</strong><Button variant="secondary" onClick={() => toggleTaskDone(task)}>{isDone(task) ? 'Reopen' : 'Mark done'}</Button><input aria-label={`Due date for ${task.title}`} type="date" value={task.dueDate?.slice(0, 10) ?? ''} onChange={(event) => quickUpdate(task, { dueDate: event.target.value ? new Date(`${event.target.value}T12:00:00`).toISOString() : null })} /></div>)}
           </div>}
         </section>)}
       <TaskDetailModal taskId={selectedTaskId} onClose={() => setSelectedTaskId(null)} onTaskUpdated={(task) => {

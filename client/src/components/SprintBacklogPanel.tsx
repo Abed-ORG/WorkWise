@@ -26,12 +26,10 @@ function priorityLabel(p: string) {
   return p.charAt(0) + p.slice(1).toLowerCase();
 }
 
-function formatStatus(s: string) {
-  if (s === 'BACKLOG') return 'Product backlog';
-  return s.toLowerCase().split('_').map((w) => w[0].toUpperCase() + w.slice(1)).join(' ');
-}
 function sprintAssignedTask(task: Task, sprintId: string): Task {
-  return { ...task, sprintId, status: task.status === 'BACKLOG' ? 'TODO' : task.status };
+  // Status is left as-is — if the task is on the project's backlog-default status, the server
+  // auto-promotes it to the sprint-default status; the response from moveTaskToSprint corrects this.
+  return { ...task, sprintId };
 }
 
 export default function SprintBacklogPanel({
@@ -444,7 +442,7 @@ export default function SprintBacklogPanel({
                     <span className="sprint-task-info">
                       <span className="sprint-task-title">{task.title}</span>
                       <span className="sprint-task-meta">
-                        <span className={`status-badge status-${task.status.toLowerCase()}`}>{formatStatus(task.status)}</span>
+                        <span className={`status-badge category-${task.status.category.toLowerCase()}`} style={task.status.color ? { borderColor: task.status.color, color: task.status.color, background: `${task.status.color}1a` } : undefined}>{task.status.name}</span>
                         <span className="sprint-task-priority">{priorityLabel(task.priority)}</span>
                         {task.assignee && <span className="sprint-task-assignee">{task.assignee.name}</span>}
                       </span>
@@ -567,7 +565,7 @@ export default function SprintBacklogPanel({
                     <span className="sprint-task-info">
                       <span className="sprint-task-title">{task.title}</span>
                       <span className="sprint-task-meta">
-                        <span className={`status-badge status-${task.status.toLowerCase()}`}>{formatStatus(task.status)}</span>
+                        <span className={`status-badge category-${task.status.category.toLowerCase()}`} style={task.status.color ? { borderColor: task.status.color, color: task.status.color, background: `${task.status.color}1a` } : undefined}>{task.status.name}</span>
                         <span className="sprint-task-priority">{priorityLabel(task.priority)}</span>
                         {task.assignee && <span className="sprint-task-assignee">{task.assignee.name}</span>}
                       </span>
@@ -615,8 +613,7 @@ function filterTasks(tasks: Task[], search: string) {
 
   return tasks.filter((task) => [
     task.title,
-    formatStatus(task.status),
-    task.status,
+    task.status.name,
     priorityLabel(task.priority),
     task.priority,
     task.assignee?.name,

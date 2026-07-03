@@ -2,13 +2,16 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties, Dispatch, DragEvent, FormEvent, MouseEvent, ReactNode, SetStateAction } from 'react';
 import { createPortal } from 'react-dom';
 import { useSearchParams } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
 import Icon from './Icon';
 import { Button, Select } from './ui';
 import type { SelectOption } from './ui';
-import type { Task, TaskPriority, TaskStatus } from '../services/taskService';
+import type { Task, TaskPriority } from '../services/taskService';
+import { getProjectStatuses } from '../services/taskService';
 import { parseTaskQuery } from '../services/aiService';
 import type { TaskSearchFilters } from '../services/aiService';
 import { isOpenSprintMoveTarget } from '../utils/sprintOptions';
+import { queryKeys, queryTimes } from '../services/queryOptions';
 
 type SortKey = 'title' | 'status' | 'priority' | 'assignee' | 'project' | 'dueDate';
 type SortDirection = 'asc' | 'desc';
@@ -36,7 +39,7 @@ interface BacklogListProps {
   onTaskClick?: (task: Task) => void;
   onTaskUpdate?: (task: Task, changes: { title?: string; priority?: TaskPriority; assigneeId?: string | null }) => Promise<void>;
   onReorder?: (taskId: string, order: number) => Promise<void>;
-  onBulkUpdate?: (taskIds: string[], changes: { status?: TaskStatus; priority?: TaskPriority; assigneeId?: string | null }) => Promise<void>;
+  onBulkUpdate?: (taskIds: string[], changes: { statusId?: string; priority?: TaskPriority; assigneeId?: string | null }) => Promise<void>;
   projectId?: string;
   sprints?: SprintOption[];
   activeSprint?: SprintOption | null;
@@ -47,14 +50,6 @@ const visibleAssigneeCount = 6;
 function getInitials(name?: string) {
   if (!name) return '?';
   return name.split(' ').map((part) => part[0]).join('').slice(0, 2).toUpperCase();
-}
-
-function formatStatus(status: string) {
-  return status.toLowerCase().split('_').map((word) => word[0].toUpperCase() + word.slice(1)).join(' ');
-}
-
-function workflowStatus(status: Task['status']) {
-  return status === 'BACKLOG' ? 'TODO' : status;
 }
 
 function getTaskLocation(task: Task) {
@@ -138,6 +133,17 @@ export default function BacklogList({
 
   const search = searchParams.get('q') ?? '';
 
+  const statusesQuery = useQuery({
+    queryKey: queryKeys.projectStatuses(projectId ?? ''),
+    queryFn: () => getProjectStatuses(projectId!),
+    enabled: Boolean(projectId),
+    staleTime: queryTimes.statuses,
+  });
+  const statuses = useMemo(
+    () => [...(statusesQuery.data ?? [])].sort((a, b) => a.order - b.order),
+    [statusesQuery.data],
+  );
+
   const taskAssignees = Array.from(new Map(tasks
     .map((task) => task.assignee)
     .filter((assignee): assignee is NonNullable<Task['assignee']> => Boolean(assignee))
@@ -147,8 +153,8 @@ export default function BacklogList({
   const hiddenAssignees = assignees.slice(visibleAssigneeCount);
   const labels = Array.from(new Set(tasks.flatMap((task) => task.labels ?? [])));
   const statusOptions: FilterOption[] = [
-    { value: '', label: 'All workflow statuses' }, { value: 'TODO', label: 'To do' }, { value: 'IN_PROGRESS', label: 'In progress' },
-    { value: 'IN_REVIEW', label: 'In review' }, { value: 'DONE', label: 'Done' },
+    { value: '', label: 'All workflow statuses' },
+    ...statuses.map((status) => ({ value: status.id, label: status.name })),
   ];
   const priorityOptions: FilterOption[] = [
     { value: '', label: 'All priorities' }, { value: 'LOW', label: 'Low' },
@@ -167,8 +173,7 @@ export default function BacklogList({
     const searchableTask = [
       task.title,
       task.description,
-      formatStatus(workflowStatus(task.status)),
-      workflowStatus(task.status),
+      task.status.name,
       task.priority,
       task.assignee?.name,
       getTaskLocation(task),
@@ -181,7 +186,7 @@ export default function BacklogList({
     return matchesSearch
       && matchesLocalSearch
       && matchesDueBefore
-      && (!statusFilter || workflowStatus(task.status) === statusFilter)
+      && (!statusFilter || task.statusId === statusFilter)
       && (!priorityFilter || task.priority === priorityFilter)
       && (!assigneeFilter || (assigneeFilter === '__unassigned__' ? !task.assignee : task.assignee?.name === assigneeFilter))
       && (!labelFilter || task.labels?.includes(labelFilter));
@@ -327,7 +332,7 @@ export default function BacklogList({
   async function applyBulkUpdate() {
     if (!onBulkUpdate || !selectedTaskIds.length) return;
     const changes = {
-      ...(bulkStatus && { status: bulkStatus as TaskStatus }),
+      ...(bulkStatus && { statusId: bulkStatus }),
       ...(bulkPriority && { priority: bulkPriority as TaskPriority }),
       ...(bulkAssignee && { assigneeId: bulkAssignee === '__unassigned__' ? null : bulkAssignee }),
     };
@@ -457,7 +462,8 @@ export default function BacklogList({
         setAiSearchLabel(null);
       } else {
         // Apply AI-derived filters, replacing any manually set ones
-        setStatusFilter(filters.status === 'BACKLOG' ? 'TODO' : filters.status ?? '');
+        const matchedStatus = filters.status ? statuses.find((status) => status.name === filters.status) : undefined;
+        setStatusFilter(matchedStatus?.id ?? '');
         setPriorityFilter(filters.priority ?? '');
         setAssigneeFilter(filters.assigneeName ?? '');
         setLabelFilter(filters.label ?? '');
@@ -520,7 +526,7 @@ export default function BacklogList({
           )}
         </td>
         {showProject && <td data-label="Project"><span className="project-key">{task.project?.key}</span> {task.project?.name}</td>}
-        <td data-label="Status"><span className={`status-badge status-${workflowStatus(task.status).toLowerCase()}`}>{formatStatus(workflowStatus(task.status))}</span></td>
+        <td data-label="Status"><span className={`status-badge category-${task.status.category.toLowerCase()}`} style={task.status.color ? { borderColor: task.status.color, color: task.status.color, background: `${task.status.color}1a` } : undefined}>{task.status.name}</span></td>
         <td data-label="Priority">
           {editingCell?.taskId === task.id && editingCell?.field === 'priority' && onTaskUpdate ? (
             <select
@@ -886,7 +892,7 @@ export default function BacklogList({
         {aiSearchLabel && <FilterChip label={`AI: ${aiSearchLabel}`} isAi onRemove={clearAiFilters} />}
         {!aiSearchLabel && search && <FilterChip label={`Search: ${search}`} onRemove={() => setSearchParams({})} />}
         {!aiSearchLabel && localSearch && <FilterChip label={`Backlog search: ${localSearch}`} onRemove={() => setLocalSearch('')} />}
-        {!aiSearchLabel && statusFilter && <FilterChip label={`Status: ${formatStatus(statusFilter)}`} onRemove={() => setStatusFilter('')} />}
+        {!aiSearchLabel && statusFilter && <FilterChip label={`Status: ${statuses.find((status) => status.id === statusFilter)?.name ?? statusFilter}`} onRemove={() => setStatusFilter('')} />}
         {!aiSearchLabel && priorityFilter && <FilterChip label={`Priority: ${priorityFilter.toLowerCase()}`} onRemove={() => setPriorityFilter('')} />}
         {!aiSearchLabel && assigneeFilter && <FilterChip label={`Assignee: ${assigneeFilter === '__unassigned__' ? 'Unassigned' : assigneeFilter}`} onRemove={() => setAssigneeFilter('')} />}
         {!aiSearchLabel && labelFilter && <FilterChip label={`Label: ${labelFilter}`} onRemove={() => setLabelFilter('')} />}
@@ -1087,7 +1093,7 @@ function ActionMenuRoot({ id, openActionMenu, setOpenActionMenu, disabled, label
 function getSortValue(task: Task, key: SortKey): string {
   if (key === 'assignee') return task.assignee?.name ?? '';
   if (key === 'project') return task.project?.name ?? '';
-  if (key === 'status') return workflowStatus(task.status);
+  if (key === 'status') return task.status.name;
   if (key === 'dueDate') return task.dueDate ?? '';
   return String(task[key] ?? '');
 }

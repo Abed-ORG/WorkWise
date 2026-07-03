@@ -1,10 +1,12 @@
 import { NextFunction, Request, Response } from "express";
 import { validationResult } from "express-validator";
+import { StatusCategory } from "@prisma/client";
 import { ValidationError } from "../../errors/ValidationError";
 import { NotFoundError } from "../../errors/NotFoundError";
 import { geminiService } from "./gemini.service";
 import prisma from "../../utils/prisma";
 import { DAILY_LIMIT, todayUtc, nextMidnightUtc } from "../../middleware/ai-rate-limit.middleware";
+import { isDone } from "../../utils/taskStatus";
 
 class AiController {
   async generateTaskBreakdown(
@@ -84,7 +86,7 @@ class AiController {
       const [backlogTasks, sprintTasks, projectMembers] = await Promise.all([
         prisma.task.findMany({
           where: { projectId, sprintId: null },
-          include: { assignee: { select: { name: true } } },
+          include: { status: { select: { name: true } }, assignee: { select: { name: true } } },
           orderBy: [{ createdAt: "asc" }],
         }),
         prisma.task.findMany({ where: { sprintId }, select: { id: true } }),
@@ -104,7 +106,7 @@ class AiController {
           id: t.id,
           title: t.title,
           priority: t.priority,
-          status: t.status,
+          status: t.status.name,
           dueDate: t.dueDate ? t.dueDate.toISOString().slice(0, 10) : null,
           assigneeName: t.assignee?.name ?? null,
         })),
@@ -145,23 +147,23 @@ class AiController {
 
       const tasks = await prisma.task.findMany({
         where: { sprintId },
-        include: { assignee: { select: { id: true, name: true } } },
+        include: { status: { select: { category: true } }, assignee: { select: { id: true, name: true } } },
       });
 
       const today = new Date();
       today.setHours(0, 0, 0, 0);
 
-      const byStatus = { BACKLOG: 0, TODO: 0, IN_PROGRESS: 0, IN_REVIEW: 0, DONE: 0 };
+      const byCategory: Record<StatusCategory, number> = { TODO: 0, IN_PROGRESS: 0, DONE: 0 };
       const byPriority = { LOW: 0, MEDIUM: 0, HIGH: 0, URGENT: 0 };
       const workloadMap = new Map<string, { name: string; taskCount: number }>();
       let overdueTasks = 0;
       let unassignedCount = 0;
 
       for (const task of tasks) {
-        byStatus[task.status]++;
+        byCategory[task.status.category]++;
         byPriority[task.priority]++;
 
-        if (task.dueDate && task.status !== "DONE" && task.dueDate < today) {
+        if (task.dueDate && !isDone(task) && task.dueDate < today) {
           overdueTasks++;
         }
 
@@ -187,7 +189,7 @@ class AiController {
         endDate: sprint.endDate ? sprint.endDate.toISOString().slice(0, 10) : null,
         daysRemaining,
         totalTasks: tasks.length,
-        byStatus,
+        byCategory,
         byPriority,
         overdueTasks,
         workload: Array.from(workloadMap.values()),
@@ -223,7 +225,7 @@ class AiController {
         return next(new NotFoundError("Project not found"));
       }
 
-      const [members, tasks] = await Promise.all([
+      const [members, tasks, statuses] = await Promise.all([
         prisma.projectMember.findMany({
           where: { projectId },
           include: { user: { select: { name: true } } },
@@ -232,13 +234,19 @@ class AiController {
           where: { projectId },
           select: { labels: true },
         }),
+        prisma.projectStatus.findMany({
+          where: { projectId },
+          orderBy: { order: "asc" },
+          select: { name: true },
+        }),
       ]);
 
       const memberNames = members.map((m) => m.user.name).filter(Boolean);
       const labels = Array.from(new Set(tasks.flatMap((t) => t.labels)));
+      const statusNames = statuses.map((s) => s.name);
       const today = new Date().toISOString().slice(0, 10);
 
-      const filters = await geminiService.parseTaskQuery({ query, memberNames, labels, today });
+      const filters = await geminiService.parseTaskQuery({ query, memberNames, labels, statusNames, today });
 
       return res.status(200).json({
         success: true,

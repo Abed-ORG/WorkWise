@@ -5,7 +5,9 @@ import TaskCard from './TaskCard';
 describe('TaskCard', () => {
   it('renders a task title, status context, and assignee', () => {
     render(<TaskCard task={{
-      id: 'task-1', title: 'Write tests', status: 'IN_PROGRESS', priority: 'HIGH', labels: [], order: 0, projectId: 'project-1',
+      id: 'task-1', title: 'Write tests', priority: 'HIGH', labels: [], order: 0, projectId: 'project-1',
+      statusId: 'status-in-progress',
+      status: { id: 'status-in-progress', name: 'in progress', category: 'IN_PROGRESS', order: 1, isBacklogDefault: false, isSprintDefault: false },
       assignee: { id: 'user-1', name: 'Ada Lovelace', email: 'ada@example.com' },
     }} onDragStart={vi.fn()} onDragEnd={vi.fn()} />);
 

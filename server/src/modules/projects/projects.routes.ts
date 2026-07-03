@@ -13,6 +13,8 @@ import {
   createProjectDocumentValidation,
   updateProjectDocumentValidation,
   documentIdValidation,
+  createProjectStatusValidation,
+  updateProjectStatusValidation,
 } from './projects.validation';
 
 const router = Router();
@@ -25,6 +27,11 @@ router.post('/invitations/:invitationId/decline', (req: Request, res: Response) 
 
 router.post('/', createProjectValidation, (req: Request, res: Response) => projectsController.createProject(req, res));
 router.get('/', (req: Request, res: Response) => projectsController.getUserProjects(req, res));
+router.get('/:projectId/statuses', (req: Request, res: Response) => projectsController.getProjectStatuses(req, res));
+router.post('/:projectId/statuses', createProjectStatusValidation, (req: Request, res: Response) => projectsController.createProjectStatus(req, res));
+router.patch('/:projectId/statuses/reorder', (req: Request, res: Response) => projectsController.reorderProjectStatuses(req, res));
+router.patch('/:projectId/statuses/:statusId', updateProjectStatusValidation, (req: Request, res: Response) => projectsController.updateProjectStatus(req, res));
+router.delete('/:projectId/statuses/:statusId', (req: Request, res: Response) => projectsController.deleteProjectStatus(req, res));
 router.get('/:projectId/documents', (req: Request, res: Response) => projectsController.getProjectDocuments(req, res));
 router.post('/:projectId/documents', createProjectDocumentValidation, (req: Request, res: Response) => projectsController.createProjectDocument(req, res));
 router.get('/:projectId/documents/:documentId', documentIdValidation, (req: Request, res: Response) => projectsController.getProjectDocumentById(req, res));

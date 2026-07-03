@@ -107,13 +107,13 @@ export default function ProjectBoardPage() {
     catch { setTasks(previous); toast.error('Board changes could not be saved.'); }
   }
 
-  async function handleBoardQuickAdd(input: { title: string; status: Task['status']; sprintId: string }) {
+  async function handleBoardQuickAdd(input: { title: string; statusId: string; sprintId: string }) {
     if (!projectId) throw new Error('Project not found');
     try {
       const task = await createTask({
         projectId,
         title: input.title,
-        status: input.status,
+        statusId: input.statusId,
         sprintId: input.sprintId,
       });
       queryClient.setQueryData<Task[]>(queryKeys.projectTasks(projectId), (current = []) => upsertTask(current, task));
@@ -140,6 +140,7 @@ export default function ProjectBoardPage() {
       <section className="animate-enter-delay">
         <KanbanBoard
           tasks={tasks}
+          projectId={projectId}
           onTasksChange={setTasks}
           onTaskClick={(task) => setSelectedTaskId(task.id)}
           eyebrow={project.key}

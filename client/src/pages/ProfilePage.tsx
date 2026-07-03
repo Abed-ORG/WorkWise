@@ -24,6 +24,7 @@ import {
 import { useAuth } from '../hooks/useAuth';
 import { useToast } from '../hooks/useToast';
 import { queryKeys, queryTimes } from '../services/queryOptions';
+import { isDone } from '../utils/taskStatus';
 
 interface FormState {
   name: string;
@@ -590,7 +591,7 @@ export default function ProfilePage() {
     ? (profileActivityQuery.data as ProfileActivity[])
     : [];
 
-  const doneTasks = assignedTasks.filter((task) => task.status === 'DONE').length;
+  const doneTasks = assignedTasks.filter((task) => isDone(task)).length;
   const commentCount = recentActivities.filter((activity) => activity.action === 'COMMENT_ADDED').length;
   const updateCount = recentActivities.filter((activity) => activity.action !== 'COMMENT_ADDED').length;
   const joinedDate = formatProfileDate(profile.createdAt);

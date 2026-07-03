@@ -1,8 +1,19 @@
 import apiClient from './apiClient';
 import type { ProjectDocument } from './projectService';
 
-export type TaskStatus = 'BACKLOG' | 'TODO' | 'IN_PROGRESS' | 'IN_REVIEW' | 'DONE';
+export type StatusCategory = 'TODO' | 'IN_PROGRESS' | 'DONE';
 export type TaskPriority = 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT';
+
+export interface ProjectStatus {
+  id: string;
+  name: string;
+  category: StatusCategory;
+  order: number;
+  color?: string | null;
+  isBacklogDefault: boolean;
+  isSprintDefault: boolean;
+  projectId?: string;
+}
 
 export interface TaskUser {
   id: string;
@@ -18,7 +29,8 @@ export interface Task {
   acceptanceCriteria?: string | null;
   estimatedHours?: number | null;
   priority: TaskPriority;
-  status: TaskStatus;
+  status: ProjectStatus;
+  statusId: string;
   labels: string[];
   dueDate?: string | null;
   order: number;
@@ -87,7 +99,7 @@ export interface CreateTaskPayload {
   labels?: string[];
   dueDate?: string;
   projectId: string;
-  status?: TaskStatus;
+  statusId?: string;
   sprintId?: string;
   assigneeId?: string;
 }
@@ -122,14 +134,54 @@ export async function updateTaskDocuments(taskId: string, documentIds: string[])
   return response.data.data;
 }
 
-export async function updateTaskStatus(taskId: string, status: TaskStatus): Promise<Task> {
-  const response = await apiClient.patch(`/tasks/${taskId}`, { status });
+export async function updateTaskStatus(taskId: string, statusId: string): Promise<Task> {
+  const response = await apiClient.patch(`/tasks/${taskId}`, { statusId });
   return response.data.data;
 }
 
-export async function updateTask(taskId: string, payload: Partial<Pick<Task, 'title' | 'description' | 'acceptanceCriteria' | 'estimatedHours' | 'priority' | 'status' | 'labels' | 'dueDate' | 'sprintId'>> & { assigneeId?: string | null }): Promise<Task> {
+export async function updateTask(taskId: string, payload: Partial<Pick<Task, 'title' | 'description' | 'acceptanceCriteria' | 'estimatedHours' | 'priority' | 'labels' | 'dueDate' | 'sprintId'>> & { assigneeId?: string | null; statusId?: string }): Promise<Task> {
   const response = await apiClient.patch(`/tasks/${taskId}`, payload);
   return response.data.data;
+}
+
+export async function getProjectStatuses(projectId: string): Promise<ProjectStatus[]> {
+  const response = await apiClient.get(`/api/projects/${projectId}/statuses`);
+  return response.data.data;
+}
+
+export interface CreateProjectStatusPayload {
+  name: string;
+  category: StatusCategory;
+  color?: string | null;
+}
+
+export interface UpdateProjectStatusPayload {
+  name?: string;
+  category?: StatusCategory;
+  color?: string | null;
+  isBacklogDefault?: true;
+  isSprintDefault?: true;
+}
+
+export async function createProjectStatus(projectId: string, payload: CreateProjectStatusPayload): Promise<ProjectStatus> {
+  const response = await apiClient.post(`/api/projects/${projectId}/statuses`, payload);
+  return response.data.data;
+}
+
+export async function updateProjectStatus(projectId: string, statusId: string, payload: UpdateProjectStatusPayload): Promise<ProjectStatus> {
+  const response = await apiClient.patch(`/api/projects/${projectId}/statuses/${statusId}`, payload);
+  return response.data.data;
+}
+
+export async function reorderProjectStatuses(projectId: string, orderedIds: string[]): Promise<ProjectStatus[]> {
+  const response = await apiClient.patch(`/api/projects/${projectId}/statuses/reorder`, { orderedIds });
+  return response.data.data;
+}
+
+export async function deleteProjectStatus(projectId: string, statusId: string, reassignToStatusId?: string): Promise<void> {
+  await apiClient.delete(`/api/projects/${projectId}/statuses/${statusId}`, {
+    data: reassignToStatusId ? { reassignToStatusId } : undefined,
+  });
 }
 
 export async function createTaskComment(taskId: string, content: string): Promise<TaskComment> {

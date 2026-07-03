@@ -80,7 +80,40 @@ async function ensureSprints(project, sprintData) {
   return sprints;
 }
 
-async function ensureTasks(project, users, sprints, taskData) {
+// Every demo project gets the same 5 default workflow statuses that a freshly migrated
+// project would have (see the SCRUM-230 custom-statuses migration): 2 TODO-category statuses
+// (Backlog is the creation default, To Do is the sprint-entry default), 2 IN_PROGRESS-category
+// statuses, and 1 DONE-category status.
+const STATUS_DEFAULTS = [
+  { key: 'BACKLOG', name: 'Backlog', category: 'TODO', order: 0, isBacklogDefault: true, isSprintDefault: false },
+  { key: 'TODO', name: 'To Do', category: 'TODO', order: 1, isBacklogDefault: false, isSprintDefault: true },
+  { key: 'IN_PROGRESS', name: 'In Progress', category: 'IN_PROGRESS', order: 2, isBacklogDefault: false, isSprintDefault: false },
+  { key: 'IN_REVIEW', name: 'In Review', category: 'IN_PROGRESS', order: 3, isBacklogDefault: false, isSprintDefault: false },
+  { key: 'DONE', name: 'Done', category: 'DONE', order: 4, isBacklogDefault: false, isSprintDefault: false },
+];
+
+async function ensureProjectStatuses(project) {
+  const statuses = {};
+
+  for (const definition of STATUS_DEFAULTS) {
+    statuses[definition.key] = await prisma.projectStatus.upsert({
+      where: { projectId_name: { projectId: project.id, name: definition.name } },
+      update: {},
+      create: {
+        name: definition.name,
+        category: definition.category,
+        order: definition.order,
+        isBacklogDefault: definition.isBacklogDefault,
+        isSprintDefault: definition.isSprintDefault,
+        projectId: project.id,
+      },
+    });
+  }
+
+  return statuses;
+}
+
+async function ensureTasks(project, users, sprints, statuses, taskData) {
   const tasks = {};
 
   for (const task of taskData) {
@@ -92,7 +125,7 @@ async function ensureTasks(project, users, sprints, taskData) {
         title,
         description,
         acceptanceCriteria: `- ${title} is visible in the demo dataset\n- Status, priority, assignee, labels, and due date support filtering\n- Presenter can explain the project value`,
-        status,
+        statusId: statuses[status].id,
         priority,
         labels,
         dueDate,
@@ -257,7 +290,9 @@ async function seedAiProjectManagementHub(users) {
     ['sprint2', 'Sprint 2 - AI Workflow Polish', 'AI planning, dashboards, notifications, and demo readiness', fixedDate('2025-06-23'), fixedDate('2025-07-04'), false],
   ]);
 
-  const tasks = await ensureTasks(project, users, sprints, [
+  const statuses = await ensureProjectStatuses(project);
+
+  const tasks = await ensureTasks(project, users, sprints, statuses, [
     ['auth', 'Set up authentication system', 'JWT-based register, login, logout, token refresh, and protected API routes.', 'IN_PROGRESS', 'HIGH', 'sprint1', 'yehia', 'yehia', ['auth', 'backend', 'security'], fixedDate('2025-06-13')],
     ['kanban', 'Build Kanban board UI', 'Drag and drop board with backlog, todo, in progress, review, and done columns.', 'TODO', 'HIGH', 'sprint1', 'taimour', 'yehia', ['frontend', 'kanban'], fixedDate('2025-06-16')],
     ['schema', 'Design database schema', 'Prisma schema with users, projects, members, sprints, tasks, comments, documents, and notifications.', 'DONE', 'URGENT', 'sprint1', 'yehia', 'yehia', ['database', 'prisma'], fixedDate('2025-06-10')],
@@ -362,7 +397,9 @@ async function seedSmartCampusOperationsPlatform(users) {
     ['sprint3', 'Sprint 3 - Analytics And Operations Control', 'Deliver the operations dashboard, board workflow, AI planning support, and release readiness.', daysFromNow(0), daysFromNow(13), true],
   ]);
 
-  const tasks = await ensureTasks(project, users, sprints, [
+  const statuses = await ensureProjectStatuses(project);
+
+  const tasks = await ensureTasks(project, users, sprints, statuses, [
     ['auth-sso', 'Configure campus SSO login', 'Allow students, faculty, and operations staff to sign in with institutional credentials.', 'DONE', 'URGENT', 'sprint1', 'yehia', 'hadi', ['auth', 'security', 'frontend'], daysFromNow(-24)],
     ['request-schema', 'Model maintenance request data', 'Create data fields for request category, location, severity, SLA, assignee, and requester.', 'DONE', 'HIGH', 'sprint1', 'abed', 'yehia', ['backend', 'database', 'maintenance'], daysFromNow(-23)],
     ['request-intake', 'Build maintenance request intake form', 'Create a guided form for reporting facility issues from desktop and mobile.', 'DONE', 'HIGH', 'sprint1', 'maya', 'hadi', ['frontend', 'maintenance', 'forms'], daysFromNow(-22)],
