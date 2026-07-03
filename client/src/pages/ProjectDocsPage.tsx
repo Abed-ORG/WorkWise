@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useParams } from 'react-router-dom';
 import Breadcrumbs from '../components/Breadcrumbs';
 import Icon from '../components/Icon';
+import PageHeader from '../components/PageHeader';
 import RichTextEditor from '../components/RichTextEditor';
 import { Button, Spinner } from '../components/ui';
 import PageSkeleton from '../components/PageSkeleton';
