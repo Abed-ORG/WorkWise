@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import Icon from './Icon';
+import { Select } from './ui';
 import {
   getNotifications,
   markAllNotificationsRead,
@@ -19,6 +20,7 @@ const preferenceLabels: Record<NotificationPreference, string> = {
   MENTIONS_ONLY: 'Mentions only',
   NONE: 'None',
 };
+const preferenceOptions = Object.entries(preferenceLabels).map(([value, label]) => ({ value, label }));
 
 function formatTime(value: string) {
   return new Intl.DateTimeFormat(undefined, {
@@ -120,17 +122,18 @@ export default function NotificationBell() {
           </button>
         </div>
 
-        <label className="notification-preference">
+        <div className="notification-preference">
           <span>Preference</span>
-          <select value={preference} onChange={(event) => handlePreferenceChange(event.target.value as NotificationPreference)}>
-            {Object.entries(preferenceLabels).map(([value, label]) => (
-              <option key={value} value={value}>{label}</option>
-            ))}
-          </select>
-        </label>
+          <Select
+            aria-label="Notification preference"
+            value={preference}
+            options={preferenceOptions}
+            onChange={(event) => handlePreferenceChange(event.target.value as NotificationPreference)}
+          />
+        </div>
 
         <button type="button" className="text-button notification-settings-link" onClick={handleOpenNotificationSettings}>
-          <Icon name="settings" size={14} /> Per-project notification settings
+          <Icon name="settings" size={14} /> Notification settings
         </button>
 
         <div className="notification-list">

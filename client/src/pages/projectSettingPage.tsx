@@ -10,6 +10,7 @@ import { Button, Input, Modal, Select, Spinner, Textarea } from '../components/u
 import PageSkeleton from '../components/PageSkeleton';
 import { useAuth } from '../hooks/useAuth';
 import { useToast } from '../hooks/useToast';
+import { getInitials } from '../utils/initials';
 import {
   getProjectById,
   updateProject,
@@ -175,7 +176,7 @@ export default function ProjectSettingsPage() {
             {project.members.map((member) => (
               <div className="member-row" key={member.id}>
                 <div className="member-info">
-                  <span className="avatar">{member.user.name.slice(0, 2).toUpperCase()}</span>
+                  <span className="avatar">{getInitials(member.user.name)}</span>
                   <div><strong>{member.user.name}</strong><span>{member.user.email}</span></div>
                 </div>
                 <div className="member-actions">

@@ -24,6 +24,7 @@ import { getProjectTasks } from '../services/taskService';
 import type { Task } from '../services/taskService';
 import { queryKeys, queryTimes } from '../services/queryOptions';
 import { calculateProjectHealth } from '../utils/projectAnalytics';
+import { getInitials } from '../utils/initials';
 import { isDone } from '../utils/taskStatus';
 
 
@@ -233,7 +234,7 @@ export default function ProjectOverviewPage() {
 
       <section className="app-card card-padding animate-enter-delay project-team-card">
         <div className="section-heading"><div><h2>Project team</h2><p>People who can collaborate in this workspace.</p></div></div>
-        <div className="focus-list">{project.members?.map((member) => <div className="focus-item" key={member.id}><span className="avatar">{member.user.name.slice(0, 2).toUpperCase()}</span><span className="focus-copy"><strong>{member.user.name}</strong><span>{member.role.toLowerCase()}</span></span></div>)}</div>
+        <div className="focus-list">{project.members?.map((member) => <div className="focus-item" key={member.id}><span className="avatar">{getInitials(member.user.name)}</span><span className="focus-copy"><strong>{member.user.name}</strong><span>{member.role.toLowerCase()}</span></span></div>)}</div>
       </section>
 
 <CreateTaskModal isOpen={createOpen} projectId={projectId} members={project.members ?? []} onClose={() => setCreateOpen(false)} onCreated={(task) => {

@@ -1,5 +1,6 @@
 import Icon from './Icon';
 import type { ProjectHealth, BurndownPoint, ContributionMetric, VelocityPoint, CumulativeFlowPoint } from '../utils/projectAnalytics';
+import { getInitials } from '../utils/initials';
 
 interface BurndownChartProps {
   points: BurndownPoint[];
@@ -114,7 +115,7 @@ export function ContributionMetrics({ metrics }: ContributionMetricsProps) {
         return (
           <article className="contribution-card" key={metric.userId}>
             <div className="contribution-head">
-              <span className="avatar">{metric.name.slice(0, 2).toUpperCase()}</span>
+              <span className="avatar">{getInitials(metric.name)}</span>
               <span><strong>{metric.name}</strong><small>{metric.role.toLowerCase().replace(/^\w/, (letter) => letter.toUpperCase())}</small></span>
             </div>
             <div className="contribution-bar"><i style={{ width: `${Math.max(4, (total / maxValue) * 100)}%` }} /></div>

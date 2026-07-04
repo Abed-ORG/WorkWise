@@ -1,5 +1,7 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Outlet } from 'react-router-dom';
+import { BreadcrumbContext } from '../context/breadcrumb-context';
+import type { BreadcrumbItem } from '../context/breadcrumb-context';
 import Header from './Header';
 import Sidebar from './Sidebar';
 import OnboardingWizard from './OnboardingWizard';
@@ -7,6 +9,11 @@ import OnboardingWizard from './OnboardingWizard';
 export default function AppShell() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(() => localStorage.getItem('workwise-sidebar-collapsed') === 'true');
+  const [breadcrumbItems, setBreadcrumbItems] = useState<BreadcrumbItem[]>([]);
+  const breadcrumbContextValue = useMemo(
+    () => ({ items: breadcrumbItems, setItems: setBreadcrumbItems }),
+    [breadcrumbItems],
+  );
 
   function toggleSidebarCollapsed() {
     setIsSidebarCollapsed((current) => {
@@ -16,17 +23,19 @@ export default function AppShell() {
   }
 
   return (
-    <div className={`app-shell${isSidebarCollapsed ? ' sidebar-collapsed' : ''}`}>
-      <Sidebar isOpen={isSidebarOpen} collapsed={isSidebarCollapsed} onCollapseToggle={toggleSidebarCollapsed} onClose={() => setIsSidebarOpen(false)} />
-      <OnboardingWizard />
-      <div className="app-main">
-        <Header onMenuToggle={() => setIsSidebarOpen((current) => !current)} />
-        <main className="app-content">
-          <div className="content-container">
-            <Outlet />
-          </div>
-        </main>
+    <BreadcrumbContext.Provider value={breadcrumbContextValue}>
+      <div className={`app-shell${isSidebarCollapsed ? ' sidebar-collapsed' : ''}`}>
+        <Sidebar isOpen={isSidebarOpen} collapsed={isSidebarCollapsed} onCollapseToggle={toggleSidebarCollapsed} onClose={() => setIsSidebarOpen(false)} />
+        <OnboardingWizard />
+        <div className="app-main">
+          <Header breadcrumbs={breadcrumbItems} onMenuToggle={() => setIsSidebarOpen((current) => !current)} />
+          <main className="app-content">
+            <div className="content-container">
+              <Outlet />
+            </div>
+          </main>
+        </div>
       </div>
-    </div>
+    </BreadcrumbContext.Provider>
   );
 }

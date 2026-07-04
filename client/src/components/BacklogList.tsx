@@ -12,6 +12,7 @@ import { parseTaskQuery } from '../services/aiService';
 import type { TaskSearchFilters } from '../services/aiService';
 import { isOpenSprintMoveTarget } from '../utils/sprintOptions';
 import { queryKeys, queryTimes } from '../services/queryOptions';
+import { getInitials } from '../utils/initials';
 
 type SortKey = 'title' | 'status' | 'priority' | 'assignee' | 'project' | 'dueDate';
 type SortDirection = 'asc' | 'desc';
@@ -46,11 +47,6 @@ interface BacklogListProps {
 }
 
 const visibleAssigneeCount = 6;
-
-function getInitials(name?: string) {
-  if (!name) return '?';
-  return name.split(' ').map((part) => part[0]).join('').slice(0, 2).toUpperCase();
-}
 
 function getTaskLocation(task: Task) {
   return task.sprint?.name ?? (task.sprintId ? 'Sprint' : 'Product backlog');
@@ -642,20 +638,31 @@ export default function BacklogList({
             </button>
           )}
           {onBulkUpdate && (
-            <div className="backlog-bulk-update-fields" aria-label="Bulk update fields">
-              <select aria-label="Bulk status" value={bulkStatus} onChange={(event) => setBulkStatus(event.target.value)} disabled={isProcessing}>
-                <option value="">— status —</option>
-                {statusOptions.slice(1).map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-              </select>
-              <select aria-label="Bulk priority" value={bulkPriority} onChange={(event) => setBulkPriority(event.target.value)} disabled={isProcessing}>
-                <option value="">— priority —</option>
-                {priorityOptions.slice(1).map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-              </select>
-              <select aria-label="Bulk assignee" value={bulkAssignee} onChange={(event) => setBulkAssignee(event.target.value)} disabled={isProcessing}>
-                <option value="">— assignee —</option>
-                <option value="__unassigned__">Unassigned</option>
-                {assignees.map((assignee) => <option key={assignee.id} value={assignee.id}>{assignee.name}</option>)}
-              </select>
+            <div className="bulk-update-fields" aria-label="Bulk update fields">
+              <Select
+                aria-label="Bulk status"
+                value={bulkStatus}
+                placeholder="Status"
+                options={statusOptions.slice(1)}
+                disabled={isProcessing}
+                onChange={(event) => setBulkStatus(event.target.value)}
+              />
+              <Select
+                aria-label="Bulk priority"
+                value={bulkPriority}
+                placeholder="Priority"
+                options={priorityOptions.slice(1)}
+                disabled={isProcessing}
+                onChange={(event) => setBulkPriority(event.target.value)}
+              />
+              <Select
+                aria-label="Bulk assignee"
+                value={bulkAssignee}
+                placeholder="Assignee"
+                options={[{ value: '__unassigned__', label: 'Unassigned' }, ...assignees.map((assignee) => ({ value: assignee.id, label: assignee.name }))]}
+                disabled={isProcessing}
+                onChange={(event) => setBulkAssignee(event.target.value)}
+              />
               <button type="button" className="backlog-bottom-action" disabled={isProcessing || (!bulkStatus && !bulkPriority && !bulkAssignee)} onClick={applyBulkUpdate}>
                 Apply changes
               </button>

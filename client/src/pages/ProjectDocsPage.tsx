@@ -3,7 +3,6 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useParams } from 'react-router-dom';
 import Breadcrumbs from '../components/Breadcrumbs';
 import Icon from '../components/Icon';
-import PageHeader from '../components/PageHeader';
 import RichTextEditor from '../components/RichTextEditor';
 import { Button, Spinner } from '../components/ui';
 import PageSkeleton from '../components/PageSkeleton';
@@ -279,12 +278,6 @@ export default function ProjectDocsPage() {
           { label: project.name, to: `/projects/${projectId}` },
           { label: 'Docs' },
         ]}
-      />
-
-      <PageHeader
-        eyebrow={project.key}
-        title="Documentation"
-        description="Capture the project brief, decisions, implementation notes, and sprint context."
       />
 
       <section className="app-card card-padding animate-enter-delay project-document-card">

@@ -1,6 +1,7 @@
 import type { DragEvent } from 'react';
 import Icon from './Icon';
 import type { Task } from '../services/taskService';
+import { getInitials } from '../utils/initials';
 import { isDone } from '../utils/taskStatus';
 
 interface TaskCardProps {
@@ -11,16 +12,6 @@ interface TaskCardProps {
   onClick?: () => void;
   selected?: boolean;
   onSelect?: (selected: boolean) => void;
-}
-
-function getInitials(name?: string) {
-  if (!name) return '?';
-  return name
-    .split(' ')
-    .map((part) => part[0])
-    .join('')
-    .slice(0, 2)
-    .toUpperCase();
 }
 
 function formatDueDate(value?: string | null) {
@@ -43,12 +34,10 @@ export default function TaskCard({ task, dragging = false, onDragStart, onDragEn
       tabIndex={0}
       aria-label={`${task.title}, ${task.priority.toLowerCase()} priority`}
     >
-      {onSelect && <label className="task-card-selector" onClick={(event) => event.stopPropagation()}><input type="checkbox" checked={selected} onChange={(event) => onSelect(event.target.checked)} aria-label={`Select ${task.title}`} /></label>}
+      {onSelect && <label className="task-card-selector" onClick={(event) => event.stopPropagation()}><input className="themed-checkbox" type="checkbox" checked={selected} onChange={(event) => onSelect(event.target.checked)} aria-label={`Select ${task.title}`} /></label>}
       <div className="task-card-topline">
         <span className="task-priority-dot" aria-hidden="true" />
         <span className="task-priority-label">{task.priority.toLowerCase()}</span>
-        <span className="task-status-label">{task.status.name}</span>
-        <span className="task-drag-handle" aria-hidden="true"><Icon name="menu" size={15} /></span>
       </div>
 
       <h3>{task.title}</h3>

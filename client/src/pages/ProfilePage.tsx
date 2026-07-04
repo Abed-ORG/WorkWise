@@ -24,6 +24,7 @@ import {
 import { useAuth } from '../hooks/useAuth';
 import { useToast } from '../hooks/useToast';
 import { queryKeys, queryTimes } from '../services/queryOptions';
+import { getInitials } from '../utils/initials';
 import { isDone } from '../utils/taskStatus';
 
 interface FormState {
@@ -153,13 +154,6 @@ function resizeBanner(file: File): Promise<string> {
 
     image.src = objectUrl;
   });
-}
-
-function getInitials(name: string): string {
-  const parts = name.trim().split(/\s+/).filter(Boolean);
-  if (parts.length === 0) return '';
-  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
-  return `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase();
 }
 
 function formatRole(role: string) {
@@ -616,8 +610,9 @@ export default function ProfilePage() {
         description="Manage how you appear to teammates across WorkWise."
       />
 
-      <div className="form-layout animate-enter-delay">
-        <section className={`app-card profile-hero${editing ? ' is-editing' : ''}`} style={heroStyle}>
+      <div className="profile-layout animate-enter-delay">
+        <div className="profile-main-stack">
+          <section className={`app-card profile-hero${editing ? ' is-editing' : ''}`} style={heroStyle}>
           <div className={`profile-banner${bannerImageUrl ? ' has-image' : ''}`}>
             {editing && (
               <div className="profile-banner-editor">
@@ -810,7 +805,115 @@ export default function ProfilePage() {
               </Button>
             </div>
           )}
-        </section>
+          </section>
+
+          <div className="settings-stack profile-settings-stack">
+            <Card title="Email address" className="tip-card">
+              {emailStep === 'request' ? (
+                <form className="form-stack" onSubmit={handleRequestEmailChange} noValidate>
+                  <p className="field-help">
+                    Current email: <strong>{profile.email}</strong>
+                  </p>
+
+                  <Input
+                    label="New email address"
+                    type="email"
+                    value={newEmailInput}
+                    onChange={(event) => {
+                      setNewEmailInput(event.target.value);
+                      setEmailChangeErrors((current) => ({ ...current, newEmail: undefined }));
+                    }}
+                    error={emailChangeErrors.newEmail}
+                    autoComplete="email"
+                  />
+
+                  <div>
+                    <Button type="submit" loading={requestingEmailChange}>
+                      Send verification code
+                    </Button>
+                  </div>
+                </form>
+              ) : (
+                <form className="form-stack" onSubmit={handleConfirmEmailChange} noValidate>
+                  <div className="auth-note mt-0">
+                    <Icon name="sparkles" size={17} />
+                    <span className="focus-copy">
+                      We sent a verification code to <strong>{pendingEmail}</strong>. Enter it below to confirm the change.
+                    </span>
+                  </div>
+
+                  <Input
+                    label="Verification code"
+                    value={verificationCode}
+                    onChange={(event) => {
+                      setVerificationCode(event.target.value);
+                      setEmailChangeErrors((current) => ({ ...current, code: undefined }));
+                    }}
+                    error={emailChangeErrors.code}
+                    autoComplete="one-time-code"
+                  />
+
+                  <div className="flex gap-2">
+                    <Button type="submit" loading={confirmingEmailChange}>
+                      Confirm change
+                    </Button>
+
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      onClick={handleUseDifferentEmail}
+                      disabled={confirmingEmailChange}
+                    >
+                      Use a different email
+                    </Button>
+                  </div>
+                </form>
+              )}
+            </Card>
+
+            <Card title="Change password" className="tip-card">
+              <form className="form-stack" onSubmit={handleChangePassword} noValidate>
+                <Input
+                  label="Current password"
+                  type="password"
+                  value={passwordForm.currentPassword}
+                  onChange={(event) => handlePasswordFieldChange('currentPassword', event.target.value)}
+                  error={passwordErrors.currentPassword}
+                  autoComplete="current-password"
+                />
+
+                <Input
+                  label="New password"
+                  type="password"
+                  value={passwordForm.newPassword}
+                  onChange={(event) => handlePasswordFieldChange('newPassword', event.target.value)}
+                  error={passwordErrors.newPassword}
+                  helperText={passwordErrors.newPassword ? undefined : 'At least 8 characters.'}
+                  autoComplete="new-password"
+                />
+
+                <Input
+                  label="Confirm new password"
+                  type="password"
+                  value={passwordForm.confirmPassword}
+                  onChange={(event) => handlePasswordFieldChange('confirmPassword', event.target.value)}
+                  error={passwordErrors.confirmPassword}
+                  autoComplete="new-password"
+                />
+
+                <div>
+                  <Button type="submit" loading={changingPassword}>
+                    Update password
+                  </Button>
+                </div>
+              </form>
+            </Card>
+
+            <div id="notification-preferences" ref={notificationPreferencesRef}>
+              <ProjectNotificationPreferences />
+            </div>
+          </div>
+        </div>
 
         <aside className="profile-side-stack">
           <Card title="Account details" className="tip-card">
@@ -911,112 +1014,6 @@ export default function ProfilePage() {
           </Card>
         </aside>
 
-        <div className="settings-stack">
-          <Card title="Email address" className="tip-card">
-            {emailStep === 'request' ? (
-              <form className="form-stack" onSubmit={handleRequestEmailChange} noValidate>
-                <p className="field-help">
-                  Current email: <strong>{profile.email}</strong>
-                </p>
-
-                <Input
-                  label="New email address"
-                  type="email"
-                  value={newEmailInput}
-                  onChange={(event) => {
-                    setNewEmailInput(event.target.value);
-                    setEmailChangeErrors((current) => ({ ...current, newEmail: undefined }));
-                  }}
-                  error={emailChangeErrors.newEmail}
-                  autoComplete="email"
-                />
-
-                <div>
-                  <Button type="submit" loading={requestingEmailChange}>
-                    Send verification code
-                  </Button>
-                </div>
-              </form>
-            ) : (
-              <form className="form-stack" onSubmit={handleConfirmEmailChange} noValidate>
-                <div className="auth-note mt-0">
-                  <Icon name="sparkles" size={17} />
-                  <span className="focus-copy">
-                    We sent a verification code to <strong>{pendingEmail}</strong>. Enter it below to confirm the change.
-                  </span>
-                </div>
-
-                <Input
-                  label="Verification code"
-                  value={verificationCode}
-                  onChange={(event) => {
-                    setVerificationCode(event.target.value);
-                    setEmailChangeErrors((current) => ({ ...current, code: undefined }));
-                  }}
-                  error={emailChangeErrors.code}
-                  autoComplete="one-time-code"
-                />
-
-                <div className="flex gap-2">
-                  <Button type="submit" loading={confirmingEmailChange}>
-                    Confirm change
-                  </Button>
-
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    onClick={handleUseDifferentEmail}
-                    disabled={confirmingEmailChange}
-                  >
-                    Use a different email
-                  </Button>
-                </div>
-              </form>
-            )}
-          </Card>
-
-          <Card title="Change password" className="tip-card">
-            <form className="form-stack" onSubmit={handleChangePassword} noValidate>
-              <Input
-                label="Current password"
-                type="password"
-                value={passwordForm.currentPassword}
-                onChange={(event) => handlePasswordFieldChange('currentPassword', event.target.value)}
-                error={passwordErrors.currentPassword}
-                autoComplete="current-password"
-              />
-
-              <Input
-                label="New password"
-                type="password"
-                value={passwordForm.newPassword}
-                onChange={(event) => handlePasswordFieldChange('newPassword', event.target.value)}
-                error={passwordErrors.newPassword}
-                helperText={passwordErrors.newPassword ? undefined : 'At least 8 characters.'}
-                autoComplete="new-password"
-              />
-
-              <Input
-                label="Confirm new password"
-                type="password"
-                value={passwordForm.confirmPassword}
-                onChange={(event) => handlePasswordFieldChange('confirmPassword', event.target.value)}
-                error={passwordErrors.confirmPassword}
-                autoComplete="new-password"
-              />
-
-              <div>
-                <Button type="submit" loading={changingPassword}>
-                  Update password
-                </Button>
-              </div>
-            </form>
-          </Card>
-
-          <div id="notification-preferences" ref={notificationPreferencesRef}>
-            <ProjectNotificationPreferences />
-          </div>
-        </div>
       </div>
 
       <Modal isOpen={shortcutsOpen} onClose={closeShortcuts} className="shortcuts-modal">
