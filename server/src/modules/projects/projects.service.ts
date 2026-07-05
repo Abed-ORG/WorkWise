@@ -1159,6 +1159,21 @@ export class ProjectsService {
         await tx.projectStatus.updateMany({ where: { projectId, isSprintDefault: true }, data: { isSprintDefault: false } });
       }
 
+      if (data.isBacklogDefault) {
+        // The backlog-default status is where new tasks land when no status is chosen. Keep it
+        // first in column order so it's unambiguously "the backlog" wherever statuses are listed,
+        // matching the original (pre-custom-statuses) behavior where Backlog was always first.
+        const siblings = await tx.projectStatus.findMany({
+          where: { projectId, id: { not: statusId } },
+          orderBy: { order: 'asc' },
+          select: { id: true },
+        });
+        const orderedIds = [statusId, ...siblings.map((row) => row.id)];
+        await Promise.all(
+          orderedIds.map((id, index) => tx.projectStatus.update({ where: { id }, data: { order: index } })),
+        );
+      }
+
       return tx.projectStatus.update({
         where: { id: statusId },
         data: {
