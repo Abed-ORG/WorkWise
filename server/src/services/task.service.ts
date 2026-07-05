@@ -447,66 +447,6 @@ const getTaskForTaskFeature = async (taskId: string, userId: string) => {
   return task;
 };
 
-export const getTaskTimeLogs = async (taskId: string, userId: string) => {
-  await getTaskForTaskFeature(taskId, userId);
-
-  const logs = await prisma.timeLog.findMany({
-    where: { taskId },
-    include: { user: { select: { id: true, name: true, email: true } } },
-    orderBy: { createdAt: "desc" },
-  });
-
-  const totalMinutes = logs.reduce((total, log) => total + log.durationMinutes, 0);
-  return { logs, totalMinutes };
-};
-
-export const createTaskTimeLog = async (
-  taskId: string,
-  userId: string,
-  input: { durationMinutes: number; description?: string }
-) => {
-  await getTaskForTaskFeature(taskId, userId);
-
-  if (!Number.isInteger(input.durationMinutes) || input.durationMinutes <= 0) {
-    throw new AppError("durationMinutes must be a positive integer", 400);
-  }
-
-  const log = await prisma.timeLog.create({
-    data: {
-      taskId,
-      userId,
-      durationMinutes: input.durationMinutes,
-      description: input.description?.trim() || undefined,
-    },
-    include: { user: { select: { id: true, name: true, email: true } } },
-  });
-
-  await prisma.taskActivity.create({
-    data: {
-      taskId,
-      userId,
-      action: "TIME_LOGGED",
-      details: `Logged ${input.durationMinutes} minutes`,
-    },
-  });
-
-  return log;
-};
-
-export const deleteTaskTimeLog = async (timeLogId: string, userId: string) => {
-  const log = await prisma.timeLog.findUnique({
-    where: { id: timeLogId },
-    include: { task: { select: { projectId: true } } },
-  });
-
-  if (!log) throw new NotFoundError("Time log not found");
-  const member = await requireProjectMember(log.task.projectId, userId);
-  if (log.userId !== userId && member.role !== Role.ADMIN) {
-    throw new AppError("Only the log owner or a project admin can delete time entries", 403);
-  }
-  await prisma.timeLog.delete({ where: { id: timeLogId } });
-};
-
 export const getTaskChecklistItems = async (taskId: string, userId: string) => {
   await getTaskForTaskFeature(taskId, userId);
 

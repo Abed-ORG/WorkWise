@@ -65,16 +65,6 @@ export interface TaskAttachment {
   createdAt: string;
 }
 
-export interface TaskTimeLog {
-  id: string;
-  taskId: string;
-  userId: string;
-  durationMinutes: number;
-  description?: string | null;
-  createdAt: string;
-  user: TaskUser;
-}
-
 export interface TaskComment {
   id: string;
   content: string;
@@ -220,20 +210,6 @@ export async function updateTaskSubtask(subtaskId: string, payload: Partial<Pick
 
 export async function deleteTaskSubtask(subtaskId: string): Promise<void> {
   await apiClient.delete(`/tasks/subtasks/${subtaskId}`);
-}
-
-export async function getTaskTimeLogs(taskId: string): Promise<{ logs: TaskTimeLog[]; totalMinutes: number }> {
-  const response = await apiClient.get(`/tasks/${taskId}/time-logs`);
-  return response.data.data;
-}
-
-export async function createTaskTimeLog(taskId: string, payload: { durationMinutes: number; description?: string }): Promise<TaskTimeLog> {
-  const response = await apiClient.post(`/tasks/${taskId}/time-logs`, payload);
-  return response.data.data;
-}
-
-export async function deleteTaskTimeLog(timeLogId: string): Promise<void> {
-  await apiClient.delete(`/tasks/time-logs/${timeLogId}`);
 }
 
 export async function getTaskAttachments(taskId: string): Promise<TaskAttachment[]> {

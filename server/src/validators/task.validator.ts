@@ -29,11 +29,6 @@ export const updateTaskSchema = z.object({
   order: z.number().int().optional(),
 });
 
-export const createTimeLogSchema = z.object({
-  durationMinutes: z.number().int().positive(),
-  description: z.string().optional(),
-});
-
 export const createChecklistItemSchema = z.object({
   text: z.string().min(1, "Subtask text is required"),
   order: z.number().int().optional(),

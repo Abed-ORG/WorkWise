@@ -1684,21 +1684,6 @@ input[type='checkbox'].themed-checkbox:disabled { cursor: not-allowed; opacity: 
 .task-estimate-field { gap: 6px; }
 .task-estimate-field .field-control { font-size: 15px; font-weight: 750; }
 
-.time-log-entry-group { display: grid; gap: 10px; padding: 14px; border: 1px solid var(--border); border-radius: 14px; background: var(--surface-raised); }
-.time-log-entry-group .field { gap: 5px; }
-.time-log-entry-group .task-comment-actions { margin-top: 2px; }
-
-.time-log-list { display: grid; gap: 8px; }
-.time-log-item { display: grid; grid-template-columns: 28px minmax(0, 1fr) auto; align-items: flex-start; gap: 10px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface-muted); }
-.time-log-icon { display: inline-flex; width: 28px; height: 28px; align-items: center; justify-content: center; border-radius: 9px; color: var(--ink); background: var(--primary); }
-.time-log-body { min-width: 0; }
-.time-log-body strong { display: block; color: var(--text); font-size: 11px; font-weight: 850; }
-.time-log-body p { margin: 3px 0 4px; color: var(--text-muted); font-size: 12px; line-height: 1.45; overflow-wrap: anywhere; }
-.time-log-body time { color: var(--text-subtle); font-size: 10px; font-weight: 750; }
-.time-log-delete { width: 26px; height: 26px; border-radius: 8px; opacity: .45; transition: opacity .16s ease, color .16s ease; }
-.time-log-item:hover .time-log-delete, .time-log-delete:focus-visible { opacity: 1; }
-.time-log-delete:hover:not(:disabled) { color: var(--danger); opacity: 1; }
-
 .attachment-row.is-clickable { cursor: pointer; transition: border-color .16s ease, background .16s ease; }
 .attachment-row.is-clickable:hover { border-color: var(--border-strong); background: var(--surface-hover); }
 .attachment-row.is-clickable:focus-visible { outline: 3px solid color-mix(in srgb, var(--primary) 55%, transparent); outline-offset: 2px; }

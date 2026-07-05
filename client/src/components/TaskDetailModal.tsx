@@ -7,23 +7,20 @@ import { getProjectById, getProjectSprints } from '../services/projectService';
 import {
   createTaskComment,
   createTaskSubtask,
-  createTaskTimeLog,
   deleteTaskAttachment,
   deleteTaskSubtask,
-  deleteTaskTimeLog,
   downloadTaskAttachment,
   fetchTaskAttachmentBlob,
   getProjectStatuses,
   getTaskAttachments,
   getTaskById,
   getTaskSubtasks,
-  getTaskTimeLogs,
   updateTask,
   updateTaskDocuments,
   updateTaskSubtask,
   uploadTaskAttachment,
 } from '../services/taskService';
-import type { Task, TaskAttachment, TaskChecklistItem, TaskTimeLog } from '../services/taskService';
+import type { Task, TaskAttachment, TaskChecklistItem } from '../services/taskService';
 import { generateAcceptanceCriteria } from '../services/aiService';
 import type { ProjectDocument, ProjectMember, Sprint } from '../services/projectService';
 import { queryKeys, queryTimes } from '../services/queryOptions';
@@ -46,14 +43,6 @@ interface AcceptanceCriterion {
 function formatDate(date?: string | null) {
   if (!date) return 'No due date';
   return new Intl.DateTimeFormat('en', { month: 'short', day: 'numeric', year: 'numeric' }).format(new Date(date));
-}
-
-function formatMinutes(minutes: number) {
-  const hours = Math.floor(minutes / 60);
-  const remainder = minutes % 60;
-  if (hours && remainder) return `${hours}h ${remainder}m`;
-  if (hours) return `${hours}h`;
-  return `${remainder}m`;
 }
 
 function formatFileSize(size: number) {
@@ -136,12 +125,6 @@ export default function TaskDetailModal({ taskId, onClose, onTaskUpdated }: Task
   const [attachmentsMessage, setAttachmentsMessage] = useState('');
   const [imagePreviews, setImagePreviews] = useState<Record<string, string>>({});
   const [lightboxAttachmentId, setLightboxAttachmentId] = useState<string | null>(null);
-  const [timeLogs, setTimeLogs] = useState<TaskTimeLog[]>([]);
-  const [totalTimeMinutes, setTotalTimeMinutes] = useState(0);
-  const [timeAmount, setTimeAmount] = useState('');
-  const [timeDescription, setTimeDescription] = useState('');
-  const [savingTimeLog, setSavingTimeLog] = useState(false);
-  const [timeMessage, setTimeMessage] = useState('');
   const [projectMembers, setProjectMembers] = useState<ProjectMember[]>([]);
   const [descriptionDraft, setDescriptionDraft] = useState('');
   const [estimatedHoursDraft, setEstimatedHoursDraft] = useState('');
@@ -216,8 +199,6 @@ export default function TaskDetailModal({ taskId, onClose, onTaskUpdated }: Task
       setLinkedDocuments([]);
       setSubtasks([]);
       setAttachments([]);
-      setTimeLogs([]);
-      setTotalTimeMinutes(0);
       setProjectMembers([]);
       setImagePreviews({});
       setLightboxAttachmentId(null);
@@ -251,7 +232,6 @@ export default function TaskDetailModal({ taskId, onClose, onTaskUpdated }: Task
     let active = true;
     setSubtasksMessage('');
     setAttachmentsMessage('');
-    setTimeMessage('');
     setImagePreviews({});
 
     const createdPreviewUrls: string[] = [];
@@ -259,14 +239,11 @@ export default function TaskDetailModal({ taskId, onClose, onTaskUpdated }: Task
     Promise.all([
       getTaskSubtasks(taskId),
       getTaskAttachments(taskId),
-      getTaskTimeLogs(taskId),
     ])
-      .then(([nextSubtasks, nextAttachments, timeResult]) => {
+      .then(([nextSubtasks, nextAttachments]) => {
         if (!active) return;
         setSubtasks(nextSubtasks);
         setAttachments(nextAttachments);
-        setTimeLogs(timeResult.logs);
-        setTotalTimeMinutes(timeResult.totalMinutes);
 
         nextAttachments
           .filter((attachment) => attachment.mimeType.startsWith('image/'))
@@ -568,48 +545,6 @@ export default function TaskDetailModal({ taskId, onClose, onTaskUpdated }: Task
       setSubtasksMessage('Could not delete subtask');
     } finally {
       setSavingSubtaskId(null);
-    }
-  }
-
-  async function logTime() {
-    if (!taskId) return;
-    const hours = Number(timeAmount);
-    if (!timeAmount || Number.isNaN(hours) || hours <= 0) {
-      setTimeMessage('Enter time greater than zero');
-      return;
-    }
-    const durationMinutes = Math.max(1, Math.round(hours * 60));
-    setSavingTimeLog(true);
-    setTimeMessage('');
-    try {
-      const log = await createTaskTimeLog(taskId, {
-        durationMinutes,
-        description: timeDescription.trim() || undefined,
-      });
-      setTimeLogs((current) => [log, ...current]);
-      setTotalTimeMinutes((current) => current + log.durationMinutes);
-      setTimeAmount('');
-      setTimeDescription('');
-      setTimeMessage('Logged');
-    } catch {
-      setTimeMessage('Could not log time');
-    } finally {
-      setSavingTimeLog(false);
-    }
-  }
-
-  async function removeTimeLog(log: TaskTimeLog) {
-    setTimeMessage('');
-    const previousLogs = timeLogs;
-    const previousTotal = totalTimeMinutes;
-    setTimeLogs((current) => current.filter((item) => item.id !== log.id));
-    setTotalTimeMinutes((current) => Math.max(0, current - log.durationMinutes));
-    try {
-      await deleteTaskTimeLog(log.id);
-    } catch {
-      setTimeLogs(previousLogs);
-      setTotalTimeMinutes(previousTotal);
-      setTimeMessage('Could not delete time log');
     }
   }
 
@@ -946,62 +881,6 @@ export default function TaskDetailModal({ taskId, onClose, onTaskUpdated }: Task
                     placeholder="No estimate"
                   />
                 </label>
-              </section>
-
-              <section className="task-detail-section">
-                <div className="task-detail-section-heading">
-                  <h3>Time tracking</h3>
-                  <span>{savingTimeLog ? 'Saving...' : timeMessage}</span>
-                </div>
-                <div className="task-detail-fields">
-                  <div><span>Estimated</span><strong>{task.estimatedHours ? `${task.estimatedHours}h` : 'None'}</strong></div>
-                  <div><span>Logged</span><strong>{formatMinutes(totalTimeMinutes)}</strong></div>
-                </div>
-
-                <div className="time-log-entry-group">
-                  <label className="field">
-                    <span className="field-label">Hours</span>
-                    <input
-                      className="field-control"
-                      type="number"
-                      min="0"
-                      step="0.25"
-                      value={timeAmount}
-                      onChange={(event) => {
-                        setTimeAmount(event.target.value);
-                        setTimeMessage('');
-                      }}
-                      disabled={savingTimeLog}
-                      placeholder="1.5"
-                    />
-                  </label>
-                  <textarea
-                    className="task-description-field task-comment-input"
-                    value={timeDescription}
-                    onChange={(event) => setTimeDescription(event.target.value)}
-                    disabled={savingTimeLog}
-                    rows={2}
-                    placeholder="What was worked on?"
-                  />
-                  <div className="task-comment-actions">
-                    <Button onClick={logTime} loading={savingTimeLog} disabled={savingTimeLog || !timeAmount}>Log time</Button>
-                  </div>
-                </div>
-
-                <div className="time-log-list">
-                  {timeLogs.slice(0, 5).map((log) => (
-                    <article className="time-log-item" key={log.id}>
-                      <span className="time-log-icon"><Icon name="clock" size={14} /></span>
-                      <div className="time-log-body">
-                        <strong>{formatMinutes(log.durationMinutes)} by {log.user.name}</strong>
-                        {log.description && <p>{log.description}</p>}
-                        <time>{formatCommentDate(log.createdAt)}</time>
-                      </div>
-                      <button type="button" className="icon-button time-log-delete" onClick={() => removeTimeLog(log)} aria-label="Delete time log"><Icon name="trash" size={13} /></button>
-                    </article>
-                  ))}
-                  {timeLogs.length === 0 && <div className="document-link-empty">No time logged yet.</div>}
-                </div>
               </section>
 
               <section className="task-detail-section">

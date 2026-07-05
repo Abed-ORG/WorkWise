@@ -65,7 +65,6 @@ model User {
   createdTasks        Task[]               @relation("TaskCreator")
   comments            Comment[]
   taskActivities      TaskActivity[]
-  timeLogs            TimeLog[]
   projectActivities   ProjectActivity[]
   notifications       Notification[]
   documents           Document[]
@@ -172,7 +171,6 @@ model Task {
   documents  TaskDocument[]
   checklistItems TaskChecklistItem[]
   attachments Attachment[]
-  timeLogs TimeLog[]
 
   @@index([projectId, statusId])
   @@index([projectId, sprintId])
@@ -235,23 +233,6 @@ model Attachment {
 
   @@index([taskId, createdAt])
   @@map("attachments")
-}
-
-model TimeLog {
-  id              String   @id @default(cuid())
-  durationMinutes Int
-  description     String?
-  createdAt       DateTime @default(now())
-
-  taskId String
-  userId String
-
-  task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([taskId, createdAt])
-  @@index([userId, createdAt])
-  @@map("time_logs")
 }
 
 model Comment {
