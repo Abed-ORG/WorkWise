@@ -31,11 +31,15 @@ export const updateTaskSchema = z.object({
 
 export const createChecklistItemSchema = z.object({
   text: z.string().min(1, "Subtask text is required"),
+  description: z.string().optional(),
+  assigneeId: z.string().optional(),
   order: z.number().int().optional(),
 });
 
 export const updateChecklistItemSchema = z.object({
   text: z.string().min(1, "Subtask text is required").optional(),
+  description: z.string().nullable().optional(),
+  assigneeId: z.string().nullable().optional(),
   completed: z.boolean().optional(),
   order: z.number().int().optional(),
 });

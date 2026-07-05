@@ -51,8 +51,11 @@ export interface TaskChecklistItem {
   id: string;
   taskId: string;
   text: string;
+  description?: string | null;
   completed: boolean;
   order: number;
+  assigneeId?: string | null;
+  assignee?: TaskUser | null;
 }
 
 export interface TaskAttachment {
@@ -198,12 +201,12 @@ export async function getTaskSubtasks(taskId: string): Promise<TaskChecklistItem
   return response.data.data;
 }
 
-export async function createTaskSubtask(taskId: string, text: string): Promise<TaskChecklistItem> {
-  const response = await apiClient.post(`/tasks/${taskId}/subtasks`, { text });
+export async function createTaskSubtask(taskId: string, text: string, extra?: { description?: string; assigneeId?: string }): Promise<TaskChecklistItem> {
+  const response = await apiClient.post(`/tasks/${taskId}/subtasks`, { text, ...extra });
   return response.data.data;
 }
 
-export async function updateTaskSubtask(subtaskId: string, payload: Partial<Pick<TaskChecklistItem, 'text' | 'completed' | 'order'>>): Promise<TaskChecklistItem> {
+export async function updateTaskSubtask(subtaskId: string, payload: Partial<Pick<TaskChecklistItem, 'text' | 'completed' | 'order' | 'description' | 'assigneeId'>>): Promise<TaskChecklistItem> {
   const response = await apiClient.patch(`/tasks/subtasks/${subtaskId}`, payload);
   return response.data.data;
 }

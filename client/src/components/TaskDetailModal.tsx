@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type DragEvent } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import DocumentLinkPicker from './DocumentLinkPicker';
 import Icon from './Icon';
+import SubtaskDetailModal from './SubtaskDetailModal';
 import { Button, Modal, Select, Spinner } from './ui';
 import { getProjectById, getProjectSprints } from '../services/projectService';
 import {
@@ -114,6 +115,7 @@ export default function TaskDetailModal({ taskId, onClose, onTaskUpdated }: Task
   const [subtaskDraft, setSubtaskDraft] = useState('');
   const [savingSubtaskId, setSavingSubtaskId] = useState<string | null>(null);
   const [subtasksMessage, setSubtasksMessage] = useState('');
+  const [openSubtaskId, setOpenSubtaskId] = useState<string | null>(null);
   const [attachments, setAttachments] = useState<TaskAttachment[]>([]);
   const [uploadingAttachment, setUploadingAttachment] = useState(false);
   const [attachmentDragActive, setAttachmentDragActive] = useState(false);
@@ -528,6 +530,10 @@ export default function TaskDetailModal({ taskId, onClose, onTaskUpdated }: Task
     }
   }
 
+  function handleSubtaskUpdated(updated: TaskChecklistItem) {
+    setSubtasks((current) => current.map((subtask) => subtask.id === updated.id ? updated : subtask));
+  }
+
   async function removeSubtask(item: TaskChecklistItem) {
     setSavingSubtaskId(item.id);
     setSubtasksMessage('');
@@ -702,9 +708,9 @@ export default function TaskDetailModal({ taskId, onClose, onTaskUpdated }: Task
                   <h3>Subtasks</h3>
                   <span>{savingSubtaskId ? 'Saving...' : subtasksMessage}</span>
                 </div>
-                <div className="acceptance-checklist">
+                <div className="subtask-list">
                   {subtasks.map((item) => (
-                    <div className="acceptance-checklist-item" key={item.id}>
+                    <div className="subtask-row" key={item.id}>
                       <input
                         type="checkbox"
                         checked={item.completed}
@@ -712,13 +718,16 @@ export default function TaskDetailModal({ taskId, onClose, onTaskUpdated }: Task
                         onChange={() => toggleSubtask(item)}
                         aria-label="Mark subtask complete"
                       />
-                      <textarea
-                        className="acceptance-checklist-input"
-                        value={item.text}
-                        disabled
-                        rows={getCriterionRows(item.text)}
-                        aria-label="Subtask"
-                      />
+                      <button
+                        type="button"
+                        className={`subtask-row-open ${item.completed ? 'is-complete' : ''}`}
+                        onClick={() => setOpenSubtaskId(item.id)}
+                      >
+                        <span className="subtask-row-text">{item.text}</span>
+                        {item.assignee && (
+                          <span className="mini-avatar" title={item.assignee.name}>{getInitials(item.assignee.name)}</span>
+                        )}
+                      </button>
                       <button type="button" className="icon-button acceptance-delete-button" onClick={() => removeSubtask(item)} disabled={savingSubtaskId === item.id} aria-label="Delete subtask">
                         <Icon name="trash" size={15} />
                       </button>
@@ -1048,6 +1057,12 @@ export default function TaskDetailModal({ taskId, onClose, onTaskUpdated }: Task
         />
       </div>
     )}
+    <SubtaskDetailModal
+      subtask={subtasks.find((item) => item.id === openSubtaskId) ?? null}
+      members={projectMembers}
+      onClose={() => setOpenSubtaskId(null)}
+      onUpdated={handleSubtaskUpdated}
+    />
     </>
   );
 }

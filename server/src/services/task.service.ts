@@ -447,11 +447,14 @@ const getTaskForTaskFeature = async (taskId: string, userId: string) => {
   return task;
 };
 
+const subtaskAssigneeSelect = { id: true, name: true, email: true, avatarUrl: true } as const;
+
 export const getTaskChecklistItems = async (taskId: string, userId: string) => {
   await getTaskForTaskFeature(taskId, userId);
 
   return prisma.taskChecklistItem.findMany({
     where: { taskId },
+    include: { assignee: { select: subtaskAssigneeSelect } },
     orderBy: [{ order: "asc" }, { id: "asc" }],
   });
 };
@@ -459,11 +462,15 @@ export const getTaskChecklistItems = async (taskId: string, userId: string) => {
 export const createTaskChecklistItem = async (
   taskId: string,
   userId: string,
-  input: { text: string; order?: number }
+  input: { text: string; description?: string; assigneeId?: string; order?: number }
 ) => {
-  await getTaskForTaskFeature(taskId, userId);
+  const task = await getTaskForTaskFeature(taskId, userId);
   const text = input.text.trim();
   if (!text) throw new AppError("Subtask text is required", 400);
+
+  if (input.assigneeId) {
+    await requireProjectMember(task.projectId, input.assigneeId);
+  }
 
   const order = input.order ?? await prisma.taskChecklistItem.count({ where: { taskId } });
 
@@ -471,15 +478,18 @@ export const createTaskChecklistItem = async (
     data: {
       taskId,
       text,
+      description: input.description,
+      assigneeId: input.assigneeId,
       order,
     },
+    include: { assignee: { select: subtaskAssigneeSelect } },
   });
 };
 
 export const updateTaskChecklistItem = async (
   subtaskId: string,
   userId: string,
-  input: { text?: string; completed?: boolean; order?: number }
+  input: { text?: string; description?: string | null; assigneeId?: string | null; completed?: boolean; order?: number }
 ) => {
   const item = await prisma.taskChecklistItem.findUnique({
     where: { id: subtaskId },
@@ -492,13 +502,20 @@ export const updateTaskChecklistItem = async (
   const text = input.text === undefined ? undefined : input.text.trim();
   if (text !== undefined && !text) throw new AppError("Subtask text is required", 400);
 
+  if (input.assigneeId) {
+    await requireProjectMember(item.task.projectId, input.assigneeId);
+  }
+
   return prisma.taskChecklistItem.update({
     where: { id: subtaskId },
     data: {
       text,
+      description: input.description,
+      assigneeId: input.assigneeId,
       completed: input.completed,
       order: input.order,
     },
+    include: { assignee: { select: subtaskAssigneeSelect } },
   });
 };
 

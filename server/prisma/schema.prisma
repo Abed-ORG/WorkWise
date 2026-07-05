@@ -75,6 +75,7 @@ model User {
   generatedDigests    DailyDigest[]        @relation("DailyDigestGenerator")
   generatedRetros     SprintRetrospective[] @relation("SprintRetroGenerator")
   uploadedAttachments Attachment[]
+  assignedSubtasks    TaskChecklistItem[] @relation("SubtaskAssignee")
 
   @@map("users")
 }
@@ -204,16 +205,20 @@ model ProjectStatus {
 }
 
 model TaskChecklistItem {
-  id        String   @id @default(cuid())
-  text      String
-  completed Boolean  @default(false)
-  order     Int
+  id          String   @id @default(cuid())
+  text        String
+  completed   Boolean  @default(false)
+  order       Int
+  description String?
+  assigneeId  String?
 
   taskId String
 
-  task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  task     Task  @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  assignee User? @relation("SubtaskAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
 
   @@index([taskId, order])
+  @@index([assigneeId])
   @@map("task_checklist_items")
 }
 
