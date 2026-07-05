@@ -1680,7 +1680,6 @@ input[type='checkbox'].themed-checkbox:disabled { cursor: not-allowed; opacity: 
 .task-detail-sidebar .linked-document-copy span { font-size: 10px; }
 .task-detail-sidebar .linked-document-row .btn { min-height: 30px; padding: 0 8px; font-size: 10px; }
 
-.task-estimate-panel { padding: 16px 18px; border: 1px solid var(--border); border-radius: 14px; background: var(--surface-raised); }
 .task-estimate-field { gap: 6px; }
 .task-estimate-field .field-control { font-size: 15px; font-weight: 750; }
 

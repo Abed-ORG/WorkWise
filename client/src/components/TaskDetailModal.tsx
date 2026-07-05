@@ -40,11 +40,6 @@ interface AcceptanceCriterion {
   done: boolean;
 }
 
-function formatDate(date?: string | null) {
-  if (!date) return 'No due date';
-  return new Intl.DateTimeFormat('en', { month: 'short', day: 'numeric', year: 'numeric' }).format(new Date(date));
-}
-
 function formatFileSize(size: number) {
   if (size >= 1024 * 1024) return `${(size / (1024 * 1024)).toFixed(1)} MB`;
   if (size >= 1024) return `${Math.round(size / 1024)} KB`;
@@ -863,26 +858,6 @@ export default function TaskDetailModal({ taskId, onClose, onTaskUpdated }: Task
             </main>
 
             <aside className="task-detail-sidebar">
-              <section className="task-estimate-panel">
-                <label className="field task-estimate-field">
-                  <span className="field-label">Estimated hours</span>
-                  <input
-                    className="field-control"
-                    type="number"
-                    min="0"
-                    step="0.25"
-                    value={estimatedHoursDraft}
-                    onChange={(event) => {
-                      setEstimatedHoursDraft(event.target.value);
-                      setDetailsMessage('');
-                    }}
-                    onBlur={saveEstimatedHours}
-                    disabled={savingDetails}
-                    placeholder="No estimate"
-                  />
-                </label>
-              </section>
-
               <section className="task-detail-section">
                 <div className="task-detail-section-heading">
                   <h3>Attachments</h3>
@@ -983,7 +958,6 @@ export default function TaskDetailModal({ taskId, onClose, onTaskUpdated }: Task
                 </div>
                 <div className="task-detail-meta">
                   <span className={`priority-badge priority-${task.priority.toLowerCase()}`}><span />{task.priority.toLowerCase()}</span>
-                  <span className="due-date"><Icon name="calendar" size={14} />{formatDate(task.dueDate)}</span>
                 </div>
                 <Select
                   label="Status"
@@ -1013,6 +987,23 @@ export default function TaskDetailModal({ taskId, onClose, onTaskUpdated }: Task
                   disabled={savingDetails}
                   helperText="Assign this task to a project member."
                 />
+                <label className="field task-estimate-field">
+                  <span className="field-label">Estimated hours</span>
+                  <input
+                    className="field-control"
+                    type="number"
+                    min="0"
+                    step="0.25"
+                    value={estimatedHoursDraft}
+                    onChange={(event) => {
+                      setEstimatedHoursDraft(event.target.value);
+                      setDetailsMessage('');
+                    }}
+                    onBlur={saveEstimatedHours}
+                    disabled={savingDetails}
+                    placeholder="No estimate"
+                  />
+                </label>
                 <label className="field">
                   <span className="field-label">Due date</span>
                   <input
