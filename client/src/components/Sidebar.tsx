@@ -53,9 +53,9 @@ export default function Sidebar({ isOpen, onClose, collapsed, onCollapseToggle }
   const projectNavItems: NavItem[] = projectId ? [
     { label: 'Overview', to: `/projects/${projectId}`, icon: 'home', end: true },
     { label: 'Board', to: `/projects/${projectId}/board`, icon: 'board' },
+    { label: 'Sprints', to: `/projects/${projectId}/sprints`, icon: 'flag' },
     { label: 'Backlog', to: `/projects/${projectId}/backlog`, icon: 'tasks' },
     { label: 'Docs', to: `/projects/${projectId}/docs`, icon: 'document' },
-    { label: 'Sprints', to: `/projects/${projectId}/sprints`, icon: 'flag' },
     { label: 'Analytics', to: `/projects/${projectId}/analytics`, icon: 'bar-chart' },
     { label: 'Project settings', to: `/projects/${projectId}/settings`, icon: 'settings' },
   ] : [];
@@ -80,9 +80,10 @@ export default function Sidebar({ isOpen, onClose, collapsed, onCollapseToggle }
                 end={item.to === '/dashboard' || item.to === '/projects'}
                 onClick={onClose}
                 className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
+                title={collapsed ? item.label : undefined}
               >
                 <Icon name={item.icon} size={19} />
-                {item.label}
+                <span className="nav-link-text">{item.label}</span>
               </NavLink>
 
               {item.to === '/projects' && projectNavItems.length > 0 && (
@@ -103,9 +104,10 @@ export default function Sidebar({ isOpen, onClose, collapsed, onCollapseToggle }
                         onClick={onClose}
                         className={({ isActive }) => `nav-link nav-link-sub ${isActive ? 'active' : ''}`}
                         style={{ animationDelay: `${index * 18}ms` }}
+                        title={collapsed ? projectItem.label : undefined}
                       >
                         <Icon name={projectItem.icon} size={17} />
-                        {projectItem.label}
+                        <span className="nav-link-text">{projectItem.label}</span>
                       </NavLink>
                     ))}
                   </div>
