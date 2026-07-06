@@ -149,6 +149,7 @@ model Task {
   description String?
   acceptanceCriteria String?
   estimatedHours Float?
+  storyPoints Int?
   statusId    String
   priority    TaskPriority @default(MEDIUM)
   labels      String[]

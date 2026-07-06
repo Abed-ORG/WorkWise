@@ -12,12 +12,12 @@ import { Button, Spinner } from '../components/ui';
 import PageSkeleton from '../components/PageSkeleton';
 import { useAuth } from '../hooks/useAuth';
 import { useToast } from '../hooks/useToast';
-import { getProjectById, getSprintById } from '../services/projectService';
+import { getProjectById, getProjectSprints, getSprintById } from '../services/projectService';
 import { createTask, getProjectTasks } from '../services/taskService';
 import type { Task } from '../services/taskService';
 import { queryKeys, queryTimes } from '../services/queryOptions';
-import { buildBurndownData } from '../utils/projectAnalytics';
-import { computeSprintCapacity } from '../utils/sprintCapacity';
+import { buildBurndownData, isSprintComplete } from '../utils/projectAnalytics';
+import { computeAverageVelocity, computeSprintCapacity } from '../utils/sprintCapacity';
 import { getSprintRisk } from '../services/aiService';
 import type { SprintRiskResult } from '../services/aiService';
 
@@ -70,6 +70,12 @@ export default function SprintBoardPage() {
     enabled: Boolean(projectId),
     staleTime: queryTimes.tasks,
   });
+  const sprintsListQuery = useQuery({
+    queryKey: queryKeys.projectSprints(projectId ?? ''),
+    queryFn: () => getProjectSprints(projectId!),
+    enabled: Boolean(projectId),
+    staleTime: queryTimes.sprints,
+  });
 
   useEffect(() => {
     if (projectQuery.isError || sprintQuery.isError || tasksQuery.isError) navigate(`/projects/${projectId}/sprints`, { replace: true });
@@ -98,7 +104,10 @@ export default function SprintBoardPage() {
   const sprintTasks = allTasks.filter((t) => t.sprintId === sprintId);
   const days = daysRemaining(sprint.endDate);
   const burndownPoints = buildBurndownData(sprint, allTasks);
-  const sprintCapacity = computeSprintCapacity(sprint, project.members ?? [], sprintTasks);
+  const allSprints = Array.isArray(sprintsListQuery.data) ? sprintsListQuery.data : [];
+  const completedSprints = allSprints.filter(isSprintComplete);
+  const averageVelocity = computeAverageVelocity(completedSprints, allTasks);
+  const sprintCapacity = computeSprintCapacity(sprintTasks, averageVelocity);
 
   async function handleAnalyzeRisk() {
     if (!projectId || !sprintId || riskLoading) return;
@@ -312,8 +321,7 @@ export default function SprintBoardPage() {
           projectId={projectId}
           allTasks={allTasks}
           onTasksChange={setAllTasks}
-          sprint={sprint}
-          members={project.members ?? []}
+          averageVelocity={averageVelocity}
         />
       )}
 

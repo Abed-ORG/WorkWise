@@ -5,7 +5,6 @@ import { Button, Spinner } from './ui';
 import { useToast } from '../hooks/useToast';
 import { moveTaskToSprint, reorderTask } from '../services/taskService';
 import type { Task } from '../services/taskService';
-import type { ProjectMember, Sprint } from '../services/projectService';
 import { getSprintSuggestion } from '../services/aiService';
 import type { SprintSuggestionResult } from '../services/aiService';
 import SprintSuggestionModal from './SprintSuggestionModal';
@@ -16,8 +15,7 @@ interface SprintBacklogPanelProps {
   projectId: string;
   allTasks: Task[];
   onTasksChange: (tasks: Task[]) => void;
-  sprint: Pick<Sprint, 'startDate' | 'endDate'>;
-  members: ProjectMember[];
+  averageVelocity: number | null;
 }
 
 const PRIORITY_ORDER: Record<string, number> = { URGENT: 0, HIGH: 1, MEDIUM: 2, LOW: 3 };
@@ -37,8 +35,7 @@ export default function SprintBacklogPanel({
   projectId,
   allTasks,
   onTasksChange,
-  sprint,
-  members,
+  averageVelocity,
 }: SprintBacklogPanelProps) {
   const toast = useToast();
   const [draggedId, setDraggedId] = useState<string | null>(null);
@@ -63,8 +60,8 @@ export default function SprintBacklogPanel({
   const filteredBacklogTasks = useMemo(() => filterTasks(backlogTasks, backlogSearch), [backlogSearch, backlogTasks]);
   const filteredSprintTasks = useMemo(() => filterTasks(sprintTasks, sprintSearch), [sprintSearch, sprintTasks]);
   const sprintCapacity = useMemo(
-    () => computeSprintCapacity(sprint, members, sprintTasks),
-    [sprint, members, sprintTasks],
+    () => computeSprintCapacity(sprintTasks, averageVelocity),
+    [sprintTasks, averageVelocity],
   );
   const isProcessing = Boolean(busy || bulkAction || suggesting);
   const allBacklogSelected = filteredBacklogTasks.length > 0 && filteredBacklogTasks.every((task) => selectedBacklogIds.includes(task.id));

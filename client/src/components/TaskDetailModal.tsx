@@ -28,6 +28,7 @@ import { queryKeys, queryTimes } from '../services/queryOptions';
 import RichTextEditor from './RichTextEditor';
 import { getInitials } from '../utils/initials';
 import { isOpenSprintMoveTarget, isPastSprintMoveTarget } from '../utils/sprintOptions';
+import { storyPointsSelectOptions } from '../utils/storyPoints';
 
 interface TaskDetailModalProps {
   taskId: string | null;
@@ -124,7 +125,6 @@ export default function TaskDetailModal({ taskId, onClose, onTaskUpdated }: Task
   const [lightboxAttachmentId, setLightboxAttachmentId] = useState<string | null>(null);
   const [projectMembers, setProjectMembers] = useState<ProjectMember[]>([]);
   const [descriptionDraft, setDescriptionDraft] = useState('');
-  const [estimatedHoursDraft, setEstimatedHoursDraft] = useState('');
   const [savingDescription, setSavingDescription] = useState(false);
   const [descriptionMessage, setDescriptionMessage] = useState('');
   const [acceptanceCriteriaItems, setAcceptanceCriteriaItems] = useState<AcceptanceCriterion[]>([]);
@@ -209,7 +209,6 @@ export default function TaskDetailModal({ taskId, onClose, onTaskUpdated }: Task
     setTask(taskQuery.data);
     setLinkedDocuments(taskQuery.data.documents ?? []);
     setDescriptionDraft(taskQuery.data.description ?? '');
-    setEstimatedHoursDraft(taskQuery.data.estimatedHours === null || taskQuery.data.estimatedHours === undefined ? '' : String(taskQuery.data.estimatedHours));
     setDescriptionMessage('');
     const parsedCriteria = parseAcceptanceCriteria(taskQuery.data.acceptanceCriteria);
     setAcceptanceCriteriaItems(parsedCriteria);
@@ -472,26 +471,22 @@ export default function TaskDetailModal({ taskId, onClose, onTaskUpdated }: Task
     }
   }
 
-  async function saveEstimatedHours() {
+  async function updateStoryPoints(value: string) {
     if (!taskId || !task) return;
-    const nextValue = estimatedHoursDraft.trim() ? Number(estimatedHoursDraft) : null;
-    if (Number.isNaN(nextValue) || (nextValue !== null && nextValue < 0)) {
-      setDetailsMessage('Estimate must be zero or more');
-      return;
-    }
-    if ((task.estimatedHours ?? null) === nextValue) return;
+    const nextValue = value ? Number(value) : null;
+    if ((task.storyPoints ?? null) === nextValue) return;
 
     setSavingDetails(true);
     setDetailsMessage('');
     const previousTask = task;
-    cacheTask({ ...task, estimatedHours: nextValue });
+    cacheTask({ ...task, storyPoints: nextValue });
     try {
-      const updatedTask = await updateTask(taskId, { estimatedHours: nextValue });
+      const updatedTask = await updateTask(taskId, { storyPoints: nextValue });
       cacheTask({ ...task, ...updatedTask });
       setDetailsMessage('Saved');
     } catch {
       cacheTask(previousTask);
-      setDetailsMessage('Could not save estimate');
+      setDetailsMessage('Could not save story points');
     } finally {
       setSavingDetails(false);
     }
@@ -996,23 +991,14 @@ export default function TaskDetailModal({ taskId, onClose, onTaskUpdated }: Task
                   disabled={savingDetails}
                   helperText="Assign this task to a project member."
                 />
-                <label className="field task-estimate-field">
-                  <span className="field-label">Estimated hours</span>
-                  <input
-                    className="field-control"
-                    type="number"
-                    min="0"
-                    step="0.25"
-                    value={estimatedHoursDraft}
-                    onChange={(event) => {
-                      setEstimatedHoursDraft(event.target.value);
-                      setDetailsMessage('');
-                    }}
-                    onBlur={saveEstimatedHours}
-                    disabled={savingDetails}
-                    placeholder="No estimate"
-                  />
-                </label>
+                <Select
+                  label="Story points"
+                  value={task.storyPoints ? String(task.storyPoints) : ''}
+                  options={storyPointsSelectOptions}
+                  onChange={(event) => updateStoryPoints(event.target.value)}
+                  disabled={savingDetails}
+                  helperText="Fibonacci-scaled effort estimate for this task."
+                />
                 <label className="field">
                   <span className="field-label">Due date</span>
                   <input

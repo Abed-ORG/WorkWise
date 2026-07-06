@@ -3,6 +3,7 @@ import { Button, Input, Modal, Select, Textarea } from './ui';
 import type { ProjectMember } from '../services/projectService';
 import { createTask } from '../services/taskService';
 import type { Task, TaskPriority } from '../services/taskService';
+import { storyPointsSelectOptions } from '../utils/storyPoints';
 
 interface CreateTaskModalProps {
   isOpen: boolean;
@@ -17,7 +18,7 @@ const initialForm = {
   description: '',
   priority: 'MEDIUM' as TaskPriority,
   assigneeId: '',
-  estimatedHours: '',
+  storyPoints: '',
   labels: '',
   dueDate: '',
 };
@@ -47,7 +48,7 @@ export default function CreateTaskModal({ isOpen, projectId, members, onClose, o
         projectId,
         title,
         description: form.description.trim() || undefined,
-        estimatedHours: form.estimatedHours ? Number(form.estimatedHours) : undefined,
+        storyPoints: form.storyPoints ? Number(form.storyPoints) : undefined,
         priority: form.priority,
         assigneeId: form.assigneeId || undefined,
         labels: form.labels.split(',').map((label) => label.trim()).filter(Boolean),
@@ -78,7 +79,7 @@ export default function CreateTaskModal({ isOpen, projectId, members, onClose, o
           ]} />
         </div>
         <div className="form-grid-2">
-          <Input label="Estimated hours" type="number" min="0" step="0.25" value={form.estimatedHours} onChange={(event) => setForm({ ...form, estimatedHours: event.target.value })} placeholder="4" />
+          <Select label="Story points" value={form.storyPoints} onChange={(event) => setForm({ ...form, storyPoints: event.target.value })} options={storyPointsSelectOptions} />
           <Input label="Labels" value={form.labels} onChange={(event) => setForm({ ...form, labels: event.target.value })} placeholder="frontend, urgent" helperText="Separate labels with commas." />
         </div>
         <div className="form-grid-2">

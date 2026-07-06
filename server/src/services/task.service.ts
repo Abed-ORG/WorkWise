@@ -51,6 +51,7 @@ export interface CreateTaskInput {
   description?: string;
   acceptanceCriteria?: string;
   estimatedHours?: number | null;
+  storyPoints?: number | null;
   priority?: TaskPriority;
   labels?: string[];
   dueDate?: string | null;
@@ -108,6 +109,7 @@ export const createTask = async (input: CreateTaskInput) => {
       description: input.description,
       acceptanceCriteria: input.acceptanceCriteria,
       estimatedHours: input.estimatedHours,
+      storyPoints: input.storyPoints,
       priority: input.priority ?? TaskPriority.MEDIUM,
       statusId: resolvedStatus.id,
       labels: input.labels ?? [],
@@ -313,6 +315,7 @@ export interface UpdateTaskInput {
   description?: string;
   acceptanceCriteria?: string | null;
   estimatedHours?: number | null;
+  storyPoints?: number | null;
   statusId?: string;
   priority?: TaskPriority;
   labels?: string[];
@@ -363,7 +366,8 @@ export const updateTask = async (
       title: input.title,
       description: input.description,
       acceptanceCriteria: input.acceptanceCriteria,
-estimatedHours: input.estimatedHours,
+      estimatedHours: input.estimatedHours,
+      storyPoints: input.storyPoints,
       statusId: nextStatus?.id,
       priority: input.priority,
       labels: input.labels,

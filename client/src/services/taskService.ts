@@ -28,6 +28,7 @@ export interface Task {
   description?: string;
   acceptanceCriteria?: string | null;
   estimatedHours?: number | null;
+  storyPoints?: number | null;
   priority: TaskPriority;
   status: ProjectStatus;
   statusId: string;
@@ -88,6 +89,7 @@ export interface CreateTaskPayload {
   description?: string;
   acceptanceCriteria?: string;
   estimatedHours?: number | null;
+  storyPoints?: number | null;
   priority?: TaskPriority;
   labels?: string[];
   dueDate?: string;
@@ -132,7 +134,7 @@ export async function updateTaskStatus(taskId: string, statusId: string): Promis
   return response.data.data;
 }
 
-export async function updateTask(taskId: string, payload: Partial<Pick<Task, 'title' | 'description' | 'acceptanceCriteria' | 'estimatedHours' | 'priority' | 'labels' | 'dueDate' | 'sprintId'>> & { assigneeId?: string | null; statusId?: string }): Promise<Task> {
+export async function updateTask(taskId: string, payload: Partial<Pick<Task, 'title' | 'description' | 'acceptanceCriteria' | 'estimatedHours' | 'storyPoints' | 'priority' | 'labels' | 'dueDate' | 'sprintId'>> & { assigneeId?: string | null; statusId?: string }): Promise<Task> {
   const response = await apiClient.patch(`/tasks/${taskId}`, payload);
   return response.data.data;
 }
