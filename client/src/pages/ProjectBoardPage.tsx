@@ -144,9 +144,9 @@ export default function ProjectBoardPage() {
           onTasksChange={setTasks}
           onTaskClick={(task) => setSelectedTaskId(task.id)}
           eyebrow={project.key}
-          title="Project board"
-          description="Move work across the board and keep delivery visible."
-          headerAction={isAdmin ? <Button onClick={() => setCreateOpen(true)}><Icon name="plus" size={16} /> Create task</Button> : undefined}
+          title={activeSprint?.name ?? 'No active sprint'}
+          description={activeSprint ? `Move work through ${activeSprint.name} and keep delivery visible.` : 'Start a sprint to display its tasks on the board.'}
+          headerAction={isAdmin && activeSprint ? <Button onClick={() => setCreateOpen(true)}><Icon name="plus" size={16} /> Create task</Button> : undefined}
           assignees={(project.members ?? []).map((member) => ({
             id: member.user.id,
             name: member.user.name,
@@ -157,7 +157,7 @@ export default function ProjectBoardPage() {
           onCreateTask={activeSprint ? handleBoardQuickAdd : undefined}
         />
       </section>
-      <CreateTaskModal isOpen={createOpen} projectId={projectId} members={project.members ?? []} onClose={() => setCreateOpen(false)} onCreated={(task) => {
+      <CreateTaskModal isOpen={createOpen} projectId={projectId} sprintId={activeSprint?.id} members={project.members ?? []} onClose={() => setCreateOpen(false)} onCreated={(task) => {
         queryClient.setQueryData<Task[]>(queryKeys.projectTasks(projectId), (current = []) => upsertTask(current, task));
         queryClient.setQueryData(queryKeys.task(task.id), task);
         toast.success('Task created successfully.');
