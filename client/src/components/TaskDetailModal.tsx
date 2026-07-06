@@ -63,6 +63,13 @@ function dateInputToTaskDate(value: string) {
   return value ? new Date(`${value}T12:00:00.000Z`).toISOString() : null;
 }
 
+function getTextFromHtml(value?: string | null) {
+  if (!value) return '';
+  const container = document.createElement('div');
+  container.innerHTML = value;
+  return container.textContent?.replace(/\u00a0/g, ' ').trim() ?? '';
+}
+
 function createCriterion(text = '', done = false): AcceptanceCriterion {
   return {
     id: typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`,
@@ -128,6 +135,7 @@ export default function TaskDetailModal({ taskId, onClose, onTaskUpdated }: Task
   const [lightboxAttachmentId, setLightboxAttachmentId] = useState<string | null>(null);
   const [projectMembers, setProjectMembers] = useState<ProjectMember[]>([]);
   const [descriptionDraft, setDescriptionDraft] = useState('');
+  const [editingDescription, setEditingDescription] = useState(false);
   const [estimatedDaysDraft, setEstimatedDaysDraft] = useState('');
   const [savingDescription, setSavingDescription] = useState(false);
   const [descriptionMessage, setDescriptionMessage] = useState('');
@@ -213,6 +221,7 @@ export default function TaskDetailModal({ taskId, onClose, onTaskUpdated }: Task
     setTask(taskQuery.data);
     setLinkedDocuments(taskQuery.data.documents ?? []);
     setDescriptionDraft(taskQuery.data.description ?? '');
+    setEditingDescription(false);
     setEstimatedDaysDraft(
       taskQuery.data.estimatedHours === null || taskQuery.data.estimatedHours === undefined
         ? ''
@@ -312,7 +321,11 @@ export default function TaskDetailModal({ taskId, onClose, onTaskUpdated }: Task
   }
 
   async function saveDescription() {
-    if (!taskId || !task || descriptionDraft === (task.description ?? '')) return;
+    if (!taskId || !task) return;
+    if (descriptionDraft === (task.description ?? '')) {
+      setEditingDescription(false);
+      return;
+    }
 
     setSavingDescription(true);
     setDescriptionMessage('');
@@ -323,8 +336,10 @@ export default function TaskDetailModal({ taskId, onClose, onTaskUpdated }: Task
       const updatedTask = await updateTask(taskId, { description: descriptionDraft });
       cacheTask({ ...optimisticTask, ...updatedTask });
       setDescriptionMessage('Saved');
+      setEditingDescription(false);
     } catch {
       cacheTask(previousTask);
+      setDescriptionDraft(previousTask.description ?? '');
       setDescriptionMessage('Could not save');
     } finally {
       setSavingDescription(false);
@@ -465,19 +480,38 @@ export default function TaskDetailModal({ taskId, onClose, onTaskUpdated }: Task
 
   async function saveTitle() {
     const trimmed = titleDraft.trim();
-    setEditingTitle(false);
-    if (!taskId || !task || !trimmed || trimmed === task.title) return;
+    if (!taskId || !task) return;
+    if (!trimmed || trimmed === task.title) {
+      setTitleDraft(task.title);
+      setEditingTitle(false);
+      return;
+    }
     setSavingTitle(true);
     const previousTask = task;
     cacheTask({ ...task, title: trimmed });
     try {
       const updatedTask = await updateTask(taskId, { title: trimmed });
       cacheTask({ ...task, ...updatedTask });
+      setEditingTitle(false);
     } catch {
       cacheTask(previousTask);
+      setTitleDraft(previousTask.title);
     } finally {
       setSavingTitle(false);
     }
+  }
+
+  function cancelTitleEdit() {
+    if (!task) return;
+    setTitleDraft(task.title);
+    setEditingTitle(false);
+  }
+
+  function cancelDescriptionEdit() {
+    if (!task) return;
+    setDescriptionDraft(task.description ?? '');
+    setDescriptionMessage('');
+    setEditingDescription(false);
   }
 
   async function saveEstimatedDays() {
@@ -647,6 +681,7 @@ export default function TaskDetailModal({ taskId, onClose, onTaskUpdated }: Task
 
   const lightboxAttachment = lightboxAttachmentId ? attachments.find((item) => item.id === lightboxAttachmentId) : null;
   const lightboxUrl = lightboxAttachmentId ? imagePreviews[lightboxAttachmentId] : undefined;
+  const hasDescription = Boolean(getTextFromHtml(task?.description));
 
   return (
     <>
@@ -669,16 +704,35 @@ export default function TaskDetailModal({ taskId, onClose, onTaskUpdated }: Task
             <main className="task-detail-main">
               <section className="task-title-panel">
                 {editingTitle ? (
-                  <textarea
-                    className="task-title-edit"
-                    value={titleDraft}
-                    autoFocus
-                    rows={Math.max(1, Math.ceil(titleDraft.length / 40))}
-                    onChange={(e) => setTitleDraft(e.target.value)}
-                    onBlur={saveTitle}
-                    onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void saveTitle(); } if (e.key === 'Escape') { setEditingTitle(false); } }}
-                    aria-label="Edit task title"
-                  />
+                  <div className="task-title-edit-row">
+                    <textarea
+                      className="task-title-edit"
+                      value={titleDraft}
+                      autoFocus
+                      rows={Math.max(1, Math.ceil(titleDraft.length / 40))}
+                      onChange={(e) => setTitleDraft(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && !e.shiftKey) {
+                          e.preventDefault();
+                          void saveTitle();
+                        }
+                        if (e.key === 'Escape') {
+                          e.preventDefault();
+                          cancelTitleEdit();
+                        }
+                      }}
+                      disabled={savingTitle}
+                      aria-label="Edit task title"
+                    />
+                    <div className="task-title-edit-actions">
+                      <button type="button" className="icon-button task-title-confirm" onClick={saveTitle} disabled={savingTitle} aria-label="Save title" title="Save title">
+                        <Icon name="check" size={16} />
+                      </button>
+                      <button type="button" className="icon-button task-title-cancel" onClick={cancelTitleEdit} disabled={savingTitle} aria-label="Cancel title edit" title="Cancel">
+                        <Icon name="close" size={16} />
+                      </button>
+                    </div>
+                  </div>
                 ) : (
                   <h2
                     onDoubleClick={() => { setTitleDraft(task.title); setEditingTitle(true); }}
@@ -697,15 +751,47 @@ export default function TaskDetailModal({ taskId, onClose, onTaskUpdated }: Task
                   <h3>Description</h3>
                   <span>{savingDescription ? 'Saving...' : descriptionMessage}</span>
                 </div>
-                <RichTextEditor
-                  value={descriptionDraft}
-                  onChange={(value) => {
-                    setDescriptionDraft(value);
-                    setDescriptionMessage('');
-                  }}
-                  disabled={savingDescription}
-                />
-                <div className="task-description-actions"><Button onClick={saveDescription} loading={savingDescription} disabled={descriptionDraft === (task.description ?? '')}>Save description</Button></div>
+                {editingDescription ? (
+                  <>
+                    <RichTextEditor
+                      value={descriptionDraft}
+                      onChange={(value) => {
+                        setDescriptionDraft(value);
+                        setDescriptionMessage('');
+                      }}
+                      disabled={savingDescription}
+                    />
+                    <div className="task-description-actions">
+                      <Button onClick={saveDescription} loading={savingDescription}>Save description</Button>
+                      <Button variant="secondary" onClick={cancelDescriptionEdit} disabled={savingDescription}>Cancel</Button>
+                    </div>
+                  </>
+                ) : hasDescription ? (
+                  <div className="task-description-view-wrap">
+                    <div className="task-description-view rich-text-editor-content" dangerouslySetInnerHTML={{ __html: task.description ?? '' }} />
+                    <Button
+                      variant="secondary"
+                      className="task-description-edit-button"
+                      onClick={() => {
+                        setDescriptionDraft(task.description ?? '');
+                        setEditingDescription(true);
+                      }}
+                    >
+                      <Icon name="pencil" size={14} /> Edit
+                    </Button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    className="task-description-placeholder"
+                    onClick={() => {
+                      setDescriptionDraft('');
+                      setEditingDescription(true);
+                    }}
+                  >
+                    Add description
+                  </button>
+                )}
               </section>
 
               <section className="task-detail-section">
@@ -754,6 +840,99 @@ export default function TaskDetailModal({ taskId, onClose, onTaskUpdated }: Task
                       <Icon name="plus" size={15} /> Add subtask
                     </Button>
                   </div>
+                </div>
+              </section>
+
+              <section className="task-detail-section">
+                <div className="task-detail-section-heading">
+                  <h3>Attachments</h3>
+                  <span>{uploadingAttachment ? 'Uploading...' : attachmentsMessage}</span>
+                </div>
+                <input
+                  ref={attachmentInputRef}
+                  className="sr-only"
+                  type="file"
+                  multiple
+                  accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv"
+                  onChange={(event) => {
+                    if (event.target.files) uploadAttachments(event.target.files);
+                  }}
+                />
+                <div
+                  className={`attachment-drop-zone${attachmentDragActive ? ' is-active' : ''}`}
+                  onDragEnter={(event) => {
+                    event.preventDefault();
+                    setAttachmentDragActive(true);
+                  }}
+                  onDragOver={(event) => event.preventDefault()}
+                  onDragLeave={(event) => {
+                    if (!event.currentTarget.contains(event.relatedTarget as Node)) setAttachmentDragActive(false);
+                  }}
+                  onDrop={handleAttachmentDrop}
+                >
+                  <Button variant="secondary" onClick={() => attachmentInputRef.current?.click()} disabled={uploadingAttachment}>
+                    <Icon name="upload" size={15} /> Choose files
+                  </Button>
+                </div>
+                <div className="linked-document-list task-attachment-list">
+                  {attachments.map((attachment) => {
+                    const isImage = attachment.mimeType.startsWith('image/');
+                    const previewUrl = imagePreviews[attachment.id];
+                    return (
+                      <div
+                        className={`linked-document-row attachment-row${isImage ? '' : ' is-clickable'}`}
+                        key={attachment.id}
+                        role={isImage ? undefined : 'button'}
+                        tabIndex={isImage ? undefined : 0}
+                        onClick={isImage ? undefined : () => downloadTaskAttachment(attachment.id)}
+                        onKeyDown={isImage ? undefined : (event) => {
+                          if (event.key === 'Enter' || event.key === ' ') {
+                            event.preventDefault();
+                            downloadTaskAttachment(attachment.id);
+                          }
+                        }}
+                      >
+                        {isImage ? (
+                          <span className="attachment-thumb-preview" aria-hidden="true">
+                            {previewUrl ? (
+                              <img className="attachment-thumb" src={previewUrl} alt="" />
+                            ) : (
+                              <span className="linked-document-icon"><Icon name="document" size={15} /></span>
+                            )}
+                          </span>
+                        ) : (
+                          <span className="linked-document-icon"><Icon name="document" size={15} /></span>
+                        )}
+                        <span className="linked-document-copy">
+                          {isImage ? (
+                            <button
+                              type="button"
+                              className="attachment-filename-link"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                setLightboxAttachmentId(attachment.id);
+                              }}
+                            >
+                              {attachment.fileName}
+                            </button>
+                          ) : (
+                            <strong>{attachment.fileName}</strong>
+                          )}
+                          <span>{attachment.mimeType} · {formatFileSize(attachment.size)}</span>
+                        </span>
+                        <Button
+                          variant="ghost"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            removeAttachment(attachment);
+                          }}
+                        >
+                          <Icon name="trash" size={14} />
+                        </Button>
+                      </div>
+                    );
+                  })}
+                  {attachments.length === 0 && <div className="document-link-empty">No files attached yet.</div>}
                 </div>
               </section>
 
@@ -869,119 +1048,6 @@ export default function TaskDetailModal({ taskId, onClose, onTaskUpdated }: Task
             </main>
 
             <aside className="task-detail-sidebar">
-              <section className="task-estimate-panel">
-                <label className="field task-estimate-field">
-                  <span className="field-label">Estimated days</span>
-                  <input
-                    className="field-control"
-                    type="number"
-                    min="0"
-                    step="0.25"
-                    value={estimatedDaysDraft}
-                    onChange={(event) => {
-                      setEstimatedDaysDraft(event.target.value);
-                      setDetailsMessage('');
-                    }}
-                    onBlur={saveEstimatedDays}
-                    disabled={savingDetails}
-                    placeholder="No estimate in days"
-                  />
-                </label>
-              </section>
-
-              <section className="task-detail-section">
-                <div className="task-detail-section-heading">
-                  <h3>Attachments</h3>
-                  <span>{uploadingAttachment ? 'Uploading...' : attachmentsMessage}</span>
-                </div>
-                <input
-                  ref={attachmentInputRef}
-                  className="sr-only"
-                  type="file"
-                  multiple
-                  accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv"
-                  onChange={(event) => {
-                    if (event.target.files) uploadAttachments(event.target.files);
-                  }}
-                />
-                <div
-                  className={`attachment-drop-zone${attachmentDragActive ? ' is-active' : ''}`}
-                  onDragEnter={(event) => {
-                    event.preventDefault();
-                    setAttachmentDragActive(true);
-                  }}
-                  onDragOver={(event) => event.preventDefault()}
-                  onDragLeave={(event) => {
-                    if (!event.currentTarget.contains(event.relatedTarget as Node)) setAttachmentDragActive(false);
-                  }}
-                  onDrop={handleAttachmentDrop}
-                >
-                  <Button variant="secondary" onClick={() => attachmentInputRef.current?.click()} disabled={uploadingAttachment}>
-                    <Icon name="upload" size={15} /> Choose files
-                  </Button>
-                </div>
-                <div className="linked-document-list">
-                  {attachments.map((attachment) => {
-                    const isImage = attachment.mimeType.startsWith('image/');
-                    const previewUrl = imagePreviews[attachment.id];
-                    return (
-                      <div
-                        className={`linked-document-row attachment-row${isImage ? '' : ' is-clickable'}`}
-                        key={attachment.id}
-                        role={isImage ? undefined : 'button'}
-                        tabIndex={isImage ? undefined : 0}
-                        onClick={isImage ? undefined : () => downloadTaskAttachment(attachment.id)}
-                        onKeyDown={isImage ? undefined : (event) => {
-                          if (event.key === 'Enter' || event.key === ' ') {
-                            event.preventDefault();
-                            downloadTaskAttachment(attachment.id);
-                          }
-                        }}
-                      >
-                        {isImage ? (
-                          <span className="attachment-thumb-preview" aria-hidden="true">
-                            {previewUrl ? (
-                              <img className="attachment-thumb" src={previewUrl} alt="" />
-                            ) : (
-                              <span className="linked-document-icon"><Icon name="document" size={15} /></span>
-                            )}
-                          </span>
-                        ) : (
-                          <span className="linked-document-icon"><Icon name="document" size={15} /></span>
-                        )}
-                        <span className="linked-document-copy">
-                          {isImage ? (
-                            <button
-                              type="button"
-                              className="attachment-filename-link"
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                setLightboxAttachmentId(attachment.id);
-                              }}
-                            >
-                              {attachment.fileName}
-                            </button>
-                          ) : (
-                            <strong>{attachment.fileName}</strong>
-                          )}
-                          <span>{attachment.mimeType} · {formatFileSize(attachment.size)}</span>
-                        </span>
-                        <Button
-                          variant="ghost"
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            removeAttachment(attachment);
-                          }}
-                        >
-                          <Icon name="trash" size={14} />
-                        </Button>
-                      </div>
-                    );
-                  })}
-                  {attachments.length === 0 && <div className="document-link-empty">No files attached yet.</div>}
-                </div>
-              </section>
-
               <section className="task-detail-section">
                 <div className="task-detail-section-heading">
                   <h3>Details</h3>
@@ -1029,6 +1095,24 @@ export default function TaskDetailModal({ taskId, onClose, onTaskUpdated }: Task
                     disabled={savingDetails}
                   />
                   <span className="field-help">Leave empty to remove the due date.</span>
+                </label>
+                <label className="field task-estimate-field">
+                  <span className="field-label">Estimated days</span>
+                  <input
+                    className="field-control"
+                    type="number"
+                    min="0"
+                    step="0.25"
+                    value={estimatedDaysDraft}
+                    onChange={(event) => {
+                      setEstimatedDaysDraft(event.target.value);
+                      setDetailsMessage('');
+                    }}
+                    onBlur={saveEstimatedDays}
+                    disabled={savingDetails}
+                    placeholder="No estimate"
+                  />
+                  <span className="field-help">Measured in work days.</span>
                 </label>
                 <div className="task-detail-fields">
                   <div><span>Reporter</span><strong>{task.creator?.name ?? 'Unknown'}</strong></div>

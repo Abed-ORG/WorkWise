@@ -1386,7 +1386,7 @@ input[type='checkbox'].themed-checkbox:disabled { cursor: not-allowed; opacity: 
 .modal-panel { border: 1px solid var(--border); border-radius: 20px; background: var(--surface-raised); box-shadow: var(--shadow-hover); animation: modal-in .22s ease both; }
 .form-grid-2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
 .page-actions { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; }
-.project-document-card { margin-top: 22px; }
+.project-document-card { margin-top: 10px; }
 .digest-card { margin-bottom: 22px; }
 .project-health-card, .analytics-filter-card, .analytics-section, .sprint-burndown-card { margin-bottom: 22px; }
 .health-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-top: 18px; }
@@ -1595,7 +1595,13 @@ input[type='checkbox'].themed-checkbox:disabled { cursor: not-allowed; opacity: 
 .task-title-panel { display: grid; gap: 10px; }
 .task-title-panel h2 { margin: 0; color: var(--text); font-size: 25px; font-weight: 780; letter-spacing: -.035em; line-height: 1.18; }
 .task-title-panel h2.task-title-saving { opacity: .6; }
+.task-title-edit-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start; gap: 9px; }
 .task-title-edit { width: 100%; padding: 4px 8px; border: 2px solid var(--primary-strong); border-radius: 8px; background: var(--surface); color: var(--text); font-size: 25px; font-weight: 780; letter-spacing: -.035em; line-height: 1.18; resize: none; outline: none; overflow: hidden; }
+.task-title-edit-actions { display: inline-flex; gap: 6px; }
+.task-title-edit-actions .icon-button { width: 36px; height: 36px; border-radius: 10px; }
+.task-title-confirm { color: var(--ink); border-color: var(--primary-strong); background: var(--primary); box-shadow: 0 8px 18px rgba(255, 209, 0, .18); }
+.task-title-confirm:hover:not(:disabled) { color: var(--ink); background: var(--primary-strong); }
+.task-title-cancel:hover:not(:disabled) { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 42%, var(--border)); background: var(--danger-soft); }
 .task-detail-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .task-detail-sidebar .task-status-select { min-height: 38px; font-size: 12px; }
 .task-detail-sidebar .field-help { margin-top: 6px; }
@@ -1611,11 +1617,19 @@ input[type='checkbox'].themed-checkbox:disabled { cursor: not-allowed; opacity: 
 .task-detail-fields strong { min-width: 0; overflow: hidden; color: var(--text); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
 .task-description { margin: 0; padding: 13px 14px; border: 1px solid var(--border); border-radius: 12px; color: var(--text-muted); background: var(--surface-muted); font-size: 13px; line-height: 1.6; white-space: pre-wrap; }
 .task-description.is-empty { color: var(--text-subtle); font-style: italic; }
+.task-description-view-wrap { position: relative; border: 1px solid var(--border); border-radius: 12px; overflow: hidden; background: var(--surface-raised); }
+.task-description-view { min-height: 82px; padding: 14px 16px; background: var(--surface-raised); font-size: 13px; }
+.task-description-view > *:last-child { margin-bottom: 0; }
+.task-description-edit-button { position: absolute; top: 10px; right: 10px; min-height: 32px; padding: 0 10px; opacity: 0; transform: translateY(-2px); font-size: 11px; transition: opacity .16s ease, transform .16s ease, background .16s ease, border-color .16s ease; }
+.task-description-view-wrap:hover .task-description-edit-button, .task-description-view-wrap:focus-within .task-description-edit-button { opacity: 1; transform: translateY(0); }
+.task-description-placeholder { display: flex; width: 100%; min-height: 72px; align-items: center; padding: 14px 16px; border: 1px dashed var(--border); border-radius: 12px; color: var(--text-subtle); background: var(--surface-muted); font-size: 13px; font-weight: 750; text-align: left; transition: border-color .16s ease, background .16s ease, color .16s ease; }
+.task-description-placeholder:hover, .task-description-placeholder:focus-visible { color: var(--text); border-color: var(--primary-strong); background: color-mix(in srgb, var(--primary) 8%, var(--surface-raised)); outline: none; }
 .task-description-field { width: 100%; min-height: 112px; resize: vertical; padding: 13px 14px; border: 1px solid var(--border); border-radius: 12px; outline: none; color: var(--text); background: var(--surface-muted); font-size: 13px; line-height: 1.6; transition: border-color .2s ease, box-shadow .2s ease, background .2s ease; }
 .task-description-field::placeholder, .acceptance-checklist-input::placeholder { color: var(--text-subtle); }
 .task-description-field:hover { border-color: var(--border-strong); }
 .task-description-field:focus, .acceptance-checklist-input:focus { border-color: var(--primary-strong); background: var(--surface-raised); box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 18%, transparent); }
 .task-description-field:disabled, .acceptance-checklist-input:disabled { color: var(--text-subtle); background: var(--surface-muted); opacity: .72; }
+.task-description-actions { display: flex; align-items: center; justify-content: flex-start; flex-wrap: wrap; gap: 12px; }
 .acceptance-checklist { display: grid; gap: 8px; }
 .acceptance-checklist-item { display: grid; grid-template-columns: 18px minmax(0, 1fr) 34px; align-items: start; gap: 10px; padding: 9px 10px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface-muted); }
 .acceptance-checklist-item input[type='checkbox'] { width: 16px; height: 16px; margin: 9px 0 0; accent-color: var(--primary-strong); }
@@ -1680,9 +1694,10 @@ input[type='checkbox'].themed-checkbox:disabled { cursor: not-allowed; opacity: 
 .task-detail-sidebar .linked-document-copy span { font-size: 10px; }
 .task-detail-sidebar .linked-document-row .btn { min-height: 30px; padding: 0 8px; font-size: 10px; }
 
-.task-estimate-panel { padding: 16px 18px; border: 1px solid var(--border); border-radius: 14px; background: var(--surface-raised); }
-.task-estimate-field { gap: 6px; }
-.task-estimate-field .field-control { font-size: 15px; font-weight: 750; }
+.task-attachment-list { max-height: 260px; }
+.task-estimate-field { gap: 6px; padding: 10px 11px; border: 1px solid var(--border); border-radius: 12px; background: color-mix(in srgb, var(--surface-raised) 64%, transparent); }
+.task-estimate-field .field-label { font-size: 11px; }
+.task-estimate-field .field-control { min-height: 38px; padding: 8px 10px; border-radius: 10px; font-size: 13px; font-weight: 750; }
 
 .time-log-entry-group { display: grid; gap: 10px; padding: 14px; border: 1px solid var(--border); border-radius: 14px; background: var(--surface-raised); }
 .time-log-entry-group .field { gap: 5px; }
