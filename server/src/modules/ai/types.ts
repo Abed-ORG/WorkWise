@@ -5,11 +5,13 @@ export interface TaskBreakdownInput {
   projectContext?: string;
 }
 
+export type StoryPoints = 1 | 2 | 3 | 5 | 8 | 13;
+
 export interface GeneratedTask {
   title: string;
   description: string;
   priority: AiTaskPriority;
-  estimatedHours: number;
+  storyPoints: StoryPoints;
   acceptanceCriteria: string[];
 }
 

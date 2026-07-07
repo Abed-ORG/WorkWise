@@ -13,6 +13,7 @@ import type { TaskSearchFilters } from '../services/aiService';
 import { isOpenSprintMoveTarget } from '../utils/sprintOptions';
 import { queryKeys, queryTimes } from '../services/queryOptions';
 import { getInitials } from '../utils/initials';
+import { taskTypeIcon, taskTypeLabel } from '../utils/taskType';
 
 type SortKey = 'title' | 'status' | 'priority' | 'assignee' | 'project' | 'dueDate';
 type SortDirection = 'asc' | 'desc';
@@ -498,6 +499,7 @@ export default function BacklogList({
       >
         {canDelete && <td className="checkbox-cell"><input className="themed-checkbox" type="checkbox" checked={selectedTaskIds.includes(task.id)} onChange={() => toggleTaskSelection(task.id)} aria-label={`Select ${task.title}`} /></td>}
         <td data-label="Task">
+          <span className="task-type-icon backlog-type-icon" title={taskTypeLabel(task.type)}><Icon name={taskTypeIcon(task.type)} size={14} /></span>
           {editingCell?.taskId === task.id && editingCell?.field === 'title' ? (
             <input
               className="backlog-inline-input"
@@ -520,6 +522,7 @@ export default function BacklogList({
           ) : (
             <strong className="task-table-title" onDoubleClick={() => onTaskUpdate && setEditingCell({ taskId: task.id, field: 'title' })} style={onTaskUpdate ? { cursor: 'pointer' } : undefined}>{task.title}</strong>
           )}
+          {task.type === 'SUBTASK' && task.parent && <span className="backlog-parent-breadcrumb">↳ {task.parent.title}</span>}
         </td>
         {showProject && <td data-label="Project"><span className="project-key">{task.project?.key}</span> {task.project?.name}</td>}
         <td data-label="Status"><span className={`status-badge category-${task.status.category.toLowerCase()}`} style={task.status.color ? { borderColor: task.status.color, color: task.status.color, background: `${task.status.color}1a` } : undefined}>{task.status.name}</span></td>

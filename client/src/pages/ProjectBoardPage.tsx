@@ -62,14 +62,16 @@ export default function ProjectBoardPage() {
 
     function handleTaskCreated(task: Task) {
       if (task.projectId === projectId) {
-        queryClient.setQueryData<Task[]>(queryKeys.projectTasks(projectId), (current = []) => upsertTask(current, task));
+        // Subtasks never appear as top-level board cards — only merge them into the
+        // per-task cache (e.g. for an open TaskDetailModal), not the board list.
+        if (!task.parentId) queryClient.setQueryData<Task[]>(queryKeys.projectTasks(projectId), (current = []) => upsertTask(current, task));
         queryClient.setQueryData(queryKeys.task(task.id), task);
       }
     }
 
     function handleTaskUpdated(task: Task) {
       if (task.projectId === projectId) {
-        queryClient.setQueryData<Task[]>(queryKeys.projectTasks(projectId), (current = []) => upsertTask(current, task));
+        if (!task.parentId) queryClient.setQueryData<Task[]>(queryKeys.projectTasks(projectId), (current = []) => upsertTask(current, task));
         queryClient.setQueryData(queryKeys.task(task.id), task);
       }
     }

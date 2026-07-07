@@ -1,12 +1,13 @@
 import apiClient from './apiClient';
 
 export type AiTaskPriority = 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT';
+export type StoryPoints = 1 | 2 | 3 | 5 | 8 | 13;
 
 export interface GeneratedTask {
   title: string;
   description: string;
   priority: AiTaskPriority;
-  estimatedHours: number;
+  storyPoints: StoryPoints;
   acceptanceCriteria: string[];
 }
 

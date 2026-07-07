@@ -3,6 +3,7 @@ import type { ProjectDocument } from './projectService';
 
 export type StatusCategory = 'TODO' | 'IN_PROGRESS' | 'DONE';
 export type TaskPriority = 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT';
+export type TaskType = 'STORY' | 'BUG' | 'SUBTASK';
 
 export interface ProjectStatus {
   id: string;
@@ -22,12 +23,20 @@ export interface TaskUser {
   avatarUrl?: string;
 }
 
+export interface TaskParentSummary {
+  id: string;
+  title: string;
+  type: TaskType;
+}
+
 export interface Task {
   id: string;
   title: string;
   description?: string;
   acceptanceCriteria?: string | null;
   estimatedHours?: number | null;
+  storyPoints?: number | null;
+  type: TaskType;
   priority: TaskPriority;
   status: ProjectStatus;
   statusId: string;
@@ -36,11 +45,13 @@ export interface Task {
   order: number;
   projectId: string;
   sprintId?: string | null;
+  parentId?: string | null;
   createdAt?: string;
   updatedAt?: string;
   project?: { id: string; name: string; key: string };
   assignee?: TaskUser | null;
   creator?: TaskUser;
+  parent?: TaskParentSummary | null;
   sprint?: { id: string; name: string } | null;
   comments?: TaskComment[];
   activities?: TaskActivity[];
@@ -51,8 +62,11 @@ export interface TaskChecklistItem {
   id: string;
   taskId: string;
   text: string;
+  description?: string | null;
   completed: boolean;
   order: number;
+  assigneeId?: string | null;
+  assignee?: TaskUser | null;
 }
 
 export interface TaskAttachment {
@@ -63,16 +77,6 @@ export interface TaskAttachment {
   mimeType: string;
   size: number;
   createdAt: string;
-}
-
-export interface TaskTimeLog {
-  id: string;
-  taskId: string;
-  userId: string;
-  durationMinutes: number;
-  description?: string | null;
-  createdAt: string;
-  user: TaskUser;
 }
 
 export interface TaskComment {
@@ -95,6 +99,8 @@ export interface CreateTaskPayload {
   description?: string;
   acceptanceCriteria?: string;
   estimatedHours?: number | null;
+  storyPoints?: number | null;
+  type?: Exclude<TaskType, 'SUBTASK'>;
   priority?: TaskPriority;
   labels?: string[];
   dueDate?: string;
@@ -139,7 +145,7 @@ export async function updateTaskStatus(taskId: string, statusId: string): Promis
   return response.data.data;
 }
 
-export async function updateTask(taskId: string, payload: Partial<Pick<Task, 'title' | 'description' | 'acceptanceCriteria' | 'estimatedHours' | 'priority' | 'labels' | 'dueDate' | 'sprintId'>> & { assigneeId?: string | null; statusId?: string }): Promise<Task> {
+export async function updateTask(taskId: string, payload: Partial<Pick<Task, 'title' | 'description' | 'acceptanceCriteria' | 'estimatedHours' | 'storyPoints' | 'priority' | 'labels' | 'dueDate' | 'sprintId'>> & { type?: Exclude<TaskType, 'SUBTASK'>; assigneeId?: string | null; statusId?: string }): Promise<Task> {
   const response = await apiClient.patch(`/tasks/${taskId}`, payload);
   return response.data.data;
 }
@@ -203,37 +209,43 @@ export async function reorderTask(taskId: string, order: number): Promise<Task> 
   return response.data.data;
 }
 
+// Real Task subtasks (parentId/type SUBTASK) — supersedes the checklist-based subtasks
+// below (TaskChecklistItem), which stay dormant for existing data/API compatibility.
+export interface CreateSubtaskPayload {
+  title: string;
+  description?: string;
+  assigneeId?: string;
+  storyPoints?: number | null;
+  priority?: TaskPriority;
+}
+
+export async function getTaskChildren(taskId: string): Promise<Task[]> {
+  const response = await apiClient.get(`/tasks/${taskId}/children`);
+  return response.data.data;
+}
+
+export async function createTaskChild(taskId: string, payload: CreateSubtaskPayload): Promise<Task> {
+  const response = await apiClient.post(`/tasks/${taskId}/children`, payload);
+  return response.data.data;
+}
+
 export async function getTaskSubtasks(taskId: string): Promise<TaskChecklistItem[]> {
   const response = await apiClient.get(`/tasks/${taskId}/subtasks`);
   return response.data.data;
 }
 
-export async function createTaskSubtask(taskId: string, text: string): Promise<TaskChecklistItem> {
-  const response = await apiClient.post(`/tasks/${taskId}/subtasks`, { text });
+export async function createTaskSubtask(taskId: string, text: string, extra?: { description?: string; assigneeId?: string }): Promise<TaskChecklistItem> {
+  const response = await apiClient.post(`/tasks/${taskId}/subtasks`, { text, ...extra });
   return response.data.data;
 }
 
-export async function updateTaskSubtask(subtaskId: string, payload: Partial<Pick<TaskChecklistItem, 'text' | 'completed' | 'order'>>): Promise<TaskChecklistItem> {
+export async function updateTaskSubtask(subtaskId: string, payload: Partial<Pick<TaskChecklistItem, 'text' | 'completed' | 'order' | 'description' | 'assigneeId'>>): Promise<TaskChecklistItem> {
   const response = await apiClient.patch(`/tasks/subtasks/${subtaskId}`, payload);
   return response.data.data;
 }
 
 export async function deleteTaskSubtask(subtaskId: string): Promise<void> {
   await apiClient.delete(`/tasks/subtasks/${subtaskId}`);
-}
-
-export async function getTaskTimeLogs(taskId: string): Promise<{ logs: TaskTimeLog[]; totalMinutes: number }> {
-  const response = await apiClient.get(`/tasks/${taskId}/time-logs`);
-  return response.data.data;
-}
-
-export async function createTaskTimeLog(taskId: string, payload: { durationMinutes: number; description?: string }): Promise<TaskTimeLog> {
-  const response = await apiClient.post(`/tasks/${taskId}/time-logs`, payload);
-  return response.data.data;
-}
-
-export async function deleteTaskTimeLog(timeLogId: string): Promise<void> {
-  await apiClient.delete(`/tasks/time-logs/${timeLogId}`);
 }
 
 export async function getTaskAttachments(taskId: string): Promise<TaskAttachment[]> {

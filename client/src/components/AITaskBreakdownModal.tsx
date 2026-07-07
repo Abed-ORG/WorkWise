@@ -125,7 +125,7 @@ export default function AITaskBreakdownModal({ isOpen, projectId, onClose, onTas
             title: s.title.trim(),
             description: s.description.trim() || undefined,
             priority: s.original.priority,
-            estimatedHours: s.original.estimatedHours,
+            storyPoints: s.original.storyPoints,
             acceptanceCriteria: s.criteria.filter((c) => c.trim()).join('\n') || undefined,
           }),
         ),
@@ -155,7 +155,7 @@ export default function AITaskBreakdownModal({ isOpen, projectId, onClose, onTas
         <form onSubmit={handleGenerate} noValidate>
           <p className="field-help mb-6">
             Describe a feature and the AI will suggest a set of backlog tasks with priorities,
-            acceptance criteria, and time estimates for your review.
+            acceptance criteria, and story point estimates for your review.
           </p>
 
           <div className="flex flex-col gap-6">
@@ -253,7 +253,7 @@ export default function AITaskBreakdownModal({ isOpen, projectId, onClose, onTas
                         <span className="task-priority-label">
                           {suggestion.original.priority.toLowerCase()}
                         </span>
-                        <span className="field-help">~{suggestion.original.estimatedHours}h estimated</span>
+                        <span className="field-help">{suggestion.original.storyPoints} pts</span>
                       </div>
                     </div>
 

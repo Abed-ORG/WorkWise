@@ -1,62 +1,46 @@
-import type { ProjectMember, Sprint } from '../services/projectService';
+import type { Sprint } from '../services/projectService';
 import type { Task } from '../services/taskService';
-
-// Assumption: a team member is assumed to have this many focused hours per sprint day.
-// There is no persisted per-member capacity in the schema, so this is a rough, labeled estimate.
-export const ASSUMED_HOURS_PER_DAY = 6;
+import { isDone } from './taskStatus';
+import { isSprintComplete } from './projectAnalytics';
 
 export interface SprintCapacity {
-  demandHours: number;
+  committedPoints: number;
   estimatedTaskCount: number;
   unestimatedTaskCount: number;
-  activeMemberCount: number;
-  durationDays: number | null;
-  capacityHours: number | null;
-  utilizationPct: number | null;
-  isOverCapacity: boolean;
+  averageVelocity: number | null;
+  isOverCommitted: boolean;
 }
 
-function parseDateOnly(value?: string | null): Date | null {
-  const match = value ? /^(\d{4})-(\d{2})-(\d{2})/.exec(value) : null;
-  if (!match) return null;
-  return new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
-}
+// Velocity = average story points completed (status category DONE) per past completed sprint.
+// Returns null when there's no completed-sprint history yet, so callers can show committed
+// points alone rather than a misleading comparison against zero.
+export function computeAverageVelocity(completedSprints: Sprint[], allTasks: Task[]): number | null {
+  if (completedSprints.length === 0) return null;
 
-export function getSprintDurationDays(sprint: Pick<Sprint, 'startDate' | 'endDate'>): number | null {
-  const start = parseDateOnly(sprint.startDate);
-  const end = parseDateOnly(sprint.endDate);
-  if (!start || !end) return null;
-  const days = Math.round((end.getTime() - start.getTime()) / 86400000) + 1;
-  return days > 0 ? days : null;
+  const totalCompletedPoints = completedSprints.reduce((sum, sprint) => {
+    const sprintPoints = allTasks
+      .filter((task) => task.sprintId === sprint.id && isDone(task))
+      .reduce((taskSum, task) => taskSum + (task.storyPoints ?? 0), 0);
+    return sum + sprintPoints;
+  }, 0);
+
+  return totalCompletedPoints / completedSprints.length;
 }
 
 export function computeSprintCapacity(
-  sprint: Pick<Sprint, 'startDate' | 'endDate'>,
-  members: ProjectMember[],
   sprintTasks: Task[],
-  assumedHoursPerDay: number = ASSUMED_HOURS_PER_DAY,
+  averageVelocity: number | null,
 ): SprintCapacity {
-  const estimatedTasks = sprintTasks.filter((task) => typeof task.estimatedHours === 'number');
-  const demandHours = estimatedTasks.reduce((sum, task) => sum + (task.estimatedHours ?? 0), 0);
-
-  const activeMemberCount = members.filter((member) => member.role !== 'VIEWER').length;
-  const durationDays = getSprintDurationDays(sprint);
-  const capacityHours = activeMemberCount > 0 && durationDays !== null
-    ? activeMemberCount * durationDays * assumedHoursPerDay
-    : null;
-
-  const utilizationPct = capacityHours && capacityHours > 0
-    ? (demandHours / capacityHours) * 100
-    : null;
+  const estimatedTasks = sprintTasks.filter((task) => typeof task.storyPoints === 'number');
+  const committedPoints = estimatedTasks.reduce((sum, task) => sum + (task.storyPoints ?? 0), 0);
 
   return {
-    demandHours,
+    committedPoints,
     estimatedTaskCount: estimatedTasks.length,
     unestimatedTaskCount: sprintTasks.length - estimatedTasks.length,
-    activeMemberCount,
-    durationDays,
-    capacityHours,
-    utilizationPct,
-    isOverCapacity: capacityHours !== null && demandHours > capacityHours,
+    averageVelocity,
+    isOverCommitted: averageVelocity !== null && committedPoints > averageVelocity,
   };
 }
+
+export { isSprintComplete };

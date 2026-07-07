@@ -185,8 +185,11 @@ export class ProjectsService {
         },
         _count: {
           select: {
+            // Subtasks ride along with their parent — counting them here would double-count
+            // the same body of work and inflate the open-task total shown on the project card.
             tasks: {
               where: {
+                parentId: null,
                 status: { category: { not: StatusCategory.DONE } },
               },
             },
@@ -215,7 +218,8 @@ export class ProjectsService {
           select: { id: true, name: true, goal: true, startDate: true, endDate: true },
         },
         _count: {
-          select: { tasks: true },
+          // Same reasoning as getUserProjects — exclude subtasks so they aren't double-counted.
+          select: { tasks: { where: { parentId: null } } },
         },
       },
     });
@@ -630,7 +634,10 @@ export class ProjectsService {
     const project = await prisma.project.findFirst({
       where: { id: projectId, members: { some: { userId } } },
       include: {
+        // Subtasks are excluded — the digest reports on top-level work; a subtask
+        // completing alongside its parent would otherwise double-count that work.
         tasks: {
+          where: { parentId: null },
           include: { status: true, assignee: { select: { name: true } } },
           orderBy: [{ updatedAt: 'desc' }, { createdAt: 'desc' }],
         },
@@ -711,7 +718,10 @@ export class ProjectsService {
     const sprint = await prisma.sprint.findFirst({
       where: { id: sprintId, projectId },
       include: {
+        // Same reasoning as generateDailyDigest — exclude subtasks from the retro's
+        // completed/unfinished counts so a pointed parent + its subtasks aren't double-counted.
         tasks: {
+          where: { parentId: null },
           include: { status: true, assignee: { select: { name: true } } },
           orderBy: [{ updatedAt: 'desc' }, { createdAt: 'desc' }],
         },
@@ -950,7 +960,8 @@ export class ProjectsService {
 
     const sprint = await prisma.sprint.findFirst({
       where: { id: sprintId, projectId },
-      include: { _count: { select: { tasks: true } } },
+      // Exclude subtasks from the sprint's task count for the same reason as project counts.
+      include: { _count: { select: { tasks: { where: { parentId: null } } } } },
     });
 
     if (!sprint) throw new Error('SPRINT_NOT_FOUND');
@@ -1007,12 +1018,16 @@ export class ProjectsService {
       });
       if (!sprint) throw new Error('SPRINT_NOT_FOUND');
 
-      const tasks = await tx.task.findMany({
-        where: { sprintId },
+      // Completed/incomplete counts (and which tasks move) are decided at the top level only —
+      // subtasks always ride along with whatever happens to their parent (see below), so
+      // counting them here too would double-count the same body of work.
+      const topLevelTasks = await tx.task.findMany({
+        where: { sprintId, parentId: null },
         select: { id: true, status: { select: { category: true } } },
       });
-      const completedCount = tasks.filter((t) => isDone(t)).length;
-      const incompleteCount = tasks.length - completedCount;
+      const completedCount = topLevelTasks.filter((t) => isDone(t)).length;
+      const incompleteTopLevelIds = topLevelTasks.filter((t) => !isDone(t)).map((t) => t.id);
+      const incompleteCount = incompleteTopLevelIds.length;
 
       if (data.incompleteTaskDestination === 'sprint' && data.targetSprintId) {
         const targetSprint = await tx.sprint.findFirst({ where: { id: data.targetSprintId, projectId } });
@@ -1021,9 +1036,16 @@ export class ProjectsService {
       }
 
       if (incompleteCount > 0) {
+        const nextSprintId = data.incompleteTaskDestination === 'backlog' ? null : data.targetSprintId;
         await tx.task.updateMany({
-          where: { sprintId, status: { category: { not: StatusCategory.DONE } } },
-          data: { sprintId: data.incompleteTaskDestination === 'backlog' ? null : data.targetSprintId },
+          where: { id: { in: incompleteTopLevelIds } },
+          data: { sprintId: nextSprintId },
+        });
+        // Subtasks move with their parent regardless of the subtask's own completion status —
+        // a subtask's sprint must always mirror its parent's (see updateTask's cascade).
+        await tx.task.updateMany({
+          where: { parentId: { in: incompleteTopLevelIds } },
+          data: { sprintId: nextSprintId },
         });
       }
 
@@ -1157,6 +1179,21 @@ export class ProjectsService {
       }
       if (data.isSprintDefault) {
         await tx.projectStatus.updateMany({ where: { projectId, isSprintDefault: true }, data: { isSprintDefault: false } });
+      }
+
+      if (data.isBacklogDefault) {
+        // The backlog-default status is where new tasks land when no status is chosen. Keep it
+        // first in column order so it's unambiguously "the backlog" wherever statuses are listed,
+        // matching the original (pre-custom-statuses) behavior where Backlog was always first.
+        const siblings = await tx.projectStatus.findMany({
+          where: { projectId, id: { not: statusId } },
+          orderBy: { order: 'asc' },
+          select: { id: true },
+        });
+        const orderedIds = [statusId, ...siblings.map((row) => row.id)];
+        await Promise.all(
+          orderedIds.map((id, index) => tx.projectStatus.update({ where: { id }, data: { order: index } })),
+        );
       }
 
       return tx.projectStatus.update({

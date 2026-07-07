@@ -2,8 +2,9 @@ import { useState, type FormEvent } from 'react';
 import { Button, Input, Modal, Select, Textarea } from './ui';
 import type { ProjectMember } from '../services/projectService';
 import { createTask } from '../services/taskService';
-import type { Task, TaskPriority } from '../services/taskService';
-import { estimateDaysToHours } from '../utils/taskEstimate';
+import type { Task, TaskPriority, TaskType } from '../services/taskService';
+import { storyPointsSelectOptions } from '../utils/storyPoints';
+import { TASK_TYPE_OPTIONS } from '../utils/taskType';
 
 interface CreateTaskModalProps {
   isOpen: boolean;
@@ -17,9 +18,10 @@ interface CreateTaskModalProps {
 const initialForm = {
   title: '',
   description: '',
+  type: 'STORY' as Exclude<TaskType, 'SUBTASK'>,
   priority: 'MEDIUM' as TaskPriority,
   assigneeId: '',
-  estimatedDays: '',
+  storyPoints: '',
   labels: '',
   dueDate: '',
 };
@@ -50,7 +52,8 @@ export default function CreateTaskModal({ isOpen, projectId, sprintId, members, 
         sprintId,
         title,
         description: form.description.trim() || undefined,
-        estimatedHours: form.estimatedDays ? estimateDaysToHours(Number(form.estimatedDays)) : undefined,
+        storyPoints: form.storyPoints ? Number(form.storyPoints) : undefined,
+        type: form.type,
         priority: form.priority,
         assigneeId: form.assigneeId || undefined,
         labels: form.labels.split(',').map((label) => label.trim()).filter(Boolean),
@@ -72,19 +75,20 @@ export default function CreateTaskModal({ isOpen, projectId, sprintId, members, 
         <Input label="Task title" value={form.title} onChange={(event) => setForm({ ...form, title: event.target.value })} placeholder="What needs to be done?" autoFocus />
         <Textarea label="Description" value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} placeholder="Add context, requirements, or a clear outcome." rows={4} />
         <div className="form-grid-2">
+          <Select label="Type" value={form.type} onChange={(event) => setForm({ ...form, type: event.target.value as Exclude<TaskType, 'SUBTASK'> })} options={TASK_TYPE_OPTIONS} />
           <Select label="Priority" value={form.priority} onChange={(event) => setForm({ ...form, priority: event.target.value as TaskPriority })} options={[
             { value: 'LOW', label: 'Low' }, { value: 'MEDIUM', label: 'Medium' }, { value: 'HIGH', label: 'High' }, { value: 'URGENT', label: 'Urgent' },
           ]} />
+        </div>
+        <div className="form-grid-2">
           <Select label="Assignee" value={form.assigneeId} onChange={(event) => setForm({ ...form, assigneeId: event.target.value })} options={[
             { value: '', label: 'Unassigned' },
             ...members.map((member) => ({ value: member.user.id, label: `${member.user.name} (${member.role.toLowerCase()})` })),
           ]} />
+          <Select label="Story points" value={form.storyPoints} onChange={(event) => setForm({ ...form, storyPoints: event.target.value })} options={storyPointsSelectOptions} />
         </div>
         <div className="form-grid-2">
-          <Input label="Estimated days" type="number" min="0" step="0.25" value={form.estimatedDays} onChange={(event) => setForm({ ...form, estimatedDays: event.target.value })} placeholder="1" />
           <Input label="Labels" value={form.labels} onChange={(event) => setForm({ ...form, labels: event.target.value })} placeholder="frontend, urgent" helperText="Separate labels with commas." />
-        </div>
-        <div className="form-grid-2">
           <Input label="Due date" type="date" value={form.dueDate} onChange={(event) => setForm({ ...form, dueDate: event.target.value })} />
         </div>
         {error && <div className="board-alert" role="alert">{error}</div>}

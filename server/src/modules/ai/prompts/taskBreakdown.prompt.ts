@@ -23,7 +23,7 @@ Return only valid JSON with this exact shape:
       "title": "string",
       "description": "string",
       "priority": "LOW | MEDIUM | HIGH | URGENT",
-      "estimatedHours": 4,
+      "storyPoints": 3,
       "acceptanceCriteria": ["string"]
     }
   ]
@@ -33,7 +33,7 @@ Rules:
 - Create practical, independently actionable engineering tasks.
 - Use only these priority values: LOW, MEDIUM, HIGH, URGENT.
 - Include at least one acceptance criterion per task.
-- estimatedHours must be a positive number representing realistic engineering effort (e.g. 1, 2, 4, 8).
+- storyPoints must be one of the Fibonacci values 1, 2, 3, 5, 8, 13, representing relative engineering effort/complexity (1 = trivial, 13 = very large — suggest splitting the task if it seems larger than 13).
 - Do not include markdown, comments, or explanatory text outside the JSON.
 `.trim();
 };

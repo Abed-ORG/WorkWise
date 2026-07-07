@@ -1,21 +1,20 @@
 import { Router } from "express";
 import {
+  createSubtaskTaskController,
   createTaskAttachmentController,
   createTaskChecklistItemController,
   createTaskController,
-  createTaskTimeLogController,
   deleteTaskAttachmentController,
   deleteTaskChecklistItemController,
   deleteTaskController,
-  deleteTaskTimeLogController,
   downloadTaskAttachmentController,
   getAssignedTasksController,
   getTaskAttachmentsController,
   getTaskChecklistItemsController,
+  getTaskChildrenController,
   getProjectTasksController,
   getTaskByIdController,
   getTaskDocumentsController,
-  getTaskTimeLogsController,
   updateTaskChecklistItemController,
   updateTaskDocumentsController,
   updateTaskController,
@@ -27,8 +26,8 @@ import { validateBody } from "../middleware/validate.middleware";
 import {
   createAttachmentSchema,
   createChecklistItemSchema,
+  createSubtaskTaskSchema,
   createTaskSchema,
-  createTimeLogSchema,
   updateChecklistItemSchema,
   updateTaskSchema,
 } from "../validators/task.validator";
@@ -46,13 +45,12 @@ router.get("/assigned/me", authenticate, getAssignedTasksController);
 router.get("/project/:projectId", authenticate, getProjectTasksController);
 router.patch("/subtasks/:id", authenticate, validateBody(updateChecklistItemSchema), updateTaskChecklistItemController);
 router.delete("/subtasks/:id", authenticate, deleteTaskChecklistItemController);
-router.delete("/time-logs/:id", authenticate, deleteTaskTimeLogController);
 router.get("/attachments/:id/download", authenticate, downloadTaskAttachmentController);
 router.delete("/attachments/:id", authenticate, deleteTaskAttachmentController);
 router.get("/:id/subtasks", authenticate, getTaskChecklistItemsController);
 router.post("/:id/subtasks", authenticate, validateBody(createChecklistItemSchema), createTaskChecklistItemController);
-router.get("/:id/time-logs", authenticate, getTaskTimeLogsController);
-router.post("/:id/time-logs", authenticate, validateBody(createTimeLogSchema), createTaskTimeLogController);
+router.get("/:id/children", authenticate, getTaskChildrenController);
+router.post("/:id/children", authenticate, validateBody(createSubtaskTaskSchema), createSubtaskTaskController);
 router.get("/:id/attachments", authenticate, getTaskAttachmentsController);
 router.post("/:id/attachments", authenticate, validateBody(createAttachmentSchema), createTaskAttachmentController);
 router.get("/:id/documents", authenticate, getTaskDocumentsController);

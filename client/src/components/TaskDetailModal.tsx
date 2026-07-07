@@ -5,29 +5,30 @@ import Icon from './Icon';
 import { Button, Modal, Select, Spinner } from './ui';
 import { getProjectById, getProjectSprints } from '../services/projectService';
 import {
+  createTaskChild,
   createTaskComment,
-  createTaskSubtask,
+  deleteTask,
   deleteTaskAttachment,
-  deleteTaskSubtask,
   downloadTaskAttachment,
   fetchTaskAttachmentBlob,
   getProjectStatuses,
   getTaskAttachments,
   getTaskById,
-  getTaskSubtasks,
+  getTaskChildren,
   updateTask,
   updateTaskDocuments,
-  updateTaskSubtask,
   uploadTaskAttachment,
 } from '../services/taskService';
-import type { Task, TaskAttachment, TaskChecklistItem } from '../services/taskService';
+import type { Task, TaskAttachment, TaskType } from '../services/taskService';
 import { generateAcceptanceCriteria } from '../services/aiService';
 import type { ProjectDocument, ProjectMember, Sprint } from '../services/projectService';
 import { queryKeys, queryTimes } from '../services/queryOptions';
 import RichTextEditor from './RichTextEditor';
 import { getInitials } from '../utils/initials';
 import { isOpenSprintMoveTarget, isPastSprintMoveTarget } from '../utils/sprintOptions';
-import { estimateDaysToHours, estimateHoursToDays } from '../utils/taskEstimate';
+import { storyPointsSelectOptions } from '../utils/storyPoints';
+import { isDone } from '../utils/taskStatus';
+import { TASK_TYPE_OPTIONS, taskTypeIcon, taskTypeLabel } from '../utils/taskType';
 
 interface TaskDetailModalProps {
   taskId: string | null;
@@ -39,11 +40,6 @@ interface AcceptanceCriterion {
   id: string;
   text: string;
   done: boolean;
-}
-
-function formatDate(date?: string | null) {
-  if (!date) return 'No due date';
-  return new Intl.DateTimeFormat('en', { month: 'short', day: 'numeric', year: 'numeric' }).format(new Date(date));
 }
 
 function formatFileSize(size: number) {
@@ -118,15 +114,19 @@ function formatActivityAction(action: string) {
   return action.replaceAll('_', ' ').toLowerCase().replace(/^\w/, (letter) => letter.toUpperCase());
 }
 
-export default function TaskDetailModal({ taskId, onClose, onTaskUpdated }: TaskDetailModalProps) {
+export default function TaskDetailModal({ taskId: propTaskId, onClose, onTaskUpdated }: TaskDetailModalProps) {
   const queryClient = useQueryClient();
   const attachmentInputRef = useRef<HTMLInputElement>(null);
+  // Internal navigation lets the modal drill into a subtask (opened "like a task", via the
+  // same modal) and breadcrumb back to the parent, without the host page's selection changing.
+  const [taskId, setTaskId] = useState<string | null>(propTaskId);
   const [task, setTask] = useState<Task | null>(null);
   const [linkedDocuments, setLinkedDocuments] = useState<ProjectDocument[]>([]);
-  const [subtasks, setSubtasks] = useState<TaskChecklistItem[]>([]);
-  const [subtaskDraft, setSubtaskDraft] = useState('');
-  const [savingSubtaskId, setSavingSubtaskId] = useState<string | null>(null);
-  const [subtasksMessage, setSubtasksMessage] = useState('');
+  const [children, setChildren] = useState<Task[]>([]);
+  const [childrenLoading, setChildrenLoading] = useState(false);
+  const [childDraft, setChildDraft] = useState('');
+  const [savingChildId, setSavingChildId] = useState<string | null>(null);
+  const [childrenMessage, setChildrenMessage] = useState('');
   const [attachments, setAttachments] = useState<TaskAttachment[]>([]);
   const [uploadingAttachment, setUploadingAttachment] = useState(false);
   const [attachmentDragActive, setAttachmentDragActive] = useState(false);
@@ -136,7 +136,6 @@ export default function TaskDetailModal({ taskId, onClose, onTaskUpdated }: Task
   const [projectMembers, setProjectMembers] = useState<ProjectMember[]>([]);
   const [descriptionDraft, setDescriptionDraft] = useState('');
   const [editingDescription, setEditingDescription] = useState(false);
-  const [estimatedDaysDraft, setEstimatedDaysDraft] = useState('');
   const [savingDescription, setSavingDescription] = useState(false);
   const [descriptionMessage, setDescriptionMessage] = useState('');
   const [acceptanceCriteriaItems, setAcceptanceCriteriaItems] = useState<AcceptanceCriterion[]>([]);
@@ -203,18 +202,19 @@ export default function TaskDetailModal({ taskId, onClose, onTaskUpdated }: Task
   ];
 
   useEffect(() => {
-    if (!taskId) {
+    setTaskId(propTaskId);
+    if (!propTaskId) {
       setTask(null);
       setLinkedDocuments([]);
-      setSubtasks([]);
+      setChildren([]);
+      setChildrenLoading(false);
       setAttachments([]);
       setProjectMembers([]);
       setImagePreviews({});
       setLightboxAttachmentId(null);
-      return;
     }
     setError('');
-  }, [taskId]);
+  }, [propTaskId]);
 
   useEffect(() => {
     if (!taskQuery.data) return;
@@ -222,11 +222,6 @@ export default function TaskDetailModal({ taskId, onClose, onTaskUpdated }: Task
     setLinkedDocuments(taskQuery.data.documents ?? []);
     setDescriptionDraft(taskQuery.data.description ?? '');
     setEditingDescription(false);
-    setEstimatedDaysDraft(
-      taskQuery.data.estimatedHours === null || taskQuery.data.estimatedHours === undefined
-        ? ''
-        : String(estimateHoursToDays(taskQuery.data.estimatedHours)),
-    );
     setDescriptionMessage('');
     const parsedCriteria = parseAcceptanceCriteria(taskQuery.data.acceptanceCriteria);
     setAcceptanceCriteriaItems(parsedCriteria);
@@ -244,19 +239,20 @@ export default function TaskDetailModal({ taskId, onClose, onTaskUpdated }: Task
   useEffect(() => {
     if (!taskId) return;
     let active = true;
-    setSubtasksMessage('');
+    setChildrenMessage('');
     setAttachmentsMessage('');
     setImagePreviews({});
+    setChildrenLoading(true);
 
     const createdPreviewUrls: string[] = [];
 
     Promise.all([
-      getTaskSubtasks(taskId),
+      getTaskChildren(taskId),
       getTaskAttachments(taskId),
     ])
-      .then(([nextSubtasks, nextAttachments]) => {
+      .then(([nextChildren, nextAttachments]) => {
         if (!active) return;
-        setSubtasks(nextSubtasks);
+        setChildren(nextChildren);
         setAttachments(nextAttachments);
 
         nextAttachments
@@ -274,6 +270,9 @@ export default function TaskDetailModal({ taskId, onClose, onTaskUpdated }: Task
       })
       .catch(() => {
         if (active) setError('Task details could not be loaded.');
+      })
+      .finally(() => {
+        if (active) setChildrenLoading(false);
       });
 
     return () => {
@@ -501,6 +500,27 @@ export default function TaskDetailModal({ taskId, onClose, onTaskUpdated }: Task
     }
   }
 
+  async function updateStoryPoints(value: string) {
+    if (!taskId || !task) return;
+    const nextValue = value ? Number(value) : null;
+    if ((task.storyPoints ?? null) === nextValue) return;
+
+    setSavingDetails(true);
+    setDetailsMessage('');
+    const previousTask = task;
+    cacheTask({ ...task, storyPoints: nextValue });
+    try {
+      const updatedTask = await updateTask(taskId, { storyPoints: nextValue });
+      cacheTask({ ...task, ...updatedTask });
+      setDetailsMessage('Saved');
+    } catch {
+      cacheTask(previousTask);
+      setDetailsMessage('Could not save story points');
+    } finally {
+      setSavingDetails(false);
+    }
+  }
+
   function cancelTitleEdit() {
     if (!task) return;
     setTitleDraft(task.title);
@@ -514,77 +534,54 @@ export default function TaskDetailModal({ taskId, onClose, onTaskUpdated }: Task
     setEditingDescription(false);
   }
 
-  async function saveEstimatedDays() {
-    if (!taskId || !task) return;
-    const days = estimatedDaysDraft.trim() ? Number(estimatedDaysDraft) : null;
-    if (Number.isNaN(days) || (days !== null && days < 0)) {
-      setDetailsMessage('Estimate must be zero days or more');
-      return;
-    }
-    const estimatedHours = days === null ? null : estimateDaysToHours(days);
-    if ((task.estimatedHours ?? null) === estimatedHours) return;
+  async function updateType(value: Exclude<TaskType, 'SUBTASK'>) {
+    if (!taskId || !task || task.type === value) return;
 
     setSavingDetails(true);
     setDetailsMessage('');
     const previousTask = task;
-    cacheTask({ ...task, estimatedHours });
+    cacheTask({ ...task, type: value });
     try {
-      const updatedTask = await updateTask(taskId, { estimatedHours });
+      const updatedTask = await updateTask(taskId, { type: value });
       cacheTask({ ...task, ...updatedTask });
       setDetailsMessage('Saved');
     } catch {
       cacheTask(previousTask);
-      setDetailsMessage('Could not save estimate');
+      setDetailsMessage('Could not save type');
     } finally {
       setSavingDetails(false);
     }
   }
 
-  async function addSubtask() {
-    const text = subtaskDraft.trim();
-    if (!taskId || !text) return;
-    setSavingSubtaskId('new');
-    setSubtasksMessage('');
+  async function addChild() {
+    const title = childDraft.trim();
+    if (!taskId || !title) return;
+    setSavingChildId('new');
+    setChildrenMessage('');
     try {
-      const item = await createTaskSubtask(taskId, text);
-      setSubtasks((current) => [...current, item].sort((a, b) => a.order - b.order));
-      setSubtaskDraft('');
-      setSubtasksMessage('Added');
+      const child = await createTaskChild(taskId, { title });
+      setChildren((current) => [...current, child]);
+      setChildDraft('');
+      setChildrenMessage('Added');
     } catch {
-      setSubtasksMessage('Could not add subtask');
+      setChildrenMessage('Could not add subtask');
     } finally {
-      setSavingSubtaskId(null);
+      setSavingChildId(null);
     }
   }
 
-  async function toggleSubtask(item: TaskChecklistItem) {
-    setSavingSubtaskId(item.id);
-    setSubtasksMessage('');
-    const previous = subtasks;
-    setSubtasks((current) => current.map((subtask) => subtask.id === item.id ? { ...subtask, completed: !subtask.completed } : subtask));
+  async function removeChild(child: Task) {
+    setSavingChildId(child.id);
+    setChildrenMessage('');
+    const previous = children;
+    setChildren((current) => current.filter((item) => item.id !== child.id));
     try {
-      const updated = await updateTaskSubtask(item.id, { completed: !item.completed });
-      setSubtasks((current) => current.map((subtask) => subtask.id === updated.id ? updated : subtask));
+      await deleteTask(child.id);
     } catch {
-      setSubtasks(previous);
-      setSubtasksMessage('Could not update subtask');
+      setChildren(previous);
+      setChildrenMessage('Could not delete subtask');
     } finally {
-      setSavingSubtaskId(null);
-    }
-  }
-
-  async function removeSubtask(item: TaskChecklistItem) {
-    setSavingSubtaskId(item.id);
-    setSubtasksMessage('');
-    const previous = subtasks;
-    setSubtasks((current) => current.filter((subtask) => subtask.id !== item.id));
-    try {
-      await deleteTaskSubtask(item.id);
-    } catch {
-      setSubtasks(previous);
-      setSubtasksMessage('Could not delete subtask');
-    } finally {
-      setSavingSubtaskId(null);
+      setSavingChildId(null);
     }
   }
 
@@ -685,7 +682,7 @@ export default function TaskDetailModal({ taskId, onClose, onTaskUpdated }: Task
 
   return (
     <>
-    <Modal isOpen={Boolean(taskId)} onClose={onClose} className="task-detail-modal">
+    <Modal isOpen={Boolean(propTaskId)} onClose={onClose} className="task-detail-modal">
       {taskQuery.isLoading || projectQuery.isLoading || sprintsQuery.isLoading || statusesQuery.isLoading ? (
         <div className="task-detail-loading"><Spinner /><span>Loading task details...</span></div>
       ) : error ? (
@@ -694,8 +691,25 @@ export default function TaskDetailModal({ taskId, onClose, onTaskUpdated }: Task
         <div className="task-detail-stack">
           <header className="task-detail-header">
             <div>
-              <p className="section-kicker">{task.project?.key ?? 'Task'}{task.sprint ? ` / ${task.sprint.name}` : ''}</p>
-              <span>Task details</span>
+              {task.parent ? (
+                <nav className="task-modal-breadcrumbs" aria-label="Breadcrumb">
+                  <ol>
+                    <li>
+                      <button type="button" onClick={() => setTaskId(task.parent!.id)}>
+                        <Icon name={taskTypeIcon(task.parent.type)} size={13} />
+                        <span>{task.parent.title}</span>
+                      </button>
+                      <Icon name="arrow-right" size={12} />
+                    </li>
+                    <li>
+                      <span aria-current="page">{task.title}</span>
+                    </li>
+                  </ol>
+                </nav>
+              ) : (
+                <p className="section-kicker">{task.project?.key ?? 'Task'}{task.sprint ? ` / ${task.sprint.name}` : ''}</p>
+              )}
+              <span>{task.parent ? 'Subtask details' : 'Task details'}</span>
             </div>
             <button type="button" className="icon-button" onClick={onClose} aria-label="Close task details"><Icon name="close" size={18} /></button>
           </header>
@@ -794,54 +808,66 @@ export default function TaskDetailModal({ taskId, onClose, onTaskUpdated }: Task
                 )}
               </section>
 
+              {!task.parentId && (
               <section className="task-detail-section">
                 <div className="task-detail-section-heading">
                   <h3>Subtasks</h3>
-                  <span>{savingSubtaskId ? 'Saving...' : subtasksMessage}</span>
+                  <span>{savingChildId ? 'Saving...' : childrenMessage}</span>
                 </div>
-                <div className="acceptance-checklist">
-                  {subtasks.map((item) => (
-                    <div className="acceptance-checklist-item" key={item.id}>
-                      <input
-                        type="checkbox"
-                        checked={item.completed}
-                        disabled={savingSubtaskId === item.id}
-                        onChange={() => toggleSubtask(item)}
-                        aria-label="Mark subtask complete"
-                      />
-                      <textarea
-                        className="acceptance-checklist-input"
-                        value={item.text}
-                        disabled
-                        rows={getCriterionRows(item.text)}
-                        aria-label="Subtask"
-                      />
-                      <button type="button" className="icon-button acceptance-delete-button" onClick={() => removeSubtask(item)} disabled={savingSubtaskId === item.id} aria-label="Delete subtask">
-                        <Icon name="trash" size={15} />
-                      </button>
-                    </div>
-                  ))}
-                  {subtasks.length === 0 && <div className="document-link-empty">No subtasks yet.</div>}
+                <div className="subtask-list" aria-busy={childrenLoading}>
+                  {childrenLoading ? (
+                    Array.from({ length: 2 }, (_, index) => (
+                      <div className="subtask-row" key={index} aria-hidden="true">
+                        <span className="skeleton" style={{ width: 14, height: 14, borderRadius: 4 }} />
+                        <span className="skeleton" style={{ height: 14, borderRadius: 6 }} />
+                        <span className="skeleton" style={{ width: 15, height: 15, borderRadius: 4, justifySelf: 'center' }} />
+                      </div>
+                    ))
+                  ) : (
+                    <>
+                      {children.map((child) => (
+                        <div className="subtask-row" key={child.id}>
+                          <span className="task-type-icon" title={taskTypeLabel(child.type)}><Icon name={taskTypeIcon(child.type)} size={14} /></span>
+                          <button
+                            type="button"
+                            className={`subtask-row-open ${isDone(child) ? 'is-complete' : ''}`}
+                            onClick={() => setTaskId(child.id)}
+                          >
+                            <span className="subtask-row-text">{child.title}</span>
+                            <span className={`status-badge category-${child.status.category.toLowerCase()}`} style={child.status.color ? { borderColor: child.status.color, color: child.status.color, background: `${child.status.color}1a` } : undefined}>{child.status.name}</span>
+                            {child.assignee && (
+                              <span className="mini-avatar" title={child.assignee.name}>{getInitials(child.assignee.name)}</span>
+                            )}
+                          </button>
+                          <button type="button" className="icon-button acceptance-delete-button" onClick={() => removeChild(child)} disabled={savingChildId === child.id} aria-label="Delete subtask">
+                            <Icon name="trash" size={15} />
+                          </button>
+                        </div>
+                      ))}
+                      {children.length === 0 && <div className="document-link-empty">No subtasks yet.</div>}
+                    </>
+                  )}
                 </div>
                 <div className="task-comment-composer">
                   <textarea
                     className="task-description-field task-comment-input"
-                    value={subtaskDraft}
+                    value={childDraft}
                     onChange={(event) => {
-                      setSubtaskDraft(event.target.value);
-                      setSubtasksMessage('');
+                      setChildDraft(event.target.value);
+                      setChildrenMessage('');
                     }}
                     rows={2}
                     placeholder="Add a subtask..."
-                    disabled={savingSubtaskId !== null}
+                    disabled={savingChildId !== null}
                   />
                   <div className="task-comment-actions">
-                    <Button onClick={addSubtask} loading={savingSubtaskId === 'new'} disabled={!subtaskDraft.trim() || savingSubtaskId !== null}>
+                    <Button onClick={addChild} loading={savingChildId === 'new'} disabled={!childDraft.trim() || savingChildId !== null}>
                       <Icon name="plus" size={15} /> Add subtask
                     </Button>
                   </div>
                 </div>
               </section>
+              )}
 
               <section className="task-detail-section">
                 <div className="task-detail-section-heading">
@@ -1055,8 +1081,22 @@ export default function TaskDetailModal({ taskId, onClose, onTaskUpdated }: Task
                 </div>
                 <div className="task-detail-meta">
                   <span className={`priority-badge priority-${task.priority.toLowerCase()}`}><span />{task.priority.toLowerCase()}</span>
-                  <span className="due-date"><Icon name="calendar" size={14} />{formatDate(task.dueDate)}</span>
                 </div>
+                {task.parentId ? (
+                  <div className="field">
+                    <span className="field-label">Type</span>
+                    <strong className="task-type-readonly"><Icon name="subtask" size={14} /> Subtask</strong>
+                  </div>
+                ) : (
+                  <Select
+                    label="Type"
+                    value={task.type}
+                    options={TASK_TYPE_OPTIONS}
+                    onChange={(event) => updateType(event.target.value as Exclude<TaskType, 'SUBTASK'>)}
+                    disabled={savingDetails}
+                    helperText="Story or bug classification for this task."
+                  />
+                )}
                 <Select
                   label="Status"
                   className="task-status-select"
@@ -1066,14 +1106,22 @@ export default function TaskDetailModal({ taskId, onClose, onTaskUpdated }: Task
                   disabled={savingStatus}
                   helperText={savingStatus ? 'Saving status...' : statusMessage || 'Status does not move a task onto the board; assign it to a sprint for board visibility.'}
                 />
-                <Select
-                  label="Sprint"
-                  value={task.sprintId ?? ''}
-                  options={sprintOptions}
-                  onChange={(event) => updateSprint(event.target.value)}
-                  disabled={savingSprint}
-                  helperText={savingSprint ? 'Saving sprint...' : sprintMessage || 'Sprint controls where this task appears. Tasks in a sprint appear on the board.'}
-                />
+                {task.parentId ? (
+                  <div className="field">
+                    <span className="field-label">Sprint</span>
+                    <strong>{task.sprint?.name ?? 'Product backlog / No sprint'}</strong>
+                    <span className="field-help">Subtasks inherit their parent's sprint and can't be moved independently.</span>
+                  </div>
+                ) : (
+                  <Select
+                    label="Sprint"
+                    value={task.sprintId ?? ''}
+                    options={sprintOptions}
+                    onChange={(event) => updateSprint(event.target.value)}
+                    disabled={savingSprint}
+                    helperText={savingSprint ? 'Saving sprint...' : sprintMessage || 'Sprint controls where this task appears. Tasks in a sprint appear on the board.'}
+                  />
+                )}
                 <Select
                   label="Assignee"
                   value={task.assignee?.id ?? ''}
@@ -1085,6 +1133,14 @@ export default function TaskDetailModal({ taskId, onClose, onTaskUpdated }: Task
                   disabled={savingDetails}
                   helperText="Assign this task to a project member."
                 />
+                <Select
+                  label="Story points"
+                  value={task.storyPoints ? String(task.storyPoints) : ''}
+                  options={storyPointsSelectOptions}
+                  onChange={(event) => updateStoryPoints(event.target.value)}
+                  disabled={savingDetails}
+                  helperText="Fibonacci-scaled effort estimate for this task."
+                />
                 <label className="field">
                   <span className="field-label">Due date</span>
                   <input
@@ -1095,24 +1151,6 @@ export default function TaskDetailModal({ taskId, onClose, onTaskUpdated }: Task
                     disabled={savingDetails}
                   />
                   <span className="field-help">Leave empty to remove the due date.</span>
-                </label>
-                <label className="field task-estimate-field">
-                  <span className="field-label">Estimated days</span>
-                  <input
-                    className="field-control"
-                    type="number"
-                    min="0"
-                    step="0.25"
-                    value={estimatedDaysDraft}
-                    onChange={(event) => {
-                      setEstimatedDaysDraft(event.target.value);
-                      setDetailsMessage('');
-                    }}
-                    onBlur={saveEstimatedDays}
-                    disabled={savingDetails}
-                    placeholder="No estimate"
-                  />
-                  <span className="field-help">Measured in work days.</span>
                 </label>
                 <div className="task-detail-fields">
                   <div><span>Reporter</span><strong>{task.creator?.name ?? 'Unknown'}</strong></div>
