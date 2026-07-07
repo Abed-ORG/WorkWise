@@ -1,5 +1,6 @@
 import { NextFunction, Request, Response } from "express";
 import {
+  createSubtaskTask,
   createTaskAttachment,
   createTaskChecklistItem,
   createTask,
@@ -10,6 +11,7 @@ import {
   getAttachmentForDownload,
   getTaskAttachments,
   getTaskChecklistItems,
+  getTaskChildren,
   getProjectTasks,
   getTaskById,
   getTaskDocuments,
@@ -137,6 +139,26 @@ export const deleteTaskChecklistItemController = async (req: Request, res: Respo
     const user = (req as any).user;
     await deleteTaskChecklistItem(req.params.id as string, user.userId);
     return res.status(204).send();
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getTaskChildrenController = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const user = (req as any).user;
+    const children = await getTaskChildren(req.params.id as string, user.userId);
+    return res.status(200).json({ success: true, data: children });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const createSubtaskTaskController = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const user = (req as any).user;
+    const subtask = await createSubtaskTask(req.params.id as string, user.userId, req.body);
+    return res.status(201).json({ success: true, data: subtask });
   } catch (error) {
     next(error);
   }

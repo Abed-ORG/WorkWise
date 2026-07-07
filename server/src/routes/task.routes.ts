@@ -1,5 +1,6 @@
 import { Router } from "express";
 import {
+  createSubtaskTaskController,
   createTaskAttachmentController,
   createTaskChecklistItemController,
   createTaskController,
@@ -10,6 +11,7 @@ import {
   getAssignedTasksController,
   getTaskAttachmentsController,
   getTaskChecklistItemsController,
+  getTaskChildrenController,
   getProjectTasksController,
   getTaskByIdController,
   getTaskDocumentsController,
@@ -24,6 +26,7 @@ import { validateBody } from "../middleware/validate.middleware";
 import {
   createAttachmentSchema,
   createChecklistItemSchema,
+  createSubtaskTaskSchema,
   createTaskSchema,
   updateChecklistItemSchema,
   updateTaskSchema,
@@ -46,6 +49,8 @@ router.get("/attachments/:id/download", authenticate, downloadTaskAttachmentCont
 router.delete("/attachments/:id", authenticate, deleteTaskAttachmentController);
 router.get("/:id/subtasks", authenticate, getTaskChecklistItemsController);
 router.post("/:id/subtasks", authenticate, validateBody(createChecklistItemSchema), createTaskChecklistItemController);
+router.get("/:id/children", authenticate, getTaskChildrenController);
+router.post("/:id/children", authenticate, validateBody(createSubtaskTaskSchema), createSubtaskTaskController);
 router.get("/:id/attachments", authenticate, getTaskAttachmentsController);
 router.post("/:id/attachments", authenticate, validateBody(createAttachmentSchema), createTaskAttachmentController);
 router.get("/:id/documents", authenticate, getTaskDocumentsController);

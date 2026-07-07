@@ -24,9 +24,9 @@ function renderWithClient(ui: ReactElement) {
 describe('KanbanBoard', () => {
   it('renders workflow columns and their task cards', async () => {
     renderWithClient(<KanbanBoard projectId="project-1" onTasksChange={vi.fn()} tasks={[
-      { id: 'task-1', title: 'In progress task', statusId: 'status-in-progress', status: statuses[1], priority: 'MEDIUM', labels: [], order: 0, projectId: 'project-1', sprintId: 'sprint-1' },
-      { id: 'task-2', title: 'Ready to review', statusId: 'status-review', status: statuses[2], priority: 'LOW', labels: [], order: 1, projectId: 'project-1', sprintId: 'sprint-1' },
-      { id: 'task-3', title: 'Unsprinted todo', statusId: 'status-todo', status: statuses[0], priority: 'LOW', labels: [], order: 2, projectId: 'project-1', sprintId: null },
+      { id: 'task-1', title: 'In progress task', type: 'STORY', statusId: 'status-in-progress', status: statuses[1], priority: 'MEDIUM', labels: [], order: 0, projectId: 'project-1', sprintId: 'sprint-1' },
+      { id: 'task-2', title: 'Ready to review', type: 'STORY', statusId: 'status-review', status: statuses[2], priority: 'LOW', labels: [], order: 1, projectId: 'project-1', sprintId: 'sprint-1' },
+      { id: 'task-3', title: 'Unsprinted todo', type: 'STORY', statusId: 'status-todo', status: statuses[0], priority: 'LOW', labels: [], order: 2, projectId: 'project-1', sprintId: null },
     ]} />);
 
     expect(await screen.findByRole('heading', { name: 'To do' })).toBeInTheDocument();

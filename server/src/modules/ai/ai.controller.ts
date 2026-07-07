@@ -84,12 +84,14 @@ class AiController {
       }
 
       const [backlogTasks, sprintTasks, projectMembers] = await Promise.all([
+        // Subtasks aren't independently sprint-plannable — they always follow their parent's
+        // sprint (see task.service.ts) — so they're excluded from the AI's candidate pool.
         prisma.task.findMany({
-          where: { projectId, sprintId: null },
+          where: { projectId, sprintId: null, parentId: null },
           include: { status: { select: { name: true } }, assignee: { select: { name: true } } },
           orderBy: [{ createdAt: "asc" }],
         }),
-        prisma.task.findMany({ where: { sprintId }, select: { id: true } }),
+        prisma.task.findMany({ where: { sprintId, parentId: null }, select: { id: true } }),
         prisma.projectMember.findMany({
           where: { projectId },
           include: { user: { select: { name: true } } },
@@ -145,8 +147,10 @@ class AiController {
         return next(new NotFoundError("Sprint not found"));
       }
 
+      // Excludes subtasks so a pointed/pending parent and its subtasks aren't double-counted
+      // in the risk breakdown, workload, and overdue signals sent to the AI.
       const tasks = await prisma.task.findMany({
-        where: { sprintId },
+        where: { sprintId, parentId: null },
         include: { status: { select: { category: true } }, assignee: { select: { id: true, name: true } } },
       });
 

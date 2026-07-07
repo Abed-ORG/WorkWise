@@ -88,14 +88,16 @@ export default function ProjectOverviewPage() {
 
     function handleTaskCreated(task: Task) {
       if (task.projectId === activeProjectId) {
-        queryClient.setQueryData<Task[]>(queryKeys.projectTasks(activeProjectId), (current = []) => upsertTask(current, task));
+        // Subtasks never appear as top-level items here — only merge them into the
+        // per-task cache (e.g. for an open TaskDetailModal), not the project task list.
+        if (!task.parentId) queryClient.setQueryData<Task[]>(queryKeys.projectTasks(activeProjectId), (current = []) => upsertTask(current, task));
         queryClient.setQueryData(queryKeys.task(task.id), task);
       }
     }
 
     function handleTaskUpdated(task: Task) {
       if (task.projectId === activeProjectId) {
-        queryClient.setQueryData<Task[]>(queryKeys.projectTasks(activeProjectId), (current = []) => upsertTask(current, task));
+        if (!task.parentId) queryClient.setQueryData<Task[]>(queryKeys.projectTasks(activeProjectId), (current = []) => upsertTask(current, task));
         queryClient.setQueryData(queryKeys.task(task.id), task);
       }
     }

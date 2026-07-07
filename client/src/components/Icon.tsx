@@ -1,8 +1,8 @@
 import type { SVGProps } from 'react';
 export type IconName =
-  | 'activity' | 'arrow-left' | 'arrow-right' | 'bar-chart' | 'bell' | 'board' | 'calendar'
+  | 'activity' | 'arrow-left' | 'arrow-right' | 'bar-chart' | 'bell' | 'board' | 'bug' | 'calendar'
   | 'check' | 'chevron-down' | 'clock' | 'close' | 'document' | 'download' | 'folder' | 'home' | 'logout' | 'menu' | 'pencil'
-  | 'flag' | 'more-horizontal' | 'moon' | 'plus' | 'search' | 'settings' | 'sparkles' | 'sun' | 'tasks'
+  | 'flag' | 'more-horizontal' | 'moon' | 'plus' | 'search' | 'settings' | 'sparkles' | 'story' | 'subtask' | 'sun' | 'tasks'
   | 'team' | 'trash' | 'upload' | 'user';
 
 interface IconProps extends SVGProps<SVGSVGElement> {
@@ -17,6 +17,7 @@ const paths: Record<IconName, React.ReactNode> = {
   'bar-chart': <><path d="M4 19V5" /><path d="M4 19h16" /><path d="M8 16v-5" /><path d="M12 16V8" /><path d="M16 16v-9" /></>,
   bell: <><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9" /><path d="M10 21h4" /></>,
   board: <><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M8 8v8M16 8v5" /></>,
+  bug: <><rect x="8" y="6" width="8" height="12" rx="4" /><path d="M8 9H4M8 13H3M8 17H4M16 9h4M16 13h5M16 17h4M12 6V4M9.5 6.5 8 4.5M14.5 6.5 16 4.5" /></>,
   calendar: <><rect x="3" y="5" width="18" height="16" rx="2" /><path d="M16 3v4M8 3v4M3 10h18" /></>,
   check: <path d="m5 12 4 4L19 6" />,
   'chevron-down': <path d="m6 9 6 6 6-6" />,
@@ -36,6 +37,8 @@ const paths: Record<IconName, React.ReactNode> = {
   search: <><circle cx="11" cy="11" r="7" /><path d="m20 20-4-4" /></>,
   settings: <><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.8 2.8-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6v.2h-4V21a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1L4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9A1.7 1.7 0 0 0 3 14H2.8v-4H3a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9L4.2 7 7 4.2l.1.1A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-1.6v-.2h4V3a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1L19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.2v4H21a1.7 1.7 0 0 0-1.6 1Z" /></>,
   sparkles: <><path d="m12 3 1.2 3.8L17 8l-3.8 1.2L12 13l-1.2-3.8L7 8l3.8-1.2Z" /><path d="m5 14 .8 2.2L8 17l-2.2.8L5 20l-.8-2.2L2 17l2.2-.8ZM19 13l.7 1.3L21 15l-1.3.7L19 17l-.7-1.3L17 15l1.3-.7Z" /></>,
+  story: <path d="M6 4h9l3 3v13a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1Zm8 8-2-1.5L10 12V5h4Z" />,
+  subtask: <><path d="M6 3v9a3 3 0 0 0 3 3h9" /><path d="m14 11 4 4-4 4" /></>,
   sun: <><circle cx="12" cy="12" r="4" /><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" /></>,
   tasks: <><rect x="4" y="3" width="16" height="18" rx="2" /><path d="m8 9 1.5 1.5L12 8M14 9h3M8 15l1.5 1.5L12 14M14 15h3" /></>,
   team: <><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M22 21v-2a4 4 0 0 0-3-3.9M16 3.1a4 4 0 0 1 0 7.8" /></>,

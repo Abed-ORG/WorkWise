@@ -806,6 +806,11 @@ textarea.field-control { resize: vertical; }
 
 .section-kicker { margin: 0 0 5px; color: #9d8200; font-size: 10px; font-weight: 800; letter-spacing: .13em; text-transform: uppercase; }
 [data-theme='dark'] .section-kicker { color: var(--primary-strong); }
+.task-breadcrumb { display: flex; align-items: center; gap: 4px; text-transform: none; letter-spacing: normal; }
+.task-breadcrumb-link { padding: 0; border: 0; color: inherit; background: transparent; font: inherit; font-weight: inherit; letter-spacing: inherit; text-transform: inherit; cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
+.task-breadcrumb-link:hover { color: var(--primary-strong); }
+.task-breadcrumb-sep { opacity: .6; }
+.task-type-readonly { display: inline-flex; align-items: center; gap: 6px; }
 
 .kanban-shell { position: relative; margin-bottom: 22px; padding: 24px; overflow: visible; }
 .kanban-shell::before { position: absolute; width: 240px; height: 240px; top: -170px; right: -70px; border-radius: 50%; background: radial-gradient(circle, color-mix(in srgb, var(--primary) 18%, transparent), transparent 68%); content: ''; pointer-events: none; }
@@ -851,6 +856,7 @@ textarea.field-control { resize: vertical; }
 .task-card:active { cursor: grabbing; }
 .task-card.is-dragging { opacity: .45; transform: scale(.97) rotate(1deg); }
 .task-card-topline { display: flex; align-items: center; gap: 6px; }
+.task-type-icon { display: inline-flex; align-items: center; color: var(--text-subtle); }
 .task-priority-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--text-subtle); }
 .priority-low .task-priority-dot, .priority-badge.priority-low span { background: #65a982; }
 .priority-medium .task-priority-dot, .priority-badge.priority-medium span { background: #d39e18; }
@@ -1270,6 +1276,8 @@ input[type='checkbox'].themed-checkbox:active:not(:disabled) { transform: scale(
 input[type='checkbox'].themed-checkbox:disabled { cursor: not-allowed; opacity: .58; }
 .checkbox-cell { width: 42px; text-align: center !important; }
 .task-table-title { color: var(--text); font-size: 12px; font-weight: 720; }
+.backlog-type-icon { margin-right: 6px; vertical-align: -2px; }
+.backlog-parent-breadcrumb { display: block; margin-top: 2px; color: var(--text-subtle); font-size: 11px; font-weight: 500; }
 .sort-button { display: inline-flex; align-items: center; gap: 5px; padding: 0; border: 0; color: inherit; background: transparent; font: inherit; font-weight: inherit; letter-spacing: inherit; text-transform: inherit; }
 .sort-button svg { opacity: .35; transition: transform .2s ease, opacity .2s ease; }
 .sort-button:hover, .sort-button.is-active { color: var(--text); }

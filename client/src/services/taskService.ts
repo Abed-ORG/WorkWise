@@ -3,6 +3,7 @@ import type { ProjectDocument } from './projectService';
 
 export type StatusCategory = 'TODO' | 'IN_PROGRESS' | 'DONE';
 export type TaskPriority = 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT';
+export type TaskType = 'STORY' | 'BUG' | 'SUBTASK';
 
 export interface ProjectStatus {
   id: string;
@@ -22,6 +23,12 @@ export interface TaskUser {
   avatarUrl?: string;
 }
 
+export interface TaskParentSummary {
+  id: string;
+  title: string;
+  type: TaskType;
+}
+
 export interface Task {
   id: string;
   title: string;
@@ -29,6 +36,7 @@ export interface Task {
   acceptanceCriteria?: string | null;
   estimatedHours?: number | null;
   storyPoints?: number | null;
+  type: TaskType;
   priority: TaskPriority;
   status: ProjectStatus;
   statusId: string;
@@ -37,11 +45,13 @@ export interface Task {
   order: number;
   projectId: string;
   sprintId?: string | null;
+  parentId?: string | null;
   createdAt?: string;
   updatedAt?: string;
   project?: { id: string; name: string; key: string };
   assignee?: TaskUser | null;
   creator?: TaskUser;
+  parent?: TaskParentSummary | null;
   sprint?: { id: string; name: string } | null;
   comments?: TaskComment[];
   activities?: TaskActivity[];
@@ -90,6 +100,7 @@ export interface CreateTaskPayload {
   acceptanceCriteria?: string;
   estimatedHours?: number | null;
   storyPoints?: number | null;
+  type?: Exclude<TaskType, 'SUBTASK'>;
   priority?: TaskPriority;
   labels?: string[];
   dueDate?: string;
@@ -134,7 +145,7 @@ export async function updateTaskStatus(taskId: string, statusId: string): Promis
   return response.data.data;
 }
 
-export async function updateTask(taskId: string, payload: Partial<Pick<Task, 'title' | 'description' | 'acceptanceCriteria' | 'estimatedHours' | 'storyPoints' | 'priority' | 'labels' | 'dueDate' | 'sprintId'>> & { assigneeId?: string | null; statusId?: string }): Promise<Task> {
+export async function updateTask(taskId: string, payload: Partial<Pick<Task, 'title' | 'description' | 'acceptanceCriteria' | 'estimatedHours' | 'storyPoints' | 'priority' | 'labels' | 'dueDate' | 'sprintId'>> & { type?: Exclude<TaskType, 'SUBTASK'>; assigneeId?: string | null; statusId?: string }): Promise<Task> {
   const response = await apiClient.patch(`/tasks/${taskId}`, payload);
   return response.data.data;
 }
@@ -195,6 +206,26 @@ export async function moveTaskToSprint(taskId: string, sprintId: string | null):
 
 export async function reorderTask(taskId: string, order: number): Promise<Task> {
   const response = await apiClient.patch(`/tasks/${taskId}`, { order });
+  return response.data.data;
+}
+
+// Real Task subtasks (parentId/type SUBTASK) — supersedes the checklist-based subtasks
+// below (TaskChecklistItem), which stay dormant for existing data/API compatibility.
+export interface CreateSubtaskPayload {
+  title: string;
+  description?: string;
+  assigneeId?: string;
+  storyPoints?: number | null;
+  priority?: TaskPriority;
+}
+
+export async function getTaskChildren(taskId: string): Promise<Task[]> {
+  const response = await apiClient.get(`/tasks/${taskId}/children`);
+  return response.data.data;
+}
+
+export async function createTaskChild(taskId: string, payload: CreateSubtaskPayload): Promise<Task> {
+  const response = await apiClient.post(`/tasks/${taskId}/children`, payload);
   return response.data.data;
 }
 

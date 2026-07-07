@@ -1,4 +1,4 @@
-import { NotificationType, Role, TaskPriority } from "@prisma/client";
+import { NotificationType, Role, TaskPriority, TaskType } from "@prisma/client";
 import prisma from "../utils/prisma";
 import { NotFoundError } from "../errors/NotFoundError";
 import { AppError } from "../errors/AppError";
@@ -13,6 +13,7 @@ const taskSummaryInclude = {
   sprint: { select: { id: true, name: true } },
   assignee: { select: { id: true, name: true, email: true, avatarUrl: true } },
   creator: { select: { id: true, name: true, email: true } },
+  parent: { select: { id: true, title: true, type: true } },
   comments: {
     include: {
       author: { select: { id: true, name: true, email: true, avatarUrl: true } },
@@ -52,6 +53,7 @@ export interface CreateTaskInput {
   acceptanceCriteria?: string;
   estimatedHours?: number | null;
   storyPoints?: number | null;
+  type?: TaskType;
   priority?: TaskPriority;
   labels?: string[];
   dueDate?: string | null;
@@ -63,6 +65,12 @@ export interface CreateTaskInput {
 }
 
 export const createTask = async (input: CreateTaskInput) => {
+  // SUBTASK is only ever created through createSubtask (which sets parentId) — a
+  // top-level task can never be created with that type.
+  if (input.type === TaskType.SUBTASK) {
+    throw new AppError("Subtasks must be created from a parent task", 400);
+  }
+
   const project = await prisma.project.findFirst({
     where: {
       id: input.projectId,
@@ -110,6 +118,7 @@ export const createTask = async (input: CreateTaskInput) => {
       acceptanceCriteria: input.acceptanceCriteria,
       estimatedHours: input.estimatedHours,
       storyPoints: input.storyPoints,
+      type: input.type ?? TaskType.STORY,
       priority: input.priority ?? TaskPriority.MEDIUM,
       statusId: resolvedStatus.id,
       labels: input.labels ?? [],
@@ -153,13 +162,18 @@ export const createTask = async (input: CreateTaskInput) => {
 export const getProjectTasks = async (projectId: string, userId: string) => {
   await requireProjectMember(projectId, userId);
 
+  // Board, backlog, and every other project-wide task view render this list directly —
+  // child tasks (subtasks) must never appear here as top-level items. They're only
+  // ever surfaced within their parent's detail view via getTaskChildren.
   return prisma.task.findMany({
-    where: { projectId },
+    where: { projectId, parentId: null },
     include: taskSummaryInclude,
     orderBy: [{ order: "asc" }, { createdAt: "desc" }],
   });
 };
 
+// Unlike getProjectTasks, subtasks ARE included here — a user assigned to a subtask
+// should see it in their personal task list (the parent include gives it context).
 export const getAssignedTasks = async (userId: string) => prisma.task.findMany({
   where: {
     assigneeId: userId,
@@ -201,6 +215,13 @@ export const getTaskById = async (taskId: string, userId: string) => {
           id: true,
           name: true,
           email: true,
+        },
+      },
+      parent: {
+        select: {
+          id: true,
+          title: true,
+          type: true,
         },
       },
       comments: {
@@ -316,6 +337,7 @@ export interface UpdateTaskInput {
   acceptanceCriteria?: string | null;
   estimatedHours?: number | null;
   storyPoints?: number | null;
+  type?: TaskType;
   statusId?: string;
   priority?: TaskPriority;
   labels?: string[];
@@ -346,6 +368,18 @@ export const updateTask = async (
     await requireProjectMember(existingTask.projectId, input.assigneeId);
   }
 
+  // SUBTASK is assigned only at creation (via createSubtask) and is otherwise immutable —
+  // it's what distinguishes a child task from a regular top-level Story/Bug.
+  if (input.type !== undefined && (input.type === TaskType.SUBTASK || existingTask.type === TaskType.SUBTASK)) {
+    throw new AppError("Task type SUBTASK can only be set when a subtask is created and cannot be changed", 400);
+  }
+
+  // Subtasks always mirror their parent's sprint (see createSubtask / the cascade below) —
+  // moving one independently would let it drift out of sync with the parent it belongs to.
+  if (existingTask.parentId && input.sprintId !== undefined) {
+    throw new AppError("Subtasks inherit their parent's sprint and cannot be moved independently", 400);
+  }
+
   if (input.sprintId) {
     const sprint = await prisma.sprint.findUnique({ where: { id: input.sprintId } });
     if (!sprint || sprint.projectId !== existingTask.projectId) {
@@ -368,6 +402,7 @@ export const updateTask = async (
       acceptanceCriteria: input.acceptanceCriteria,
       estimatedHours: input.estimatedHours,
       storyPoints: input.storyPoints,
+      type: input.type,
       statusId: nextStatus?.id,
       priority: input.priority,
       labels: input.labels,
@@ -378,6 +413,16 @@ export const updateTask = async (
     },
     include: taskSummaryInclude,
   });
+
+  // A top-level task's subtasks always ride along to whatever sprint (or backlog) their
+  // parent moves to — see the immutability guard above that keeps subtasks from drifting
+  // out of sync by being moved independently.
+  if (input.sprintId !== undefined && updatedTask.sprintId !== existingTask.sprintId) {
+    await prisma.task.updateMany({
+      where: { parentId: taskId },
+      data: { sprintId: updatedTask.sprintId },
+    });
+  }
 
   await prisma.taskActivity.create({
     data: {
@@ -438,6 +483,92 @@ export const deleteTask = async (taskId: string, userId: string) => {
   }
 
   await prisma.task.delete({ where: { id: taskId } });
+};
+
+// ─── Subtasks (real child Tasks) ─────────────────────────────────────────────
+// Supersedes the checklist-based subtasks below (TaskChecklistItem) for new work.
+// A subtask is a full Task with parentId set and type SUBTASK — it gets its own
+// status, assignee, story points, comments, and attachments like any other task.
+
+export const getTaskChildren = async (parentTaskId: string, userId: string) => {
+  await getTaskForTaskFeature(parentTaskId, userId);
+
+  return prisma.task.findMany({
+    where: { parentId: parentTaskId },
+    include: taskSummaryInclude,
+    orderBy: [{ order: "asc" }, { createdAt: "asc" }],
+  });
+};
+
+export interface CreateSubtaskInput {
+  title: string;
+  description?: string;
+  assigneeId?: string;
+  storyPoints?: number | null;
+  priority?: TaskPriority;
+}
+
+export const createSubtaskTask = async (parentTaskId: string, userId: string, input: CreateSubtaskInput) => {
+  const parent = await prisma.task.findUnique({ where: { id: parentTaskId } });
+  if (!parent) throw new NotFoundError("Task not found");
+
+  await requireProjectMember(parent.projectId, userId);
+
+  // Nesting is one level deep only — a subtask cannot itself be a parent.
+  if (parent.parentId) {
+    throw new AppError("Subtasks cannot have their own subtasks", 400);
+  }
+
+  const title = input.title.trim();
+  if (!title) throw new AppError("Subtask title is required", 400);
+
+  if (input.assigneeId) {
+    await requireProjectMember(parent.projectId, input.assigneeId);
+  }
+
+  // New subtask inherits the parent's current sprint (or backlog) immediately, and its
+  // starting status matches — sprint-default when it lands in a sprint, backlog-default
+  // otherwise. See updateTask's cascade for how it stays synced if the parent later moves.
+  const resolvedStatus = parent.sprintId
+    ? await getSprintDefaultStatus(parent.projectId)
+    : await getBacklogDefaultStatus(parent.projectId);
+
+  const subtask = await prisma.task.create({
+    data: {
+      title,
+      description: input.description,
+      storyPoints: input.storyPoints,
+      priority: input.priority ?? TaskPriority.MEDIUM,
+      type: TaskType.SUBTASK,
+      statusId: resolvedStatus.id,
+      projectId: parent.projectId,
+      sprintId: parent.sprintId,
+      parentId: parent.id,
+      assigneeId: input.assigneeId,
+      creatorId: userId,
+    },
+    include: taskSummaryInclude,
+  });
+
+  await prisma.taskActivity.create({
+    data: {
+      taskId: subtask.id,
+      userId,
+      action: "TASK_CREATED",
+      details: `Created subtask "${subtask.title}" under "${parent.title}"`,
+    },
+  });
+
+  if (subtask.assigneeId && subtask.assigneeId !== userId) {
+    await createNotification({
+      userId: subtask.assigneeId,
+      projectId: subtask.projectId,
+      type: NotificationType.TASK_ASSIGNED,
+      message: `You were assigned to "${subtask.title}" in ${subtask.project.name}.`,
+    });
+  }
+
+  return subtask;
 };
 
 const getTaskForTaskFeature = async (taskId: string, userId: string) => {

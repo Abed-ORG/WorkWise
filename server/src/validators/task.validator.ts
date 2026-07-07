@@ -1,4 +1,4 @@
-import { TaskPriority } from "@prisma/client";
+import { TaskPriority, TaskType } from "@prisma/client";
 import { z } from "zod";
 
 // Story points are Fibonacci-constrained — the only valid effort scale going forward.
@@ -7,6 +7,10 @@ const storyPointsSchema = z
   .nullable()
   .optional();
 
+// SUBTASK is excluded here — it's only ever assigned via createSubtaskSchema, never
+// through general task creation/update (enforced again in task.service.ts).
+const topLevelTaskTypeSchema = z.enum([TaskType.STORY, TaskType.BUG]).optional();
+
 export const createTaskSchema = z.object({
   title: z.string().min(1, "Title is required"),
   description: z.string().optional(),
@@ -14,6 +18,7 @@ export const createTaskSchema = z.object({
   // Accepted-but-ignored during the storyPoints transition so old clients/requests don't 400.
   estimatedHours: z.number().nonnegative().nullable().optional(),
   storyPoints: storyPointsSchema,
+  type: topLevelTaskTypeSchema,
   priority: z.nativeEnum(TaskPriority).optional(),
   labels: z.array(z.string()).optional(),
   dueDate: z.string().datetime().optional(),
@@ -30,6 +35,7 @@ export const updateTaskSchema = z.object({
   // Accepted-but-ignored during the storyPoints transition so old clients/requests don't 400.
   estimatedHours: z.number().nonnegative().nullable().optional(),
   storyPoints: storyPointsSchema,
+  type: topLevelTaskTypeSchema,
   statusId: z.string().min(1).optional(),
   priority: z.nativeEnum(TaskPriority).optional(),
   labels: z.array(z.string()).optional(),
@@ -37,6 +43,14 @@ export const updateTaskSchema = z.object({
   assigneeId: z.string().nullable().optional(),
   sprintId: z.string().nullable().optional(),
   order: z.number().int().optional(),
+});
+
+export const createSubtaskTaskSchema = z.object({
+  title: z.string().min(1, "Subtask title is required"),
+  description: z.string().optional(),
+  assigneeId: z.string().optional(),
+  storyPoints: storyPointsSchema,
+  priority: z.nativeEnum(TaskPriority).optional(),
 });
 
 export const createChecklistItemSchema = z.object({
