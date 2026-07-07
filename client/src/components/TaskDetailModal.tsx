@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type DragEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type DragEvent, type ReactNode } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import DocumentLinkPicker from './DocumentLinkPicker';
 import Icon from './Icon';
@@ -47,6 +47,15 @@ interface AcceptanceCriterion {
   id: string;
   text: string;
   done: boolean;
+}
+
+function TaskPropertyRow({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div className="task-property-row">
+      <span className="task-property-label">{label}</span>
+      <div className="task-property-value">{children}</div>
+    </div>
+  );
 }
 
 function formatFileSize(size: number) {
@@ -1124,91 +1133,97 @@ export default function TaskDetailModal({ taskId: propTaskId, onClose, onTaskUpd
             </main>
 
             <aside className="task-detail-sidebar">
-              <section className="task-detail-section">
-                <div className="task-detail-section-heading">
+              <section className="task-metadata-card">
+                <div className="task-metadata-heading">
                   <h3>Details</h3>
-                  <span>{savingDetails ? 'Saving...' : detailsMessage}</span>
+                  <span>{savingDetails || savingStatus || savingSprint ? 'Saving...' : detailsMessage || statusMessage || sprintMessage}</span>
                 </div>
-                {task.parentId ? (
-                  <div className="field">
-                    <span className="field-label">Type</span>
-                    <strong className="task-type-readonly"><Icon name="subtask" size={14} className={taskTypeColorClass('SUBTASK')} /> Subtask</strong>
-                  </div>
-                ) : (
-                  <Select
-                    label="Type"
-                    value={task.type}
-                    options={TASK_TYPE_OPTIONS}
-                    onChange={(event) => updateType(event.target.value as Exclude<TaskType, 'SUBTASK'>)}
-                    disabled={savingDetails}
-                  />
-                )}
-                <Select
-                  label="Priority"
-                  value={task.priority}
-                  options={PRIORITY_OPTIONS}
-                  onChange={(event) => updatePriority(event.target.value)}
-                  disabled={savingDetails}
-                />
-                <Select
-                  label="Status"
-                  className="task-status-select"
-                  value={task.statusId}
-                  options={statusOptions}
-                  onChange={(event) => updateStatus(event.target.value)}
-                  disabled={savingStatus}
-                  helperText={savingStatus ? 'Saving status...' : statusMessage || undefined}
-                />
-                {task.parentId ? (
-                  <div className="field">
-                    <span className="field-label">Sprint</span>
-                    <strong>{task.sprint?.name ?? 'Product backlog / No sprint'}</strong>
-                  </div>
-                ) : (
-                  <Select
-                    label="Sprint"
-                    value={task.sprintId ?? ''}
-                    options={sprintOptions}
-                    onChange={(event) => updateSprint(event.target.value)}
-                    disabled={savingSprint}
-                    helperText={savingSprint ? 'Saving sprint...' : sprintMessage || undefined}
-                  />
-                )}
-                <Select
-                  label="Assignee"
-                  value={task.assignee?.id ?? ''}
-                  options={[
-                    { value: '', label: 'Unassigned' },
-                    ...projectMembers.map((member) => ({ value: member.user.id, label: `${member.user.name} (${member.role.toLowerCase()})` })),
-                  ]}
-                  onChange={(event) => updateAssignee(event.target.value)}
-                  disabled={savingDetails}
-                />
-                <Select
-                  label="Story points"
-                  value={task.storyPoints ? String(task.storyPoints) : ''}
-                  options={storyPointsSelectOptions}
-                  onChange={(event) => updateStoryPoints(event.target.value)}
-                  disabled={savingDetails}
-                />
-                <label className="field">
-                  <span className="field-label">Due date</span>
-                  <input
-                    className="field-control"
-                    type="date"
-                    value={toDateInputValue(task.dueDate)}
-                    onChange={(event) => updateDueDate(event.target.value)}
-                    disabled={savingDetails}
-                  />
-                </label>
-                <div className="task-detail-fields">
-                  <div><span>Reporter</span><strong>{task.creator?.name ?? 'Unknown'}</strong></div>
-                  <div><span>Project</span><strong>{task.project?.name ?? 'Unknown'}</strong></div>
+                <div className="task-property-list">
+                  <TaskPropertyRow label="Type">
+                    {task.parentId ? (
+                      <strong className="task-property-readonly"><Icon name="subtask" size={13} className={taskTypeColorClass('SUBTASK')} /> Subtask</strong>
+                    ) : (
+                      <Select
+                        value={task.type}
+                        options={TASK_TYPE_OPTIONS}
+                        onChange={(event) => updateType(event.target.value as Exclude<TaskType, 'SUBTASK'>)}
+                        disabled={savingDetails}
+                      />
+                    )}
+                  </TaskPropertyRow>
+                  <TaskPropertyRow label="Priority">
+                    <Select
+                      value={task.priority}
+                      options={PRIORITY_OPTIONS}
+                      onChange={(event) => updatePriority(event.target.value)}
+                      disabled={savingDetails}
+                    />
+                  </TaskPropertyRow>
+                  <TaskPropertyRow label="Status">
+                    <Select
+                      className="task-status-select"
+                      value={task.statusId}
+                      options={statusOptions}
+                      onChange={(event) => updateStatus(event.target.value)}
+                      disabled={savingStatus}
+                    />
+                  </TaskPropertyRow>
+                  <TaskPropertyRow label="Sprint">
+                    {task.parentId ? (
+                      <strong className="task-property-readonly">{task.sprint?.name ?? 'Product backlog / No sprint'}</strong>
+                    ) : (
+                      <Select
+                        value={task.sprintId ?? ''}
+                        options={sprintOptions}
+                        onChange={(event) => updateSprint(event.target.value)}
+                        disabled={savingSprint}
+                      />
+                    )}
+                  </TaskPropertyRow>
+                  <TaskPropertyRow label="Assignee">
+                    <Select
+                      value={task.assignee?.id ?? ''}
+                      options={[
+                        { value: '', label: 'Unassigned' },
+                        ...projectMembers.map((member) => ({ value: member.user.id, label: `${member.user.name} (${member.role.toLowerCase()})` })),
+                      ]}
+                      onChange={(event) => updateAssignee(event.target.value)}
+                      disabled={savingDetails}
+                    />
+                  </TaskPropertyRow>
+                  <TaskPropertyRow label="Story Points">
+                    <Select
+                      value={task.storyPoints ? String(task.storyPoints) : ''}
+                      options={storyPointsSelectOptions}
+                      onChange={(event) => updateStoryPoints(event.target.value)}
+                      disabled={savingDetails}
+                    />
+                  </TaskPropertyRow>
+                  <TaskPropertyRow label="Due Date">
+                    <input
+                      className="field-control task-property-date"
+                      type="date"
+                      value={toDateInputValue(task.dueDate)}
+                      onChange={(event) => updateDueDate(event.target.value)}
+                      disabled={savingDetails}
+                    />
+                  </TaskPropertyRow>
+                  <TaskPropertyRow label="Reporter">
+                    <strong className="task-property-readonly">{task.creator?.name ?? 'Unknown'}</strong>
+                  </TaskPropertyRow>
+                  <TaskPropertyRow label="Project">
+                    <span className="task-property-project">
+                      <span className="task-property-project-key">{task.project?.key ?? 'PROJ'}</span>
+                      <strong>{task.project?.name ?? 'Unknown'}</strong>
+                    </span>
+                  </TaskPropertyRow>
                 </div>
               </section>
 
-              <section className="task-detail-section">
-                <h3>Linked Documents</h3>
+              <section className="task-detail-section task-sidebar-documents">
+                <div className="task-metadata-heading">
+                  <h3>Linked Documents</h3>
+                </div>
                 <DocumentLinkPicker projectId={task.projectId} linkedDocuments={linkedDocuments} onChange={handleDocumentChange} />
               </section>
             </aside>
