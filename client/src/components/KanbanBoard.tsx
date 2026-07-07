@@ -73,7 +73,7 @@ export default function KanbanBoard({
   });
   const columns = useMemo(
     () => [...(statusesQuery.data ?? [])]
-      .filter((status) => !status.isBacklogDefault)
+      .filter((status) => !(status.isBacklogDefault && !status.isSprintDefault))
       .sort((a, b) => a.order - b.order),
     [statusesQuery.data],
   );

@@ -6,7 +6,7 @@ import KanbanBoard from './KanbanBoard';
 
 const statuses = vi.hoisted(() => [
   { id: 'status-backlog', name: 'Backlog', category: 'TODO' as const, order: 0, isBacklogDefault: true, isSprintDefault: false },
-  { id: 'status-todo', name: 'To do', category: 'TODO' as const, order: 1, isBacklogDefault: false, isSprintDefault: true },
+  { id: 'status-todo', name: 'To do', category: 'TODO' as const, order: 1, isBacklogDefault: true, isSprintDefault: true },
   { id: 'status-in-progress', name: 'In progress', category: 'IN_PROGRESS' as const, order: 2, isBacklogDefault: false, isSprintDefault: false },
   { id: 'status-review', name: 'Review', category: 'IN_PROGRESS' as const, order: 3, isBacklogDefault: false, isSprintDefault: false },
   { id: 'status-done', name: 'Done', category: 'DONE' as const, order: 4, isBacklogDefault: false, isSprintDefault: false },
