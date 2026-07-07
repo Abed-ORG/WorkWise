@@ -32,11 +32,13 @@ const smtpFrom = optionalEnv(process.env.MAIL_FROM)
 const emailFrom = optionalEnv(process.env.EMAIL_FROM)
   || smtpFrom
   || "WorkWise <onboarding@resend.dev>";
+const frontendUrl = optionalEnv(process.env.FRONTEND_URL)
+  || (process.env.NODE_ENV === "production" ? "https://work-wise-six.vercel.app" : "http://localhost:5173");
 
 export const env = {
   port: process.env.PORT || "5000",
   nodeEnv: process.env.NODE_ENV || "development",
-  frontendUrl: process.env.FRONTEND_URL || "http://localhost:5173",
+  frontendUrl,
   databaseUrl: process.env.DATABASE_URL,
   directUrl: process.env.DIRECT_URL,
   jwtSecret: process.env.JWT_SECRET,

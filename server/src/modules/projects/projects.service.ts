@@ -307,20 +307,28 @@ export class ProjectsService {
       },
     });
 
+    let emailDeliveryStatus: 'SENT' | 'FAILED' = 'SENT';
+
     try {
       await sendProjectInvitationEmail({
         to: normalizedEmail,
+        invitationId: invitation.id,
         recipientName: invitedUser?.name,
         senderName: invitation.sender.name,
         projectName: invitation.project.name,
         role: invitation.role.toLowerCase(),
       });
     } catch (error) {
-      await prisma.invitation.delete({ where: { id: invitation.id } });
-      throw error;
+      emailDeliveryStatus = 'FAILED';
+      console.warn('[projects] Invitation saved, but email delivery failed', {
+        invitationId: invitation.id,
+        projectId,
+        email: normalizedEmail,
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
 
-    return invitation;
+    return { ...invitation, emailDeliveryStatus };
   }
 
   // ── Get Pending Invitations for Project ────────────────────
@@ -383,12 +391,14 @@ export class ProjectsService {
         where: { id: invitationId },
         data: { status: 'ACCEPTED' },
       }),
-      prisma.projectMember.create({
-        data: {
+      prisma.projectMember.upsert({
+        where: { userId_projectId: { userId, projectId: invitation.projectId } },
+        create: {
           userId,
           projectId: invitation.projectId,
           role: invitation.role,
         },
+        update: {},
       }),
     ]);
 
@@ -411,10 +421,19 @@ export class ProjectsService {
       throw new Error('INVITATION_NOT_FOR_USER');
     }
 
-    await prisma.invitation.update({
-      where: { id: invitationId },
-      data: { status: 'DECLINED' },
-    });
+    await prisma.$transaction([
+      prisma.invitation.update({
+        where: { id: invitationId },
+        data: { status: 'DECLINED' },
+      }),
+      prisma.projectMember.deleteMany({
+        where: {
+          userId,
+          projectId: invitation.projectId,
+          role: invitation.role,
+        },
+      }),
+    ]);
   }
 
   async startSprint(

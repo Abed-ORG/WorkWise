@@ -80,7 +80,11 @@ export default function ProjectSettingsPage() {
       setInvitations((current) => [...current, invitation]);
       setInviteForm({ email: '', role: 'DEVELOPER' });
       setShowInviteForm(false);
-      toast.success('Invitation email sent successfully.');
+      if (invitation.emailDeliveryStatus === 'FAILED') {
+        toast.info('Invitation saved, but the email could not be delivered. Ask them to sign in with this email to accept it.');
+      } else {
+        toast.success('Invitation email sent successfully.');
+      }
     } catch (requestError: unknown) {
       const message = axios.isAxiosError<{ message?: string }>(requestError) ? requestError.response?.data?.message : undefined;
       toast.error(message || 'Failed to send invitation.');

@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import Icon from './Icon';
-import { Select } from './ui';
+import { Button, Select } from './ui';
 import {
   getNotifications,
   markAllNotificationsRead,
@@ -11,8 +11,11 @@ import {
   updateNotificationPreference,
 } from '../services/notificationService';
 import type { NotificationItem, NotificationPreference } from '../services/notificationService';
+import { acceptInvitation, declineInvitation, getUserInvitations } from '../services/projectService';
+import type { Invitation, Project } from '../services/projectService';
 import { getRealtimeSocket } from '../services/realtimeService';
 import { useAuth } from '../hooks/useAuth';
+import { useToast } from '../hooks/useToast';
 import { queryKeys, queryTimes } from '../services/queryOptions';
 
 const preferenceLabels: Record<NotificationPreference, string> = {
@@ -35,6 +38,7 @@ export default function NotificationBell() {
   const { user, updateUser } = useAuth();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const toast = useToast();
   const [isOpen, setIsOpen] = useState(false);
   const [preference, setPreference] = useState<NotificationPreference>(user.notificationPreference ?? 'ALL');
   const containerRef = useRef<HTMLDivElement>(null);
@@ -45,8 +49,37 @@ export default function NotificationBell() {
     queryFn: getNotifications,
     staleTime: queryTimes.notifications,
   });
+  const invitationsQuery = useQuery({
+    queryKey: queryKeys.invitations,
+    queryFn: getUserInvitations,
+    staleTime: queryTimes.activity,
+  });
   const items = Array.isArray(notificationsQuery.data) ? notificationsQuery.data : [];
-  const unreadCount = useMemo(() => items.filter((item) => !item.isRead).length, [items]);
+  const invitations = Array.isArray(invitationsQuery.data) ? invitationsQuery.data : [];
+  const unreadNotificationCount = useMemo(() => items.filter((item) => !item.isRead).length, [items]);
+  const unreadCount = unreadNotificationCount + invitations.length;
+
+  const acceptInvitationMutation = useMutation({
+    mutationFn: acceptInvitation,
+    onSuccess: (project, invitationId) => {
+      queryClient.setQueryData<Invitation[]>(queryKeys.invitations, (current = []) => current.filter((invitation) => invitation.id !== invitationId));
+      queryClient.setQueryData<Project[]>(queryKeys.projects, (current = []) => {
+        const projects = Array.isArray(current) ? current : [];
+        return projects.some((item) => item.id === project.id) ? projects : [project, ...projects];
+      });
+      toast.success(`Joined ${project.name}.`);
+    },
+    onError: () => toast.error('Invitation could not be accepted.'),
+  });
+
+  const declineInvitationMutation = useMutation({
+    mutationFn: declineInvitation,
+    onSuccess: (_result, invitationId) => {
+      queryClient.setQueryData<Invitation[]>(queryKeys.invitations, (current = []) => current.filter((invitation) => invitation.id !== invitationId));
+      toast.success('Invitation declined.');
+    },
+    onError: () => toast.error('Invitation could not be declined.'),
+  });
 
   useEffect(() => {
     const activeSocket = getRealtimeSocket();
@@ -117,7 +150,7 @@ export default function NotificationBell() {
             <p className="section-kicker">Updates</p>
             <h3>Notifications</h3>
           </div>
-          <button type="button" className="text-button" onClick={handleReadAll} disabled={!unreadCount}>
+          <button type="button" className="text-button" onClick={handleReadAll} disabled={!unreadNotificationCount}>
             Mark all read
           </button>
         </div>
@@ -135,6 +168,24 @@ export default function NotificationBell() {
         <button type="button" className="text-button notification-settings-link" onClick={handleOpenNotificationSettings}>
           <Icon name="settings" size={14} /> Notification settings
         </button>
+
+        {invitations.length > 0 && (
+          <div className="notification-list" aria-label="Project invitations">
+            {invitations.map((invitation) => (
+              <div className="notification-item is-unread notification-invitation" key={invitation.id}>
+                <span className="notification-dot" />
+                <span>
+                  <strong>You&apos;re invited to {invitation.project?.name}</strong>
+                  <small>{invitation.sender?.name} invited you as {invitation.role.toLowerCase()}.</small>
+                  <span className="notification-invitation-actions">
+                    <Button className="notification-invitation-button" onClick={() => acceptInvitationMutation.mutate(invitation.id)}>Accept</Button>
+                    <Button className="notification-invitation-button" variant="secondary" onClick={() => declineInvitationMutation.mutate(invitation.id)}>Decline</Button>
+                  </span>
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
 
         <div className="notification-list">
           {items.length ? (
