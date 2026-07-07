@@ -4,7 +4,6 @@
   font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   color: #202020;
   background: #f7f7f4;
-  font-synthesis: none;
   text-rendering: optimizeLegibility;
   --primary: #ffee32;
   --primary-strong: #ffd100;
@@ -807,10 +806,15 @@ textarea.field-control { resize: vertical; }
 
 .section-kicker { margin: 0 0 5px; color: #9d8200; font-size: 10px; font-weight: 800; letter-spacing: .13em; text-transform: uppercase; }
 [data-theme='dark'] .section-kicker { color: var(--primary-strong); }
-.task-breadcrumb { display: flex; align-items: center; gap: 4px; text-transform: none; letter-spacing: normal; }
-.task-breadcrumb-link { padding: 0; border: 0; color: inherit; background: transparent; font: inherit; font-weight: inherit; letter-spacing: inherit; text-transform: inherit; cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
-.task-breadcrumb-link:hover { color: var(--primary-strong); }
-.task-breadcrumb-sep { opacity: .6; }
+.task-modal-breadcrumbs { display: flex; min-width: 0; margin-bottom: 5px; color: var(--text-subtle); font-size: 12px; font-weight: 800; text-transform: none; letter-spacing: normal; }
+.task-modal-breadcrumbs ol { display: flex; min-width: 0; align-items: center; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.task-modal-breadcrumbs li { display: inline-flex; min-width: 0; align-items: center; gap: 6px; }
+.task-modal-breadcrumbs button, .task-modal-breadcrumbs span { display: inline-flex; min-width: 0; align-items: center; gap: 5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.task-modal-breadcrumbs button { padding: 0; border: 0; color: var(--text-muted); background: transparent; font: inherit; font-weight: inherit; letter-spacing: inherit; cursor: pointer; text-decoration: none; transition: color .16s ease; }
+.task-modal-breadcrumbs button:hover, .task-modal-breadcrumbs button:focus-visible { color: var(--text); outline: none; }
+.task-modal-breadcrumbs span[aria-current='page'] { color: var(--text); }
+.task-modal-breadcrumbs svg { flex: none; color: var(--text-subtle); }
+.task-type-readonly { display: inline-flex; align-items: center; gap: 6px; }
 .task-type-readonly { display: inline-flex; align-items: center; gap: 6px; }
 
 .kanban-shell { position: relative; margin-bottom: 22px; padding: 24px; overflow: visible; }

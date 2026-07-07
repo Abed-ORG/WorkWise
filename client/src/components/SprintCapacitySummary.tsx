@@ -15,9 +15,13 @@ export default function SprintCapacitySummary({ capacity, compact = false }: Spr
   } = capacity;
 
   const hasTasks = committedPoints > 0 || unestimatedTaskCount > 0;
-  const barPct = averageVelocity !== null && averageVelocity > 0
-    ? Math.min(100, Math.round((committedPoints / averageVelocity) * 100))
+  // The bar fill is capped at 100% so it never overflows its track, but the displayed
+  // percentage must stay uncapped — otherwise an over-committed sprint (e.g. 5 committed
+  // against a 2.5 velocity) reads as "100%", which looks identical to being exactly full.
+  const rawPct = averageVelocity !== null && averageVelocity > 0
+    ? Math.round((committedPoints / averageVelocity) * 100)
     : 0;
+  const barPct = Math.min(100, rawPct);
 
   return (
     <div className={`sprint-capacity${compact ? ' sprint-capacity--compact' : ''}${isOverCommitted ? ' sprint-capacity--over' : ''}`}>
@@ -43,7 +47,7 @@ export default function SprintCapacitySummary({ capacity, compact = false }: Spr
         {averageVelocity !== null ? (
           <span className="sprint-capacity-figure">
             {committedPoints} pts committed / ~{averageVelocity.toFixed(1)} pts avg velocity
-            {` (${Math.round(barPct)}%)`}
+            {` (${rawPct}%)`}
           </span>
         ) : (
           <span className="sprint-capacity-figure">

@@ -686,11 +686,20 @@ export default function TaskDetailModal({ taskId: propTaskId, onClose, onTaskUpd
           <header className="task-detail-header">
             <div>
               {task.parent ? (
-                <p className="section-kicker task-breadcrumb">
-                  <button type="button" className="task-breadcrumb-link" onClick={() => setTaskId(task.parent!.id)}>{task.parent.title}</button>
-                  <span className="task-breadcrumb-sep"> ▸ </span>
-                  <span>{task.title}</span>
-                </p>
+                <nav className="task-modal-breadcrumbs" aria-label="Breadcrumb">
+                  <ol>
+                    <li>
+                      <button type="button" onClick={() => setTaskId(task.parent!.id)}>
+                        <Icon name={taskTypeIcon(task.parent.type)} size={13} />
+                        <span>{task.parent.title}</span>
+                      </button>
+                      <Icon name="arrow-right" size={12} />
+                    </li>
+                    <li>
+                      <span aria-current="page">{task.title}</span>
+                    </li>
+                  </ol>
+                </nav>
               ) : (
                 <p className="section-kicker">{task.project?.key ?? 'Task'}{task.sprint ? ` / ${task.sprint.name}` : ''}</p>
               )}
