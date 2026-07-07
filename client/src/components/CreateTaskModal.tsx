@@ -9,6 +9,7 @@ import { TASK_TYPE_OPTIONS } from '../utils/taskType';
 interface CreateTaskModalProps {
   isOpen: boolean;
   projectId: string;
+  sprintId?: string;
   members: ProjectMember[];
   onClose: () => void;
   onCreated: (task: Task) => void;
@@ -25,7 +26,7 @@ const initialForm = {
   dueDate: '',
 };
 
-export default function CreateTaskModal({ isOpen, projectId, members, onClose, onCreated }: CreateTaskModalProps) {
+export default function CreateTaskModal({ isOpen, projectId, sprintId, members, onClose, onCreated }: CreateTaskModalProps) {
   const [form, setForm] = useState(initialForm);
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -48,6 +49,7 @@ export default function CreateTaskModal({ isOpen, projectId, members, onClose, o
     try {
       const task = await createTask({
         projectId,
+        sprintId,
         title,
         description: form.description.trim() || undefined,
         storyPoints: form.storyPoints ? Number(form.storyPoints) : undefined,

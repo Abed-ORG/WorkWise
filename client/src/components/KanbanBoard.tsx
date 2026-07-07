@@ -72,10 +72,15 @@ export default function KanbanBoard({
     staleTime: queryTimes.statuses,
   });
   const columns = useMemo(
-    () => [...(statusesQuery.data ?? [])].sort((a, b) => a.order - b.order),
+    () => [...(statusesQuery.data ?? [])]
+      .filter((status) => !status.isBacklogDefault)
+      .sort((a, b) => a.order - b.order),
     [statusesQuery.data],
   );
-  const boardTasks = useMemo(() => tasks.filter((task) => Boolean(task.sprintId)), [tasks]);
+  const boardTasks = useMemo(
+    () => activeSprintId ? tasks.filter((task) => task.sprintId === activeSprintId) : [],
+    [activeSprintId, tasks],
+  );
   const boardTaskCount = boardTasks.length;
   const taskAssignees = Array.from(new Map(boardTasks
     .map((task) => task.assignee)
