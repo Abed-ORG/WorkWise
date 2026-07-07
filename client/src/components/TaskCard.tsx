@@ -3,7 +3,7 @@ import Icon from './Icon';
 import type { Task } from '../services/taskService';
 import { getInitials } from '../utils/initials';
 import { isDone } from '../utils/taskStatus';
-import { taskTypeIcon, taskTypeLabel } from '../utils/taskType';
+import { taskTypeColorClass, taskTypeIcon, taskTypeLabel } from '../utils/taskType';
 
 interface TaskCardProps {
   task: Task;
@@ -37,7 +37,7 @@ export default function TaskCard({ task, dragging = false, onDragStart, onDragEn
     >
       {onSelect && <label className="task-card-selector" onClick={(event) => event.stopPropagation()}><input className="themed-checkbox" type="checkbox" checked={selected} onChange={(event) => onSelect(event.target.checked)} aria-label={`Select ${task.title}`} /></label>}
       <div className="task-card-topline">
-        <span className="task-type-icon" title={taskTypeLabel(task.type)}><Icon name={taskTypeIcon(task.type)} size={14} /></span>
+        <span className={`task-type-icon ${taskTypeColorClass(task.type)}`} title={taskTypeLabel(task.type)}><Icon name={taskTypeIcon(task.type)} size={14} /></span>
         <span className="task-priority-dot" aria-hidden="true" />
         <span className="task-priority-label">{task.priority.toLowerCase()}</span>
       </div>

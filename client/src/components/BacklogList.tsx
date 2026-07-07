@@ -13,7 +13,7 @@ import type { TaskSearchFilters } from '../services/aiService';
 import { isOpenSprintMoveTarget } from '../utils/sprintOptions';
 import { queryKeys, queryTimes } from '../services/queryOptions';
 import { getInitials } from '../utils/initials';
-import { taskTypeIcon, taskTypeLabel } from '../utils/taskType';
+import { taskTypeColorClass, taskTypeIcon, taskTypeLabel } from '../utils/taskType';
 
 type SortKey = 'title' | 'status' | 'priority' | 'assignee' | 'project' | 'dueDate';
 type SortDirection = 'asc' | 'desc';
@@ -499,7 +499,7 @@ export default function BacklogList({
       >
         {canDelete && <td className="checkbox-cell"><input className="themed-checkbox" type="checkbox" checked={selectedTaskIds.includes(task.id)} onChange={() => toggleTaskSelection(task.id)} aria-label={`Select ${task.title}`} /></td>}
         <td data-label="Task">
-          <span className="task-type-icon backlog-type-icon" title={taskTypeLabel(task.type)}><Icon name={taskTypeIcon(task.type)} size={14} /></span>
+          <span className={`task-type-icon backlog-type-icon ${taskTypeColorClass(task.type)}`} title={taskTypeLabel(task.type)}><Icon name={taskTypeIcon(task.type)} size={14} /></span>
           {editingCell?.taskId === task.id && editingCell?.field === 'title' ? (
             <input
               className="backlog-inline-input"

@@ -118,7 +118,7 @@ export default function ProjectBoardPage() {
         statusId: input.statusId,
         sprintId: input.sprintId,
       });
-      queryClient.setQueryData<Task[]>(queryKeys.projectTasks(projectId), (current = []) => upsertTask(current, task));
+      if (!task.parentId) queryClient.setQueryData<Task[]>(queryKeys.projectTasks(projectId), (current = []) => upsertTask(current, task));
       queryClient.setQueryData(queryKeys.task(task.id), task);
       toast.success('Task added to the board.');
       return task;
@@ -160,12 +160,14 @@ export default function ProjectBoardPage() {
         />
       </section>
       <CreateTaskModal isOpen={createOpen} projectId={projectId} sprintId={activeSprint?.id} members={project.members ?? []} onClose={() => setCreateOpen(false)} onCreated={(task) => {
-        queryClient.setQueryData<Task[]>(queryKeys.projectTasks(projectId), (current = []) => upsertTask(current, task));
+        if (!task.parentId) queryClient.setQueryData<Task[]>(queryKeys.projectTasks(projectId), (current = []) => upsertTask(current, task));
         queryClient.setQueryData(queryKeys.task(task.id), task);
         toast.success('Task created successfully.');
       }} />
       <TaskDetailModal taskId={selectedTaskId} onClose={() => setSelectedTaskId(null)} onTaskUpdated={(task) => {
-        queryClient.setQueryData<Task[]>(queryKeys.projectTasks(projectId), (current = []) => upsertTask(current, task));
+        // TaskDetailModal can drill into a subtask (parentId set) via its internal breadcrumb
+        // navigation — editing that subtask must never leak it into the board's task list.
+        if (!task.parentId) queryClient.setQueryData<Task[]>(queryKeys.projectTasks(projectId), (current = []) => upsertTask(current, task));
         queryClient.setQueryData(queryKeys.task(task.id), task);
       }} />
     </>

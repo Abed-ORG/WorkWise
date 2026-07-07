@@ -217,12 +217,14 @@ export default function ProjectBacklogPage() {
       />
 
       <CreateTaskModal isOpen={createOpen} projectId={projectId} members={project.members ?? []} onClose={() => setCreateOpen(false)} onCreated={(task) => {
-        queryClient.setQueryData<Task[]>(queryKeys.projectTasks(projectId), (current = []) => upsertTask(current, task));
+        if (!task.parentId) queryClient.setQueryData<Task[]>(queryKeys.projectTasks(projectId), (current = []) => upsertTask(current, task));
         queryClient.setQueryData(queryKeys.task(task.id), task);
         toast.success('Task created successfully.');
       }} />
       <TaskDetailModal taskId={selectedTaskId} onClose={() => setSelectedTaskId(null)} onTaskUpdated={(task) => {
-        queryClient.setQueryData<Task[]>(queryKeys.projectTasks(projectId), (current = []) => upsertTask(current, task));
+        // TaskDetailModal can drill into a subtask via its internal breadcrumb navigation —
+        // this list (and the board, which shares this same query cache key) must stay top-level only.
+        if (!task.parentId) queryClient.setQueryData<Task[]>(queryKeys.projectTasks(projectId), (current = []) => upsertTask(current, task));
         queryClient.setQueryData(queryKeys.task(task.id), task);
       }} />
     </>

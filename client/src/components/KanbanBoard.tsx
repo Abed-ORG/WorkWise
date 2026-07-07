@@ -78,7 +78,9 @@ export default function KanbanBoard({
     [statusesQuery.data],
   );
   const boardTasks = useMemo(
-    () => activeSprintId ? tasks.filter((task) => task.sprintId === activeSprintId) : [],
+    // Subtasks (parentId set) must never render as board cards, even if a stale/optimistic
+    // cache update slipped one into `tasks` — this mirrors the backend's parentId: null filter.
+    () => activeSprintId ? tasks.filter((task) => task.sprintId === activeSprintId && !task.parentId) : [],
     [activeSprintId, tasks],
   );
   const boardTaskCount = boardTasks.length;
