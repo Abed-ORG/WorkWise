@@ -123,6 +123,7 @@ export default function TaskDetailModal({ taskId: propTaskId, onClose, onTaskUpd
   const [task, setTask] = useState<Task | null>(null);
   const [linkedDocuments, setLinkedDocuments] = useState<ProjectDocument[]>([]);
   const [children, setChildren] = useState<Task[]>([]);
+  const [childrenLoading, setChildrenLoading] = useState(false);
   const [childDraft, setChildDraft] = useState('');
   const [savingChildId, setSavingChildId] = useState<string | null>(null);
   const [childrenMessage, setChildrenMessage] = useState('');
@@ -206,6 +207,7 @@ export default function TaskDetailModal({ taskId: propTaskId, onClose, onTaskUpd
       setTask(null);
       setLinkedDocuments([]);
       setChildren([]);
+      setChildrenLoading(false);
       setAttachments([]);
       setProjectMembers([]);
       setImagePreviews({});
@@ -240,6 +242,7 @@ export default function TaskDetailModal({ taskId: propTaskId, onClose, onTaskUpd
     setChildrenMessage('');
     setAttachmentsMessage('');
     setImagePreviews({});
+    setChildrenLoading(true);
 
     const createdPreviewUrls: string[] = [];
 
@@ -267,6 +270,9 @@ export default function TaskDetailModal({ taskId: propTaskId, onClose, onTaskUpd
       })
       .catch(() => {
         if (active) setError('Task details could not be loaded.');
+      })
+      .finally(() => {
+        if (active) setChildrenLoading(false);
       });
 
     return () => {
@@ -808,27 +814,39 @@ export default function TaskDetailModal({ taskId: propTaskId, onClose, onTaskUpd
                   <h3>Subtasks</h3>
                   <span>{savingChildId ? 'Saving...' : childrenMessage}</span>
                 </div>
-                <div className="subtask-list">
-                  {children.map((child) => (
-                    <div className="subtask-row" key={child.id}>
-                      <span className="task-type-icon" title={taskTypeLabel(child.type)}><Icon name={taskTypeIcon(child.type)} size={14} /></span>
-                      <button
-                        type="button"
-                        className={`subtask-row-open ${isDone(child) ? 'is-complete' : ''}`}
-                        onClick={() => setTaskId(child.id)}
-                      >
-                        <span className="subtask-row-text">{child.title}</span>
-                        <span className={`status-badge category-${child.status.category.toLowerCase()}`} style={child.status.color ? { borderColor: child.status.color, color: child.status.color, background: `${child.status.color}1a` } : undefined}>{child.status.name}</span>
-                        {child.assignee && (
-                          <span className="mini-avatar" title={child.assignee.name}>{getInitials(child.assignee.name)}</span>
-                        )}
-                      </button>
-                      <button type="button" className="icon-button acceptance-delete-button" onClick={() => removeChild(child)} disabled={savingChildId === child.id} aria-label="Delete subtask">
-                        <Icon name="trash" size={15} />
-                      </button>
-                    </div>
-                  ))}
-                  {children.length === 0 && <div className="document-link-empty">No subtasks yet.</div>}
+                <div className="subtask-list" aria-busy={childrenLoading}>
+                  {childrenLoading ? (
+                    Array.from({ length: 2 }, (_, index) => (
+                      <div className="subtask-row" key={index} aria-hidden="true">
+                        <span className="skeleton" style={{ width: 14, height: 14, borderRadius: 4 }} />
+                        <span className="skeleton" style={{ height: 14, borderRadius: 6 }} />
+                        <span className="skeleton" style={{ width: 15, height: 15, borderRadius: 4, justifySelf: 'center' }} />
+                      </div>
+                    ))
+                  ) : (
+                    <>
+                      {children.map((child) => (
+                        <div className="subtask-row" key={child.id}>
+                          <span className="task-type-icon" title={taskTypeLabel(child.type)}><Icon name={taskTypeIcon(child.type)} size={14} /></span>
+                          <button
+                            type="button"
+                            className={`subtask-row-open ${isDone(child) ? 'is-complete' : ''}`}
+                            onClick={() => setTaskId(child.id)}
+                          >
+                            <span className="subtask-row-text">{child.title}</span>
+                            <span className={`status-badge category-${child.status.category.toLowerCase()}`} style={child.status.color ? { borderColor: child.status.color, color: child.status.color, background: `${child.status.color}1a` } : undefined}>{child.status.name}</span>
+                            {child.assignee && (
+                              <span className="mini-avatar" title={child.assignee.name}>{getInitials(child.assignee.name)}</span>
+                            )}
+                          </button>
+                          <button type="button" className="icon-button acceptance-delete-button" onClick={() => removeChild(child)} disabled={savingChildId === child.id} aria-label="Delete subtask">
+                            <Icon name="trash" size={15} />
+                          </button>
+                        </div>
+                      ))}
+                      {children.length === 0 && <div className="document-link-empty">No subtasks yet.</div>}
+                    </>
+                  )}
                 </div>
                 <div className="task-comment-composer">
                   <textarea
