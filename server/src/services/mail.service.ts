@@ -41,12 +41,15 @@ const getErrorMessage = (error: unknown) =>
 const sendMail = async ({ to, subject, text, html }: EmailMessage) => {
   const { resendApiKey, from, smtp } = env.email;
   const smtpConfigured = Boolean(smtp.host && smtp.user && smtp.pass);
+  const resendConfigured = Boolean(resendApiKey);
   const sender = smtpConfigured ? smtp.from || from : from;
 
-  if (!smtpConfigured && !resendApiKey) throw new Error("MAIL_NOT_CONFIGURED");
+  if (!smtpConfigured && !resendConfigured) throw new Error("MAIL_NOT_CONFIGURED");
 
-  try {
-    if (smtpConfigured) {
+  const deliveryErrors: string[] = [];
+
+  if (smtpConfigured) {
+    try {
       const transporter = nodemailer.createTransport({
         host: smtp.host,
         port: smtp.port,
@@ -65,31 +68,42 @@ const sendMail = async ({ to, subject, text, html }: EmailMessage) => {
         html,
       });
       return;
+    } catch (error) {
+      deliveryErrors.push(`smtp: ${getErrorMessage(error)}`);
     }
-
-    const response = await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${resendApiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ from, to: [to], subject, text, html }),
-    });
-
-    if (!response.ok) {
-      const responseBody = await response.text().catch(() => "");
-      throw new Error(`RESEND_REJECTED_MESSAGE ${response.status} ${responseBody}`);
-    }
-  } catch (error) {
-    if (error instanceof Error && error.message === "MAIL_NOT_CONFIGURED") throw error;
-    console.error("[mail] Email delivery failed", {
-      provider: smtpConfigured ? "smtp" : "resend",
-      to,
-      subject,
-      error: getErrorMessage(error),
-    });
-    throw new Error("EMAIL_DELIVERY_FAILED");
   }
+
+  if (resendConfigured) {
+    try {
+      const response = await fetch("https://api.resend.com/emails", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${resendApiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ from, to: [to], subject, text, html }),
+      });
+
+      if (!response.ok) {
+        const responseBody = await response.text().catch(() => "");
+        throw new Error(`RESEND_REJECTED_MESSAGE ${response.status} ${responseBody}`);
+      }
+      return;
+    } catch (error) {
+      deliveryErrors.push(`resend: ${getErrorMessage(error)}`);
+    }
+  }
+
+  console.error("[mail] Email delivery failed", {
+    providers: [
+      ...(smtpConfigured ? ["smtp"] : []),
+      ...(resendConfigured ? ["resend"] : []),
+    ],
+    to,
+    subject,
+    errors: deliveryErrors,
+  });
+  throw new Error("EMAIL_DELIVERY_FAILED");
 };
 
 const emailShell = (content: string) => `

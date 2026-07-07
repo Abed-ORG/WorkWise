@@ -51,6 +51,7 @@ export interface Invitation {
   role: 'ADMIN' | 'DEVELOPER' | 'VIEWER';
   status: 'PENDING' | 'ACCEPTED' | 'DECLINED';
   createdAt: string;
+  emailDeliveryStatus?: 'SENT' | 'FAILED';
   project?: { id: string; name: string; key: string };
   sender: { id: string; name: string; email: string };
 }

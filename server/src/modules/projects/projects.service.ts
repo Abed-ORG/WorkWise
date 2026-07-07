@@ -307,6 +307,8 @@ export class ProjectsService {
       },
     });
 
+    let emailDeliveryStatus: 'SENT' | 'FAILED' = 'SENT';
+
     try {
       await sendProjectInvitationEmail({
         to: normalizedEmail,
@@ -316,11 +318,16 @@ export class ProjectsService {
         role: invitation.role.toLowerCase(),
       });
     } catch (error) {
-      await prisma.invitation.delete({ where: { id: invitation.id } });
-      throw error;
+      emailDeliveryStatus = 'FAILED';
+      console.warn('[projects] Invitation saved, but email delivery failed', {
+        invitationId: invitation.id,
+        projectId,
+        email: normalizedEmail,
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
 
-    return invitation;
+    return { ...invitation, emailDeliveryStatus };
   }
 
   // ── Get Pending Invitations for Project ────────────────────

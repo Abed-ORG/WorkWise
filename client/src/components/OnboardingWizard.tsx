@@ -112,8 +112,12 @@ export default function OnboardingWizard() {
     if (!selectedAdminProject || !inviteForm.email.trim()) return setError('Choose an admin project and enter an email.');
     setLoading(true); setError('');
     try {
-      await inviteMember(selectedAdminProject.id, { email: inviteForm.email.trim(), role: inviteForm.role });
-      toast.success('Invitation email sent.');
+      const invitation = await inviteMember(selectedAdminProject.id, { email: inviteForm.email.trim(), role: inviteForm.role });
+      if (invitation.emailDeliveryStatus === 'FAILED') {
+        toast.info('Invitation saved, but the email could not be delivered. Ask them to sign in with this email to accept it.');
+      } else {
+        toast.success('Invitation email sent.');
+      }
       nextStep();
     } catch (requestError) {
       const message = axios.isAxiosError<{ message?: string }>(requestError) ? requestError.response?.data?.message : undefined;
