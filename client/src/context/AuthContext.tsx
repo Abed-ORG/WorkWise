@@ -18,8 +18,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = useCallback(() => {
     clearStoredAuth();
+    queryClient.clear();
     setUser(null);
-  }, []);
+  }, [queryClient]);
 
   const updateUser = useCallback((nextUser: User) => {
     updateStoredUser(nextUser);
@@ -28,15 +29,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = useCallback(async (payload: LoginPayload) => {
     const response = await authService.login(payload);
+    queryClient.clear();
     setStoredAuth(response);
     setUser(response.user);
-  }, []);
+  }, [queryClient]);
 
   const register = useCallback(async (payload: RegisterPayload) => {
     const response = await authService.register(payload);
+    queryClient.clear();
     setStoredAuth(response);
     setUser(response.user);
-  }, []);
+  }, [queryClient]);
 
   useEffect(() => {
     setAuthHandlers({ onUnauthorized: logout });
