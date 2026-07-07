@@ -19,7 +19,7 @@ import {
   updateTaskDocuments,
   uploadTaskAttachment,
 } from '../services/taskService';
-import type { Task, TaskAttachment, TaskType } from '../services/taskService';
+import type { Task, TaskAttachment, TaskPriority, TaskType } from '../services/taskService';
 import { generateAcceptanceCriteria } from '../services/aiService';
 import type { ProjectDocument, ProjectMember, Sprint } from '../services/projectService';
 import { queryKeys, queryTimes } from '../services/queryOptions';
@@ -28,7 +28,14 @@ import { getInitials } from '../utils/initials';
 import { isOpenSprintMoveTarget, isPastSprintMoveTarget } from '../utils/sprintOptions';
 import { storyPointsSelectOptions } from '../utils/storyPoints';
 import { isDone } from '../utils/taskStatus';
-import { TASK_TYPE_OPTIONS, taskTypeIcon, taskTypeLabel } from '../utils/taskType';
+import { TASK_TYPE_OPTIONS, taskTypeColorClass, taskTypeIcon, taskTypeLabel } from '../utils/taskType';
+
+const PRIORITY_OPTIONS = [
+  { value: 'LOW', label: 'Low' },
+  { value: 'MEDIUM', label: 'Medium' },
+  { value: 'HIGH', label: 'High' },
+  { value: 'URGENT', label: 'Urgent' },
+];
 
 interface TaskDetailModalProps {
   taskId: string | null;
@@ -187,7 +194,12 @@ export default function TaskDetailModal({ taskId: propTaskId, onClose, onTaskUpd
     () => [...(statusesQuery.data ?? [])].sort((a, b) => a.order - b.order),
     [statusesQuery.data],
   );
-  const statusOptions = statuses.map((status) => ({ value: status.id, label: status.name }));
+  // Backlog-default is an automatic bucket, not a workflow status a user should pick — hide it
+  // from the choices, but if a task somehow still sits on it, keep it visible-but-disabled so the
+  // dropdown doesn't misrepresent the task's actual current status.
+  const statusOptions = statuses
+    .filter((status) => !status.isBacklogDefault || status.id === task?.statusId)
+    .map((status) => ({ value: status.id, label: status.name, disabled: status.isBacklogDefault }));
   const sprints = Array.isArray(sprintsQuery.data) ? sprintsQuery.data : [];
   const currentSprint = task?.sprintId ? sprints.find((sprint) => sprint.id === task.sprintId) ?? null : null;
   const currentPastSprint = currentSprint && isPastSprintMoveTarget(currentSprint) ? currentSprint : null;
@@ -521,6 +533,27 @@ export default function TaskDetailModal({ taskId: propTaskId, onClose, onTaskUpd
     }
   }
 
+  async function updatePriority(value: string) {
+    if (!taskId || !task) return;
+    const nextValue = value as TaskPriority;
+    if (task.priority === nextValue) return;
+
+    setSavingDetails(true);
+    setDetailsMessage('');
+    const previousTask = task;
+    cacheTask({ ...task, priority: nextValue });
+    try {
+      const updatedTask = await updateTask(taskId, { priority: nextValue });
+      cacheTask({ ...task, ...updatedTask });
+      setDetailsMessage('Saved');
+    } catch {
+      cacheTask(previousTask);
+      setDetailsMessage('Could not save priority');
+    } finally {
+      setSavingDetails(false);
+    }
+  }
+
   function cancelTitleEdit() {
     if (!task) return;
     setTitleDraft(task.title);
@@ -696,7 +729,7 @@ export default function TaskDetailModal({ taskId: propTaskId, onClose, onTaskUpd
                   <ol>
                     <li>
                       <button type="button" onClick={() => setTaskId(task.parent!.id)}>
-                        <Icon name={taskTypeIcon(task.parent.type)} size={13} />
+                        <span className={`task-type-icon ${taskTypeColorClass(task.parent.type)}`}><Icon name={taskTypeIcon(task.parent.type)} size={16} /></span>
                         <span>{task.parent.title}</span>
                       </button>
                       <Icon name="arrow-right" size={12} />
@@ -748,12 +781,17 @@ export default function TaskDetailModal({ taskId: propTaskId, onClose, onTaskUpd
                     </div>
                   </div>
                 ) : (
-                  <h2
-                    onDoubleClick={() => { setTitleDraft(task.title); setEditingTitle(true); }}
-                    title="Double-click to edit title"
-                    style={{ cursor: 'text' }}
-                    className={savingTitle ? 'task-title-saving' : ''}
-                  >{task.title}</h2>
+                  <div className="task-title-row">
+                    <span className={`task-type-icon task-title-type-icon ${taskTypeColorClass(task.type)}`} title={taskTypeLabel(task.type)}>
+                      <Icon name={taskTypeIcon(task.type)} size={28} />
+                    </span>
+                    <h2
+                      onDoubleClick={() => { setTitleDraft(task.title); setEditingTitle(true); }}
+                      title="Double-click to edit title"
+                      style={{ cursor: 'text' }}
+                      className={savingTitle ? 'task-title-saving' : ''}
+                    >{task.title}</h2>
+                  </div>
                 )}
                 {task.labels?.length > 0 && (
                   <div className="task-label-list">{task.labels.map((label) => <span key={label}>{label}</span>)}</div>
@@ -824,46 +862,58 @@ export default function TaskDetailModal({ taskId: propTaskId, onClose, onTaskUpd
                       </div>
                     ))
                   ) : (
-                    <>
-                      {children.map((child) => (
-                        <div className="subtask-row" key={child.id}>
-                          <span className="task-type-icon" title={taskTypeLabel(child.type)}><Icon name={taskTypeIcon(child.type)} size={14} /></span>
-                          <button
-                            type="button"
-                            className={`subtask-row-open ${isDone(child) ? 'is-complete' : ''}`}
-                            onClick={() => setTaskId(child.id)}
-                          >
-                            <span className="subtask-row-text">{child.title}</span>
+                    children.map((child) => (
+                      <div className="subtask-row" key={child.id}>
+                        <span className={`task-type-icon ${taskTypeColorClass(child.type)}`} title={taskTypeLabel(child.type)}><Icon name={taskTypeIcon(child.type)} size={14} /></span>
+                        <button
+                          type="button"
+                          className={`subtask-row-open ${isDone(child) ? 'is-complete' : ''}`}
+                          onClick={() => setTaskId(child.id)}
+                        >
+                          <span className="subtask-row-text">{child.title}</span>
+                          <span className="subtask-row-badges">
                             <span className={`status-badge category-${child.status.category.toLowerCase()}`} style={child.status.color ? { borderColor: child.status.color, color: child.status.color, background: `${child.status.color}1a` } : undefined}>{child.status.name}</span>
+                            <span className={`priority-badge priority-${child.priority.toLowerCase()}`}><span />{child.priority.toLowerCase()}</span>
                             {child.assignee && (
                               <span className="mini-avatar" title={child.assignee.name}>{getInitials(child.assignee.name)}</span>
                             )}
-                          </button>
-                          <button type="button" className="icon-button acceptance-delete-button" onClick={() => removeChild(child)} disabled={savingChildId === child.id} aria-label="Delete subtask">
-                            <Icon name="trash" size={15} />
-                          </button>
-                        </div>
-                      ))}
-                      {children.length === 0 && <div className="document-link-empty">No subtasks yet.</div>}
-                    </>
+                          </span>
+                        </button>
+                        <button type="button" className="icon-button acceptance-delete-button" onClick={() => removeChild(child)} disabled={savingChildId === child.id} aria-label="Delete subtask">
+                          <Icon name="trash" size={15} />
+                        </button>
+                      </div>
+                    ))
                   )}
-                </div>
-                <div className="task-comment-composer">
-                  <textarea
-                    className="task-description-field task-comment-input"
-                    value={childDraft}
-                    onChange={(event) => {
-                      setChildDraft(event.target.value);
-                      setChildrenMessage('');
-                    }}
-                    rows={2}
-                    placeholder="Add a subtask..."
-                    disabled={savingChildId !== null}
-                  />
-                  <div className="task-comment-actions">
-                    <Button onClick={addChild} loading={savingChildId === 'new'} disabled={!childDraft.trim() || savingChildId !== null}>
-                      <Icon name="plus" size={15} /> Add subtask
-                    </Button>
+                  <div className="subtask-row subtask-add-row">
+                    <span className="task-type-icon" aria-hidden="true"><Icon name="plus" size={14} /></span>
+                    <input
+                      type="text"
+                      className="subtask-add-input"
+                      value={childDraft}
+                      onChange={(event) => {
+                        setChildDraft(event.target.value);
+                        setChildrenMessage('');
+                      }}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter') {
+                          event.preventDefault();
+                          void addChild();
+                        }
+                      }}
+                      placeholder="Add a subtask…"
+                      disabled={savingChildId !== null}
+                      aria-label="Add a subtask"
+                    />
+                    <button
+                      type="button"
+                      className="icon-button acceptance-delete-button"
+                      onClick={addChild}
+                      disabled={!childDraft.trim() || savingChildId !== null}
+                      aria-label="Add subtask"
+                    >
+                      {savingChildId === 'new' ? <Spinner size="sm" /> : <Icon name="plus" size={15} />}
+                    </button>
                   </div>
                 </div>
               </section>
@@ -1079,13 +1129,10 @@ export default function TaskDetailModal({ taskId: propTaskId, onClose, onTaskUpd
                   <h3>Details</h3>
                   <span>{savingDetails ? 'Saving...' : detailsMessage}</span>
                 </div>
-                <div className="task-detail-meta">
-                  <span className={`priority-badge priority-${task.priority.toLowerCase()}`}><span />{task.priority.toLowerCase()}</span>
-                </div>
                 {task.parentId ? (
                   <div className="field">
                     <span className="field-label">Type</span>
-                    <strong className="task-type-readonly"><Icon name="subtask" size={14} /> Subtask</strong>
+                    <strong className="task-type-readonly"><Icon name="subtask" size={14} className={taskTypeColorClass('SUBTASK')} /> Subtask</strong>
                   </div>
                 ) : (
                   <Select
@@ -1094,9 +1141,15 @@ export default function TaskDetailModal({ taskId: propTaskId, onClose, onTaskUpd
                     options={TASK_TYPE_OPTIONS}
                     onChange={(event) => updateType(event.target.value as Exclude<TaskType, 'SUBTASK'>)}
                     disabled={savingDetails}
-                    helperText="Story or bug classification for this task."
                   />
                 )}
+                <Select
+                  label="Priority"
+                  value={task.priority}
+                  options={PRIORITY_OPTIONS}
+                  onChange={(event) => updatePriority(event.target.value)}
+                  disabled={savingDetails}
+                />
                 <Select
                   label="Status"
                   className="task-status-select"
@@ -1104,13 +1157,12 @@ export default function TaskDetailModal({ taskId: propTaskId, onClose, onTaskUpd
                   options={statusOptions}
                   onChange={(event) => updateStatus(event.target.value)}
                   disabled={savingStatus}
-                  helperText={savingStatus ? 'Saving status...' : statusMessage || 'Status does not move a task onto the board; assign it to a sprint for board visibility.'}
+                  helperText={savingStatus ? 'Saving status...' : statusMessage || undefined}
                 />
                 {task.parentId ? (
                   <div className="field">
                     <span className="field-label">Sprint</span>
                     <strong>{task.sprint?.name ?? 'Product backlog / No sprint'}</strong>
-                    <span className="field-help">Subtasks inherit their parent's sprint and can't be moved independently.</span>
                   </div>
                 ) : (
                   <Select
@@ -1119,7 +1171,7 @@ export default function TaskDetailModal({ taskId: propTaskId, onClose, onTaskUpd
                     options={sprintOptions}
                     onChange={(event) => updateSprint(event.target.value)}
                     disabled={savingSprint}
-                    helperText={savingSprint ? 'Saving sprint...' : sprintMessage || 'Sprint controls where this task appears. Tasks in a sprint appear on the board.'}
+                    helperText={savingSprint ? 'Saving sprint...' : sprintMessage || undefined}
                   />
                 )}
                 <Select
@@ -1131,7 +1183,6 @@ export default function TaskDetailModal({ taskId: propTaskId, onClose, onTaskUpd
                   ]}
                   onChange={(event) => updateAssignee(event.target.value)}
                   disabled={savingDetails}
-                  helperText="Assign this task to a project member."
                 />
                 <Select
                   label="Story points"
@@ -1139,7 +1190,6 @@ export default function TaskDetailModal({ taskId: propTaskId, onClose, onTaskUpd
                   options={storyPointsSelectOptions}
                   onChange={(event) => updateStoryPoints(event.target.value)}
                   disabled={savingDetails}
-                  helperText="Fibonacci-scaled effort estimate for this task."
                 />
                 <label className="field">
                   <span className="field-label">Due date</span>
@@ -1150,7 +1200,6 @@ export default function TaskDetailModal({ taskId: propTaskId, onClose, onTaskUpd
                     onChange={(event) => updateDueDate(event.target.value)}
                     disabled={savingDetails}
                   />
-                  <span className="field-help">Leave empty to remove the due date.</span>
                 </label>
                 <div className="task-detail-fields">
                   <div><span>Reporter</span><strong>{task.creator?.name ?? 'Unknown'}</strong></div>

@@ -18,10 +18,20 @@ const LABELS: Record<TaskType, string> = {
   SUBTASK: 'Subtask',
 };
 
+const COLOR_CLASSES: Record<TaskType, string> = {
+  STORY: 'task-type-color-story',
+  BUG: 'task-type-color-bug',
+  SUBTASK: 'task-type-color-subtask',
+};
+
 export function taskTypeIcon(type: TaskType): IconName {
   return ICONS[type];
 }
 
 export function taskTypeLabel(type: TaskType): string {
   return LABELS[type];
+}
+
+export function taskTypeColorClass(type: TaskType): string {
+  return COLOR_CLASSES[type];
 }
