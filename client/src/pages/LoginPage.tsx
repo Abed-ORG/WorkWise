@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import axios from 'axios';
 import AuthLayout from '../components/AuthLayout';
 import Icon from '../components/Icon';
@@ -20,8 +20,11 @@ function validateForm(form: LoginForm): FormErrors {
 
 export default function LoginPage() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { login } = useAuth();
   const toast = useToast();
+  const redirect = searchParams.get('redirect');
+  const safeRedirect = redirect?.startsWith('/') ? redirect : '/dashboard';
   const [form, setForm] = useState<LoginForm>({ email: '', password: '' });
   const [errors, setErrors] = useState<FormErrors>({});
   const [loading, setLoading] = useState(false);
@@ -43,7 +46,7 @@ export default function LoginPage() {
     try {
       await login({ email: form.email.trim(), password: form.password });
       toast.success('Welcome back!');
-      navigate('/dashboard');
+      navigate(safeRedirect, { replace: true });
     } catch (error: unknown) {
       if (axios.isAxiosError(error) && error.response?.status === 401) setErrors({ password: 'Invalid email or password' });
       else toast.error('Login failed. Please try again.');
@@ -56,7 +59,7 @@ export default function LoginPage() {
     <AuthLayout>
       <p className="auth-kicker">Welcome back</p>
       <h1 className="auth-title">Sign in to WorkWise</h1>
-      <p className="auth-subtitle">New to WorkWise? <Link to="/register">Create an account</Link></p>
+      <p className="auth-subtitle">New to WorkWise? <Link to={`/register?redirect=${encodeURIComponent(safeRedirect)}`}>Create an account</Link></p>
 
       <form className="auth-form" onSubmit={handleSubmit} noValidate>
         <Input label="Work email" type="email" placeholder="you@company.com" value={form.email} onChange={(event) => handleChange('email', event.target.value)} error={errors.email} autoComplete="email" autoFocus />

@@ -3,6 +3,7 @@ import nodemailer from "nodemailer";
 
 interface ProjectInvitationEmail {
   to: string;
+  invitationId: string;
   recipientName?: string;
   senderName: string;
   projectName: string;
@@ -116,12 +117,13 @@ const emailShell = (content: string) => `
 
 export const sendProjectInvitationEmail = async ({
   to,
+  invitationId,
   recipientName,
   senderName,
   projectName,
   role,
 }: ProjectInvitationEmail) => {
-  const projectsUrl = `${env.frontendUrl}/projects`;
+  const projectsUrl = `${env.frontendUrl}/projects?invitation=${encodeURIComponent(invitationId)}`;
   const greeting = recipientName ? `Hi ${recipientName},` : "Hello,";
 
   await sendMail({

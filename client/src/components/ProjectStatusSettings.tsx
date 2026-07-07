@@ -42,6 +42,7 @@ interface StatusFormValues {
 }
 
 const emptyForm: StatusFormValues = { name: '', category: 'TODO', color: '' };
+const isHiddenBacklogStatus = (status: ProjectStatus) => status.isBacklogDefault && !status.isSprintDefault;
 
 export default function ProjectStatusSettings({ projectId }: ProjectStatusSettingsProps) {
   const toast = useToast();
@@ -62,6 +63,7 @@ export default function ProjectStatusSettings({ projectId }: ProjectStatusSettin
     () => [...(statusesQuery.data ?? [])].sort((a, b) => a.order - b.order),
     [statusesQuery.data],
   );
+  const visibleStatuses = useMemo(() => statuses.filter((status) => !isHiddenBacklogStatus(status)), [statuses]);
   const tasks = Array.isArray(tasksQuery.data) ? tasksQuery.data : [];
   const taskCountByStatusId = useMemo(() => {
     const counts = new Map<string, number>();
@@ -242,7 +244,7 @@ export default function ProjectStatusSettings({ projectId }: ProjectStatusSettin
   }
 
   const reassignOptions = deleteTarget
-    ? statuses.filter((status) => status.id !== deleteTarget.id).map((status) => ({ value: status.id, label: status.name }))
+    ? visibleStatuses.filter((status) => status.id !== deleteTarget.id).map((status) => ({ value: status.id, label: status.name }))
     : [];
   const deleteTaskCount = deleteTarget ? taskCountByStatusId.get(deleteTarget.id) ?? 0 : 0;
 
@@ -289,7 +291,7 @@ export default function ProjectStatusSettings({ projectId }: ProjectStatusSettin
         <div className="document-loading"><span>Loading statuses...</span></div>
       ) : (
         <div className="status-settings-list">
-          {orderedStatuses.map((status) => {
+          {orderedStatuses.filter((status) => !isHiddenBacklogStatus(status)).map((status) => {
             const isEditing = editingId === status.id;
 
             return (
@@ -338,11 +340,6 @@ export default function ProjectStatusSettings({ projectId }: ProjectStatusSettin
                       {status.isSprintDefault && <span className="status-flag-badge" title="Tasks default to this status when entering a sprint">Sprint default</span>}
                     </span>
                     <span className="status-settings-actions">
-                      {!status.isBacklogDefault && (
-                        <Button variant="ghost" loading={savingDefaultId === status.id} onClick={() => handleSetDefault(status, 'isBacklogDefault')}>
-                          Set as creation default
-                        </Button>
-                      )}
                       {!status.isSprintDefault && (
                         <Button variant="ghost" loading={savingDefaultId === status.id} onClick={() => handleSetDefault(status, 'isSprintDefault')}>
                           Set as sprint default

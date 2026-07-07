@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import axios from 'axios';
 import AuthLayout from '../components/AuthLayout';
 import Icon from '../components/Icon';
@@ -24,8 +24,11 @@ function validateForm(form: RegisterForm): FormErrors {
 
 export default function RegisterPage() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { register } = useAuth();
   const toast = useToast();
+  const redirect = searchParams.get('redirect');
+  const safeRedirect = redirect?.startsWith('/') ? redirect : '/dashboard';
   const [form, setForm] = useState<RegisterForm>({ name: '', email: '', password: '', confirmPassword: '' });
   const [errors, setErrors] = useState<FormErrors>({});
   const [loading, setLoading] = useState(false);
@@ -46,8 +49,8 @@ export default function RegisterPage() {
     setLoading(true);
     try {
       await register({ name: form.name.trim(), email: form.email.trim(), password: form.password });
-      toast.success('Account created successfully. You can now sign in.');
-      navigate('/login', { replace: true });
+      toast.success('Account created successfully.');
+      navigate(safeRedirect, { replace: true });
     } catch (error: unknown) {
       const message = axios.isAxiosError<{ message?: string }>(error) ? error.response?.data?.message : undefined;
       if (message?.toLowerCase().includes('email') || message?.toLowerCase().includes('exists')) {
@@ -63,7 +66,7 @@ export default function RegisterPage() {
     <AuthLayout compact>
       <p className="auth-kicker">Start building clearly</p>
       <h1 className="auth-title">Create your workspace</h1>
-      <p className="auth-subtitle">Already have an account? <Link to="/login">Sign in</Link></p>
+      <p className="auth-subtitle">Already have an account? <Link to={`/login?redirect=${encodeURIComponent(safeRedirect)}`}>Sign in</Link></p>
 
       <form className="auth-form" onSubmit={handleSubmit} noValidate>
         <Input label="Full name" placeholder="Your full name" value={form.name} onChange={(event) => handleChange('name', event.target.value)} error={errors.name} autoComplete="name" autoFocus />

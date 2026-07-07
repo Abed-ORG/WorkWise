@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import PageHeader from '../components/PageHeader';
 import Icon from '../components/Icon';
 import { Button } from '../components/ui';
@@ -13,6 +13,7 @@ import { getProjectIcon } from '../services/projectIconStorage';
 
 export default function ProjectsPage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const queryClient = useQueryClient();
   const toast = useToast();
   const [mutationError, setMutationError] = useState('');
@@ -75,7 +76,12 @@ export default function ProjectsPage() {
   const visibleProjects = useMemo(() => projects
     .filter((project) => `${project.name} ${project.key} ${project.description ?? ''}`.toLowerCase().includes(search.toLowerCase()))
     .sort((a, b) => sort === 'name' ? a.name.localeCompare(b.name) : new Date(sort === 'created' ? b.createdAt : b.updatedAt).getTime() - new Date(sort === 'created' ? a.createdAt : a.updatedAt).getTime()), [projects, search, sort]);
-  const invitations = Array.isArray(invitationsQuery.data) ? invitationsQuery.data : [];
+  const linkedInvitationId = new URLSearchParams(location.search).get('invitation');
+  const invitations = useMemo(() => {
+    const pendingInvitations = Array.isArray(invitationsQuery.data) ? invitationsQuery.data : [];
+    if (!linkedInvitationId) return pendingInvitations;
+    return [...pendingInvitations].sort((a, b) => Number(b.id === linkedInvitationId) - Number(a.id === linkedInvitationId));
+  }, [invitationsQuery.data, linkedInvitationId]);
   const loading = projectsQuery.isLoading || invitationsQuery.isLoading;
   const error = projectsQuery.isError || invitationsQuery.isError
     ? 'We could not load your projects. Check the connection and try again.'
@@ -92,8 +98,8 @@ export default function ProjectsPage() {
       {invitations.length > 0 && (
         <section className="invitation-stack animate-enter-delay" aria-label="Pending invitations">
           {invitations.map((invitation) => (
-            <article className="invitation-card" key={invitation.id}>
-              <div><strong>You&apos;re invited to {invitation.project?.name}</strong><p>{invitation.sender?.name} invited you as {invitation.role.toLowerCase()}.</p></div>
+            <article className={`invitation-card${invitation.id === linkedInvitationId ? ' is-linked' : ''}`} key={invitation.id}>
+              <div><strong>Invitation letter: {invitation.project?.name}</strong><p>{invitation.sender?.name} invited you as {invitation.role.toLowerCase()}. Accept to join the project, or decline to keep it out of your workspace.</p></div>
               <div className="flex gap-2"><Button onClick={() => acceptInvitationMutation.mutate(invitation.id)}>Accept</Button><Button variant="secondary" onClick={() => declineInvitationMutation.mutate(invitation.id)}>Decline</Button></div>
             </article>
           ))}

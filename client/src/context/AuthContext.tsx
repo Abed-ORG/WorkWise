@@ -33,7 +33,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const register = useCallback(async (payload: RegisterPayload) => {
-    await authService.register(payload);
+    const response = await authService.register(payload);
+    setStoredAuth(response);
+    setUser(response.user);
   }, []);
 
   useEffect(() => {

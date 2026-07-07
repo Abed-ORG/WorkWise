@@ -312,6 +312,7 @@ export class ProjectsService {
     try {
       await sendProjectInvitationEmail({
         to: normalizedEmail,
+        invitationId: invitation.id,
         recipientName: invitedUser?.name,
         senderName: invitation.sender.name,
         projectName: invitation.project.name,
@@ -390,12 +391,14 @@ export class ProjectsService {
         where: { id: invitationId },
         data: { status: 'ACCEPTED' },
       }),
-      prisma.projectMember.create({
-        data: {
+      prisma.projectMember.upsert({
+        where: { userId_projectId: { userId, projectId: invitation.projectId } },
+        create: {
           userId,
           projectId: invitation.projectId,
           role: invitation.role,
         },
+        update: {},
       }),
     ]);
 
@@ -418,10 +421,19 @@ export class ProjectsService {
       throw new Error('INVITATION_NOT_FOR_USER');
     }
 
-    await prisma.invitation.update({
-      where: { id: invitationId },
-      data: { status: 'DECLINED' },
-    });
+    await prisma.$transaction([
+      prisma.invitation.update({
+        where: { id: invitationId },
+        data: { status: 'DECLINED' },
+      }),
+      prisma.projectMember.deleteMany({
+        where: {
+          userId,
+          projectId: invitation.projectId,
+          role: invitation.role,
+        },
+      }),
+    ]);
   }
 
   async startSprint(
