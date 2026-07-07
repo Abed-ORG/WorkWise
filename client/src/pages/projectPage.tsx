@@ -71,7 +71,7 @@ export default function ProjectsPage() {
     onSuccess: () => toast.success('Invitation declined.'),
   });
 
-  const projects = Array.isArray(projectsQuery.data) ? projectsQuery.data : [];
+  const projects = useMemo(() => Array.isArray(projectsQuery.data) ? projectsQuery.data : [], [projectsQuery.data]);
   const visibleProjects = useMemo(() => projects
     .filter((project) => `${project.name} ${project.key} ${project.description ?? ''}`.toLowerCase().includes(search.toLowerCase()))
     .sort((a, b) => sort === 'name' ? a.name.localeCompare(b.name) : new Date(sort === 'created' ? b.createdAt : b.updatedAt).getTime() - new Date(sort === 'created' ? a.createdAt : a.updatedAt).getTime()), [projects, search, sort]);
@@ -102,8 +102,10 @@ export default function ProjectsPage() {
 
       <div className="project-list-toolbar app-card">
         <label><Icon name="search" size={15} /><input type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search projects" /></label>
-        <SortDropdown value={sort} onChange={(v) => setSort(v as typeof sort)} />
-        <div className="project-view-toggle"><button type="button" className={view === 'grid' ? 'is-active' : ''} onClick={() => setView('grid')}><Icon name="board" size={15} /> Grid</button><button type="button" className={view === 'list' ? 'is-active' : ''} onClick={() => setView('list')}><Icon name="menu" size={15} /> List</button></div>
+        <div className="project-toolbar-controls">
+          <SortDropdown value={sort} onChange={(v) => setSort(v as typeof sort)} />
+          <div className="project-view-toggle"><button type="button" className={view === 'grid' ? 'is-active' : ''} onClick={() => setView('grid')}><Icon name="board" size={13} /> Grid</button><button type="button" className={view === 'list' ? 'is-active' : ''} onClick={() => setView('list')}><Icon name="menu" size={13} /> List</button></div>
+        </div>
       </div>
 
       {!error && projects.length === 0 ? (
