@@ -1,4 +1,4 @@
-import { NotificationType, Role, TaskPriority, TaskType } from "@prisma/client";
+import { NotificationType, Role, StatusCategory, TaskPriority, TaskType } from "@prisma/client";
 import prisma from "../utils/prisma";
 import { NotFoundError } from "../errors/NotFoundError";
 import { AppError } from "../errors/AppError";
@@ -65,6 +65,14 @@ const taskListSelect = {
   creator: { select: { id: true, name: true, email: true, avatarUrl: true } },
   parent: { select: { id: true, title: true, type: true } },
   _count: { select: { comments: true, activities: true } },
+} as const;
+
+const dashboardFocusTaskSelect = {
+  id: true,
+  title: true,
+  dueDate: true,
+  projectId: true,
+  project: { select: { id: true, name: true, key: true } },
 } as const;
 
 const linkedDocumentSelect = {
@@ -221,6 +229,23 @@ export const getAssignedTasks = async (userId: string) => prisma.task.findMany({
   select: taskListSelect,
   orderBy: [{ dueDate: "asc" }, { createdAt: "desc" }],
 });
+
+export const getAssignedFocusTasks = async (userId: string) => {
+  const endToday = new Date();
+  endToday.setHours(23, 59, 59, 999);
+
+  return prisma.task.findMany({
+    where: {
+      assigneeId: userId,
+      dueDate: { lte: endToday },
+      status: { category: { not: StatusCategory.DONE } },
+      project: { members: { some: { userId } } },
+    },
+    select: dashboardFocusTaskSelect,
+    orderBy: [{ dueDate: "asc" }, { priority: "desc" }, { createdAt: "desc" }],
+    take: 5,
+  });
+};
 
 export const getTaskById = async (taskId: string, userId: string) => {
   const task = await prisma.task.findUnique({
