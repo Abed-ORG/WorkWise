@@ -5,6 +5,13 @@ export type StatusCategory = 'TODO' | 'IN_PROGRESS' | 'DONE';
 export type TaskPriority = 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT';
 export type TaskType = 'STORY' | 'BUG' | 'SUBTASK';
 
+export interface PaginatedResponse<T> {
+  items: T[];
+  totalCount: number;
+  hasMore: boolean;
+  nextCursor?: string | null;
+}
+
 export interface ProjectStatus {
   id: string;
   name: string;
@@ -61,6 +68,7 @@ export interface Task {
   _count?: {
     comments?: number;
     activities?: number;
+    attachments?: number;
   };
 }
 
@@ -123,14 +131,44 @@ export async function createTask(payload: CreateTaskPayload): Promise<Task> {
   return response.data.data;
 }
 
+export interface ProjectTasksPageParams {
+  cursor?: string | null;
+  limit?: number;
+  sprintId?: string | null;
+  statusId?: string;
+}
+
+export interface AssignedTasksPageParams {
+  cursor?: string | null;
+  limit?: number;
+  filter?: 'all' | 'today' | 'overdue' | 'completed';
+}
+
+function normalizePage<T>(data: PaginatedResponse<T> | T[]): PaginatedResponse<T> {
+  if (Array.isArray(data)) {
+    return { items: data, totalCount: data.length, hasMore: false, nextCursor: null };
+  }
+  return data;
+}
+
+export async function getProjectTasksPage(projectId: string, params: ProjectTasksPageParams = {}): Promise<PaginatedResponse<Task>> {
+  const response = await apiClient.get(`/tasks/project/${projectId}`, { params });
+  return normalizePage<Task>(response.data.data);
+}
+
 export async function getProjectTasks(projectId: string): Promise<Task[]> {
-  const response = await apiClient.get(`/tasks/project/${projectId}`);
-  return response.data.data;
+  const response = await getProjectTasksPage(projectId, { limit: 75 });
+  return response.items;
+}
+
+export async function getAssignedTasksPage(params: AssignedTasksPageParams = {}): Promise<PaginatedResponse<Task>> {
+  const response = await apiClient.get('/tasks/assigned/me', { params });
+  return normalizePage<Task>(response.data.data);
 }
 
 export async function getAssignedTasks(): Promise<Task[]> {
-  const response = await apiClient.get('/tasks/assigned/me');
-  return response.data.data;
+  const response = await getAssignedTasksPage({ limit: 50 });
+  return response.items;
 }
 
 export async function getAssignedFocusTasks(): Promise<AssignedFocusTask[]> {
@@ -208,6 +246,16 @@ export async function createTaskComment(taskId: string, content: string): Promis
   return response.data.data;
 }
 
+export async function getTaskComments(taskId: string, params: { cursor?: string | null; limit?: number } = {}): Promise<PaginatedResponse<TaskComment>> {
+  const response = await apiClient.get(`/tasks/${taskId}/comments`, { params });
+  return normalizePage<TaskComment>(response.data.data);
+}
+
+export async function getTaskActivities(taskId: string, params: { cursor?: string | null; limit?: number } = {}): Promise<PaginatedResponse<TaskActivity>> {
+  const response = await apiClient.get(`/tasks/${taskId}/activities`, { params });
+  return normalizePage<TaskActivity>(response.data.data);
+}
+
 export async function deleteTask(taskId: string): Promise<void> {
   await apiClient.delete(`/tasks/${taskId}`);
 }
@@ -261,9 +309,9 @@ export async function deleteTaskSubtask(subtaskId: string): Promise<void> {
   await apiClient.delete(`/tasks/subtasks/${subtaskId}`);
 }
 
-export async function getTaskAttachments(taskId: string): Promise<TaskAttachment[]> {
-  const response = await apiClient.get(`/tasks/${taskId}/attachments`);
-  return response.data.data;
+export async function getTaskAttachments(taskId: string, params: { cursor?: string | null; limit?: number } = {}): Promise<PaginatedResponse<TaskAttachment>> {
+  const response = await apiClient.get(`/tasks/${taskId}/attachments`, { params });
+  return normalizePage<TaskAttachment>(response.data.data);
 }
 
 function fileToBase64(file: File): Promise<string> {

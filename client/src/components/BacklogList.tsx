@@ -45,6 +45,10 @@ interface BacklogListProps {
   projectId?: string;
   sprints?: SprintOption[];
   activeSprint?: SprintOption | null;
+  totalCount?: number;
+  hasMore?: boolean;
+  isLoadingMore?: boolean;
+  onLoadMore?: () => void;
 }
 
 const visibleAssigneeCount = 6;
@@ -90,6 +94,10 @@ export default function BacklogList({
   projectId,
   sprints = [],
   activeSprint = null,
+  totalCount,
+  hasMore = false,
+  isLoadingMore = false,
+  onLoadMore,
 }: BacklogListProps) {
   const [searchParams, setSearchParams] = useSearchParams();
   const [selectedTaskIds, setSelectedTaskIds] = useState<string[]>([]);
@@ -970,7 +978,8 @@ export default function BacklogList({
       ) : renderBacklogTable(sortedTasks, localSearch ? 'No backlog tasks match your search.' : 'No tasks match the active filters.', generalSort, handleGeneralSort)}
 
       {tasks.length > 0 && <footer className="backlog-footer">
-        <span>Showing {totalVisibleCount} work item{totalVisibleCount === 1 ? '' : 's'}</span>
+        <span>Showing {totalVisibleCount} of {totalCount ?? tasks.length} work item{(totalCount ?? totalVisibleCount) === 1 ? '' : 's'}</span>
+        {hasMore && onLoadMore && <Button variant="secondary" loading={isLoadingMore} onClick={onLoadMore}>Load more</Button>}
       </footer>}
     </section>
     {overlayRoot ? createPortal(overlays, overlayRoot) : overlays}

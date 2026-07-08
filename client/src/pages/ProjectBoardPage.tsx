@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useParams } from 'react-router-dom';
 import Breadcrumbs from '../components/Breadcrumbs';
 import CreateTaskModal from '../components/CreateTaskModal';
@@ -12,15 +12,9 @@ import { useAuth } from '../hooks/useAuth';
 import { useToast } from '../hooks/useToast';
 import { getProjectById, getProjectSprints } from '../services/projectService';
 import { joinProjectRoom, leaveProjectRoom } from '../services/realtimeService';
-import { createTask, getProjectTasks, updateTask } from '../services/taskService';
+import { createTask, getProjectTasksPage, updateTask } from '../services/taskService';
 import type { Task } from '../services/taskService';
 import { queryKeys, queryTimes } from '../services/queryOptions';
-
-function upsertTask(tasks: Task[], nextTask: Task) {
-  const exists = tasks.some((task) => task.id === nextTask.id);
-  if (exists) return tasks.map((task) => (task.id === nextTask.id ? nextTask : task));
-  return [nextTask, ...tasks];
-}
 
 export default function ProjectBoardPage() {
   const { projectId } = useParams<{ projectId: string }>();
@@ -37,17 +31,21 @@ export default function ProjectBoardPage() {
     enabled: Boolean(projectId),
     staleTime: queryTimes.projectDetail,
   });
-  const tasksQuery = useQuery({
-    queryKey: queryKeys.projectTasks(projectId ?? ''),
-    queryFn: () => getProjectTasks(projectId!),
-    enabled: Boolean(projectId),
-    staleTime: queryTimes.tasks,
-  });
   const sprintsQuery = useQuery({
     queryKey: queryKeys.projectSprints(projectId ?? ''),
     queryFn: () => getProjectSprints(projectId!),
     enabled: Boolean(projectId),
     staleTime: queryTimes.sprints,
+  });
+  const sprints = Array.isArray(sprintsQuery.data) ? sprintsQuery.data : [];
+  const activeSprint = sprints.find((sprint) => sprint.isActive) ?? null;
+  const tasksQuery = useInfiniteQuery({
+    queryKey: queryKeys.projectTasksPage(projectId ?? '', activeSprint?.id ? `board:${activeSprint.id}` : 'board:none'),
+    queryFn: ({ pageParam }) => getProjectTasksPage(projectId!, { cursor: pageParam, limit: 100, sprintId: activeSprint?.id ?? '__none__' }),
+    enabled: Boolean(projectId && activeSprint?.id),
+    staleTime: queryTimes.tasks,
+    initialPageParam: null as string | null,
+    getNextPageParam: (lastPage) => lastPage.hasMore ? lastPage.nextCursor ?? undefined : undefined,
   });
 
   useEffect(() => {
@@ -64,14 +62,14 @@ export default function ProjectBoardPage() {
       if (task.projectId === projectId) {
         // Subtasks never appear as top-level board cards — only merge them into the
         // per-task cache (e.g. for an open TaskDetailModal), not the board list.
-        if (!task.parentId) queryClient.setQueryData<Task[]>(queryKeys.projectTasks(projectId), (current = []) => upsertTask(current, task));
+        if (!task.parentId) queryClient.invalidateQueries({ queryKey: queryKeys.projectTasksPage(projectId, activeSprint?.id ? `board:${activeSprint.id}` : 'board:none') });
         queryClient.setQueryData(queryKeys.task(task.id), task);
       }
     }
 
     function handleTaskUpdated(task: Task) {
       if (task.projectId === projectId) {
-        if (!task.parentId) queryClient.setQueryData<Task[]>(queryKeys.projectTasks(projectId), (current = []) => upsertTask(current, task));
+        if (!task.parentId) queryClient.invalidateQueries({ queryKey: queryKeys.projectTasksPage(projectId, activeSprint?.id ? `board:${activeSprint.id}` : 'board:none') });
         queryClient.setQueryData(queryKeys.task(task.id), task);
       }
     }
@@ -84,20 +82,24 @@ export default function ProjectBoardPage() {
       activeSocket.off('task:updated', handleTaskUpdated);
       leaveProjectRoom(projectId);
     };
-  }, [projectId, queryClient]);
+  }, [activeSprint?.id, projectId, queryClient]);
 
   const project = projectQuery.data ?? null;
-  const tasks = Array.isArray(tasksQuery.data) ? tasksQuery.data : [];
-  const sprints = Array.isArray(sprintsQuery.data) ? sprintsQuery.data : [];
-  const activeSprint = sprints.find((sprint) => sprint.isActive) ?? null;
+  const tasks = tasksQuery.data?.pages.flatMap((page) => page.items) ?? [];
+  const totalTaskCount = tasksQuery.data?.pages[0]?.totalCount ?? 0;
   const loading = projectQuery.isLoading || tasksQuery.isLoading || sprintsQuery.isLoading;
   const setTasks = (nextTasks: Task[]) => {
     if (!projectId) return;
-    queryClient.setQueryData(queryKeys.projectTasks(projectId), nextTasks);
+    queryClient.setQueryData(queryKeys.projectTasksPage(projectId, activeSprint?.id ? `board:${activeSprint.id}` : 'board:none'), (current: any) => current ? {
+      ...current,
+      pages: current.pages.map((page: any) => ({ ...page, items: page.items.map((task: Task) => nextTasks.find((item) => item.id === task.id) ?? task) })),
+    } : current);
   };
 
   if (loading) return <PageSkeleton variant="board" />;
   if (!project || !projectId) return null;
+  const activeProjectId = projectId;
+  const boardTasksQueryKey = queryKeys.projectTasksPage(activeProjectId, activeSprint?.id ? `board:${activeSprint.id}` : 'board:none');
 
   const currentMember = project.members?.find((member) => member.user.id === user.id);
   const isAdmin = currentMember?.role === 'ADMIN';
@@ -105,7 +107,7 @@ export default function ProjectBoardPage() {
   async function handleBulkUpdate(taskIds: string[], changes: Parameters<typeof updateTask>[1]) {
     const previous = tasks;
     setTasks(tasks.map((task) => taskIds.includes(task.id) ? { ...task, ...changes } as Task : task));
-    try { const updated = await Promise.all(taskIds.map((id) => updateTask(id, changes))); setTasks(tasks.map((task) => updated.find((item) => item.id === task.id) ?? task)); toast.success(`${updated.length} board tasks updated.`); }
+    try { const updated = await Promise.all(taskIds.map((id) => updateTask(id, changes))); setTasks(tasks.map((task) => updated.find((item) => item.id === task.id) ?? task)); await queryClient.invalidateQueries({ queryKey: boardTasksQueryKey }); toast.success(`${updated.length} board tasks updated.`); }
     catch { setTasks(previous); toast.error('Board changes could not be saved.'); }
   }
 
@@ -118,7 +120,7 @@ export default function ProjectBoardPage() {
         statusId: input.statusId,
         sprintId: input.sprintId,
       });
-      if (!task.parentId) queryClient.setQueryData<Task[]>(queryKeys.projectTasks(projectId), (current = []) => upsertTask(current, task));
+      if (!task.parentId) await queryClient.invalidateQueries({ queryKey: queryKeys.projectTasksPage(projectId, activeSprint?.id ? `board:${activeSprint.id}` : 'board:none') });
       queryClient.setQueryData(queryKeys.task(task.id), task);
       toast.success('Task added to the board.');
       return task;
@@ -158,16 +160,22 @@ export default function ProjectBoardPage() {
           activeSprintId={activeSprint?.id ?? null}
           onCreateTask={activeSprint ? handleBoardQuickAdd : undefined}
         />
+        {activeSprint && tasks.length > 0 && (
+          <div className="backlog-footer">
+            <span>Showing {tasks.length} of {totalTaskCount} board task{totalTaskCount === 1 ? '' : 's'}</span>
+            {tasksQuery.hasNextPage && <Button variant="secondary" loading={tasksQuery.isFetchingNextPage} onClick={() => tasksQuery.fetchNextPage()}>Load more board tasks</Button>}
+          </div>
+        )}
       </section>
       <CreateTaskModal isOpen={createOpen} projectId={projectId} sprintId={activeSprint?.id} members={project.members ?? []} onClose={() => setCreateOpen(false)} onCreated={(task) => {
-        if (!task.parentId) queryClient.setQueryData<Task[]>(queryKeys.projectTasks(projectId), (current = []) => upsertTask(current, task));
+        if (!task.parentId) queryClient.invalidateQueries({ queryKey: queryKeys.projectTasksPage(projectId, activeSprint?.id ? `board:${activeSprint.id}` : 'board:none') });
         queryClient.setQueryData(queryKeys.task(task.id), task);
         toast.success('Task created successfully.');
       }} />
       <TaskDetailModal taskId={selectedTaskId} onClose={() => setSelectedTaskId(null)} onTaskUpdated={(task) => {
         // TaskDetailModal can drill into a subtask (parentId set) via its internal breadcrumb
         // navigation — editing that subtask must never leak it into the board's task list.
-        if (!task.parentId) queryClient.setQueryData<Task[]>(queryKeys.projectTasks(projectId), (current = []) => upsertTask(current, task));
+        if (!task.parentId) queryClient.invalidateQueries({ queryKey: queryKeys.projectTasksPage(projectId, activeSprint?.id ? `board:${activeSprint.id}` : 'board:none') });
         queryClient.setQueryData(queryKeys.task(task.id), task);
       }} />
     </>

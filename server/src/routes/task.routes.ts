@@ -10,9 +10,11 @@ import {
   downloadTaskAttachmentController,
   getAssignedFocusTasksController,
   getAssignedTasksController,
+  getTaskActivitiesController,
   getTaskAttachmentsController,
   getTaskChecklistItemsController,
   getTaskChildrenController,
+  getTaskCommentsController,
   getProjectTasksController,
   getTaskByIdController,
   getTaskDocumentsController,
@@ -55,6 +57,8 @@ router.get("/:id/children", authenticate, getTaskChildrenController);
 router.post("/:id/children", authenticate, validateBody(createSubtaskTaskSchema), createSubtaskTaskController);
 router.get("/:id/attachments", authenticate, getTaskAttachmentsController);
 router.post("/:id/attachments", authenticate, validateBody(createAttachmentSchema), createTaskAttachmentController);
+router.get("/:id/comments", authenticate, getTaskCommentsController);
+router.get("/:id/activities", authenticate, getTaskActivitiesController);
 router.get("/:id/documents", authenticate, getTaskDocumentsController);
 router.put("/:id/documents", authenticate, updateTaskDocumentsController);
 router.get("/:id", authenticate, getTaskByIdController);

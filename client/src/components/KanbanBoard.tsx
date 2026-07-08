@@ -30,6 +30,8 @@ interface FilterOption { value: string; label: string; }
 
 const visibleAssigneeCount = 5;
 const unassignedFilterValue = '__unassigned__';
+const initialColumnTaskCount = 40;
+const columnTaskBatchSize = 40;
 
 export default function KanbanBoard({
   tasks,
@@ -63,6 +65,7 @@ export default function KanbanBoard({
   const [bulkPriority, setBulkPriority] = useState('');
   const [bulkAssignee, setBulkAssignee] = useState('');
   const [bulkSaving, setBulkSaving] = useState(false);
+  const [columnVisibleCounts, setColumnVisibleCounts] = useState<Record<string, number>>({});
   const advancedFiltersRef = useRef<HTMLDivElement>(null);
   const overflowRef = useRef<HTMLDivElement>(null);
   const statusesQuery = useQuery({
@@ -135,6 +138,10 @@ export default function KanbanBoard({
   const advancedFilterCount = assigneeFilters.length + [priorityFilter, labelFilter].filter(Boolean).length;
   const hasActiveFilters = Boolean(localSearch || assigneeFilters.length || priorityFilter || labelFilter);
   const swimlanes = [{ key: 'all', label: '', tasks: filteredTasks }];
+
+  useEffect(() => {
+    setColumnVisibleCounts({});
+  }, [activeSprintId, localSearch, assigneeFilters, priorityFilter, labelFilter]);
 
   async function applyBulkUpdate() {
     if (!onBulkUpdate || !selectedTaskIds.length) return;
@@ -421,6 +428,8 @@ export default function KanbanBoard({
       {swimlanes.map((lane) => <section className="kanban-swimlane" key={lane.key}>{lane.label && <header className="swimlane-heading"><h3>{lane.label}</h3><span>{lane.tasks.length} tasks</span></header>}<div className="kanban-board" aria-label={`${lane.label || 'Project'} task status board`}>
         {columns.map((column, index) => {
           const columnTasks = lane.tasks.filter((task) => task.statusId === column.id);
+          const visibleCount = columnVisibleCounts[column.id] ?? initialColumnTaskCount;
+          const visibleColumnTasks = columnTasks.slice(0, visibleCount);
           const isTarget = dropTarget === column.id && draggedTaskId !== null;
           const categoryClass = `category-${column.category.toLowerCase()}`;
 
@@ -469,7 +478,7 @@ export default function KanbanBoard({
                     </button>
                   )}
                 </div>
-                {columnTasks.map((task) => (
+                {visibleColumnTasks.map((task) => (
                   <TaskCard
                     key={task.id}
                     task={task}
@@ -481,6 +490,17 @@ export default function KanbanBoard({
                     onDragEnd={() => { setDraggedTaskId(null); setDropTarget(null); }}
                   />
                 ))}
+                {columnTasks.length > visibleColumnTasks.length && (
+                  <Button
+                    variant="secondary"
+                    onClick={() => setColumnVisibleCounts((current) => ({
+                      ...current,
+                      [column.id]: (current[column.id] ?? initialColumnTaskCount) + columnTaskBatchSize,
+                    }))}
+                  >
+                    Load more in {column.name}
+                  </Button>
+                )}
                 {columnTasks.length === 0 && <div className="kanban-empty"><span />Drop tasks here</div>}
               </div>
             </section>
