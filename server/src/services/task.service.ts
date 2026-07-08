@@ -1,11 +1,19 @@
 import { NotificationType, Role, StatusCategory, TaskPriority, TaskType } from "@prisma/client";
 import prisma from "../utils/prisma";
+import { env } from "../config/env";
 import { NotFoundError } from "../errors/NotFoundError";
 import { AppError } from "../errors/AppError";
 import { emitProjectEvent } from "./realtime.service";
 import { createNotification, notifyProjectMembers } from "./notification.service";
 import { createProjectActivity } from "./activity.service";
 import { getBacklogDefaultStatus, getSprintDefaultStatus, requireProjectStatus } from "../utils/taskStatus";
+import {
+  buildAttachmentObjectKey,
+  deleteAttachmentObject,
+  downloadAttachmentObject,
+  isObjectStorageConfigured,
+  uploadAttachmentObject,
+} from "./storage/supabaseStorage.service";
 
 const taskSummaryInclude = {
   project: { select: { id: true, name: true, key: true } },
@@ -791,6 +799,7 @@ export const getAttachmentForDownload = async (attachmentId: string, userId: str
       fileName: true,
       mimeType: true,
       data: true,
+      objectKey: true,
       task: { select: { projectId: true } },
     },
   });
@@ -798,6 +807,19 @@ export const getAttachmentForDownload = async (attachmentId: string, userId: str
   if (!attachment) throw new NotFoundError("Attachment not found");
   await requireProjectMember(attachment.task.projectId, userId);
   return attachment;
+};
+
+// Loads the actual file bytes for an attachment returned by getAttachmentForDownload,
+// transparently handling both storage generations: legacy rows keep their base64
+// "data" inline in Postgres, new rows fetch bytes from Supabase Storage by objectKey.
+export const getAttachmentBytes = async (attachment: { data: string | null; objectKey: string | null }): Promise<Buffer> => {
+  if (attachment.objectKey) {
+    return downloadAttachmentObject(attachment.objectKey);
+  }
+  if (attachment.data) {
+    return Buffer.from(attachment.data, "base64");
+  }
+  throw new AppError("Attachment has no content", 500);
 };
 
 export const createTaskAttachment = async (
@@ -817,17 +839,44 @@ export const createTaskAttachment = async (
     throw new AppError("File exceeds the 5 MB size limit", 400);
   }
 
-  return prisma.attachment.create({
-    data: {
-      taskId,
-      uploaderId: userId,
-      fileName: input.fileName,
-      mimeType: input.mimeType,
-      size: fileBuffer.length,
-      data: input.data,
-    },
-    select: attachmentMetaSelect,
-  });
+  if (!isObjectStorageConfigured()) {
+    throw new AppError(
+      "Object storage is not configured. Set SUPABASE_URL, SUPABASE_SECRET_KEY and " +
+        "SUPABASE_ATTACHMENTS_BUCKET on the server to enable attachment uploads.",
+      503
+    );
+  }
+
+  // New uploads always go to object storage — the "data" column is left null and
+  // only populated for legacy (pre-migration) rows.
+  const objectKey = buildAttachmentObjectKey(taskId, input.fileName);
+  await uploadAttachmentObject(objectKey, fileBuffer, input.mimeType);
+
+  try {
+    return await prisma.attachment.create({
+      data: {
+        taskId,
+        uploaderId: userId,
+        fileName: input.fileName,
+        mimeType: input.mimeType,
+        size: fileBuffer.length,
+        data: null,
+        objectKey,
+        storageBucket: env.supabaseStorage.attachmentsBucket,
+      },
+      select: attachmentMetaSelect,
+    });
+  } catch (error) {
+    // Metadata row failed after the object was already written — clean up so we
+    // don't leave an unreferenced file sitting in the bucket forever.
+    await deleteAttachmentObject(objectKey).catch((cleanupError) => {
+      console.error("Failed to clean up orphaned storage object after failed attachment insert", {
+        objectKey,
+        cleanupError,
+      });
+    });
+    throw error;
+  }
 };
 
 export const deleteTaskAttachment = async (attachmentId: string, userId: string) => {
@@ -841,5 +890,22 @@ export const deleteTaskAttachment = async (attachmentId: string, userId: string)
   if (attachment.uploaderId !== userId && member.role !== Role.ADMIN) {
     throw new AppError("Only the uploader or a project admin can delete attachments", 403);
   }
+
+  if (attachment.objectKey) {
+    // Delete the storage object first. If it fails, leave the DB row in place and
+    // surface the error — deleting the row anyway would orphan the stored file with
+    // nothing left pointing at it for cleanup or retry.
+    try {
+      await deleteAttachmentObject(attachment.objectKey);
+    } catch (error) {
+      console.error("Failed to delete attachment object from storage; metadata row kept to avoid orphaning it", {
+        attachmentId,
+        objectKey: attachment.objectKey,
+        error,
+      });
+      throw new AppError("Could not delete the attachment file from storage. Please try again.", 502);
+    }
+  }
+
   await prisma.attachment.delete({ where: { id: attachmentId } });
 };
