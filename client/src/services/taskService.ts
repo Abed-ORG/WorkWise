@@ -56,6 +56,8 @@ export interface Task {
   comments?: TaskComment[];
   activities?: TaskActivity[];
   documents?: ProjectDocument[];
+  children?: Task[];
+  attachments?: TaskAttachment[];
   _count?: {
     comments?: number;
     activities?: number;
