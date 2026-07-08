@@ -29,6 +29,8 @@ interface EmailMessage {
   html: string;
 }
 
+let smtpTransporter: nodemailer.Transporter | null = null;
+
 const escapeHtml = (value: string) => value
   .replace(/&/g, "&amp;")
   .replace(/</g, "&lt;")
@@ -38,6 +40,23 @@ const escapeHtml = (value: string) => value
 
 const getErrorMessage = (error: unknown) =>
   error instanceof Error ? error.message : String(error);
+
+const getSmtpTransporter = () => {
+  if (!smtpTransporter) {
+    const { smtp } = env.email;
+    smtpTransporter = nodemailer.createTransport({
+      host: smtp.host,
+      port: smtp.port,
+      secure: smtp.secure,
+      auth: {
+        user: smtp.user,
+        pass: smtp.pass,
+      },
+    });
+  }
+
+  return smtpTransporter;
+};
 
 const sendMail = async ({ to, subject, text, html }: EmailMessage) => {
   const { resendApiKey, from, smtp } = env.email;
@@ -51,15 +70,7 @@ const sendMail = async ({ to, subject, text, html }: EmailMessage) => {
 
   if (smtpConfigured) {
     try {
-      const transporter = nodemailer.createTransport({
-        host: smtp.host,
-        port: smtp.port,
-        secure: smtp.secure,
-        auth: {
-          user: smtp.user,
-          pass: smtp.pass,
-        },
-      });
+      const transporter = getSmtpTransporter();
 
       await transporter.sendMail({
         from: sender,
