@@ -1,12 +1,11 @@
-import { NotificationType, Prisma, PrismaClient, Role, StatusCategory, Task } from '@prisma/client';
+import { NotificationType, Prisma, Role, StatusCategory, Task } from '@prisma/client';
 import { sendProjectInvitationEmail } from '../../services/mail.service';
 import { createProjectActivity } from '../../services/activity.service';
 import { notifyProjectMembers } from '../../services/notification.service';
 import { emitProjectEvent } from '../../services/realtime.service';
 import { geminiService } from '../ai/gemini.service';
 import { DEFAULT_PROJECT_STATUSES, getBacklogDefaultStatus, getSprintDefaultStatus, isDone } from '../../utils/taskStatus';
-
-const prisma = new PrismaClient();
+import prisma from '../../utils/prisma';
 
 const linkedDocumentSelect = {
   id: true,

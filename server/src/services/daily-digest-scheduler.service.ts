@@ -1,7 +1,7 @@
-import { PrismaClient, Role } from '@prisma/client';
+import { Role } from '@prisma/client';
 import { projectsService } from '../modules/projects/projects.service';
+import prisma from '../utils/prisma';
 
-const prisma = new PrismaClient();
 const ONE_HOUR_MS = 60 * 60 * 1000;
 
 function startOfTodayUtc() {

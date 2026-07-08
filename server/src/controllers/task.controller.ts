@@ -19,6 +19,7 @@ import {
   updateTask,
   updateTaskDocuments,
 } from "../services/task.service";
+import { logResponsePayloadSize } from "../utils/payload-size-logger";
 
 export const createTaskController = async (req: Request, res: Response, next: NextFunction) => {
   try {
@@ -34,7 +35,9 @@ export const getProjectTasksController = async (req: Request, res: Response, nex
   try {
     const user = (req as any).user;
     const tasks = await getProjectTasks(req.params.projectId as string, user.userId);
-    return res.status(200).json({ success: true, data: tasks });
+    const responseBody = { success: true, data: tasks };
+    logResponsePayloadSize("tasks.project.list", responseBody);
+    return res.status(200).json(responseBody);
   } catch (error) {
     next(error);
   }
@@ -44,7 +47,9 @@ export const getAssignedTasksController = async (req: Request, res: Response, ne
   try {
     const user = (req as any).user;
     const tasks = await getAssignedTasks(user.userId);
-    return res.status(200).json({ success: true, data: tasks });
+    const responseBody = { success: true, data: tasks };
+    logResponsePayloadSize("tasks.assigned.list", responseBody);
+    return res.status(200).json(responseBody);
   } catch (error) {
     next(error);
   }

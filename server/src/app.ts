@@ -13,6 +13,7 @@ import notificationRoutes from './routes/notification.routes';
 import activityRoutes from './routes/activity.routes';
 import { errorHandler } from './middleware/error.middleware';
 import { env } from './config/env';
+import { requestTimingMiddleware } from './middleware/request-timing.middleware';
 
 const app = express();
 app.set('trust proxy', 1);
@@ -26,6 +27,7 @@ app.use(cors({
 // 8 MB limit accommodates base64-encoded attachments up to 5 MB (~6.7 MB base64 + JSON envelope)
 app.use(express.json({ limit: '8mb' }));
 app.use(express.urlencoded({ extended: true }));
+app.use(requestTimingMiddleware);
 
 app.use('/', healthRoutes);
 app.use('/auth', authRoutes);
