@@ -12,16 +12,14 @@ import {
   downloadTaskAttachment,
   fetchTaskAttachmentBlob,
   getProjectStatuses,
-  getTaskAttachments,
   getTaskById,
-  getTaskChildren,
   updateTask,
   updateTaskDocuments,
   uploadTaskAttachment,
 } from '../services/taskService';
-import type { Task, TaskAttachment, TaskPriority, TaskType } from '../services/taskService';
+import type { ProjectStatus, Task, TaskAttachment, TaskPriority, TaskType } from '../services/taskService';
 import { generateAcceptanceCriteria } from '../services/aiService';
-import type { ProjectDocument, ProjectMember, Sprint } from '../services/projectService';
+import type { Project, ProjectDocument, ProjectMember, Sprint } from '../services/projectService';
 import { queryKeys, queryTimes } from '../services/queryOptions';
 import RichTextEditor from './RichTextEditor';
 import { getInitials } from '../utils/initials';
@@ -47,6 +45,23 @@ interface AcceptanceCriterion {
   id: string;
   text: string;
   done: boolean;
+}
+
+function hasFullTaskDetail(task?: Task): task is Task & {
+  comments: NonNullable<Task['comments']>;
+  activities: NonNullable<Task['activities']>;
+  documents: NonNullable<Task['documents']>;
+  children: NonNullable<Task['children']>;
+  attachments: NonNullable<Task['attachments']>;
+} {
+  return Boolean(
+    task
+    && Array.isArray(task.comments)
+    && Array.isArray(task.activities)
+    && Array.isArray(task.documents)
+    && Array.isArray(task.children)
+    && Array.isArray(task.attachments)
+  );
 }
 
 function TaskPropertyRow({ label, children }: { label: string; children: ReactNode }) {
@@ -133,6 +148,7 @@ function formatActivityAction(action: string) {
 export default function TaskDetailModal({ taskId: propTaskId, onClose, onTaskUpdated }: TaskDetailModalProps) {
   const queryClient = useQueryClient();
   const attachmentInputRef = useRef<HTMLInputElement>(null);
+  const imagePreviewUrlsRef = useRef<Set<string>>(new Set());
   // Internal navigation lets the modal drill into a subtask (opened "like a task", via the
   // same modal) and breadcrumb back to the parent, without the host page's selection changing.
   const [taskId, setTaskId] = useState<string | null>(propTaskId);
@@ -179,24 +195,29 @@ export default function TaskDetailModal({ taskId: propTaskId, onClose, onTaskUpd
     queryKey: queryKeys.task(taskId ?? ''),
     queryFn: () => getTaskById(taskId!),
     enabled: Boolean(taskId),
-    staleTime: queryTimes.tasks,
+    staleTime: 0,
   });
+  const taskProjectId = taskQuery.data?.projectId;
+  const taskDetailReady = hasFullTaskDetail(taskQuery.data);
   const projectQuery = useQuery({
-    queryKey: queryKeys.project(taskQuery.data?.projectId ?? ''),
-    queryFn: () => getProjectById(taskQuery.data!.projectId),
-    enabled: Boolean(taskQuery.data?.projectId),
+    queryKey: queryKeys.project(taskProjectId ?? ''),
+    queryFn: () => getProjectById(taskProjectId!),
+    enabled: Boolean(taskProjectId),
+    initialData: () => taskProjectId ? queryClient.getQueryData<Project>(queryKeys.project(taskProjectId)) : undefined,
     staleTime: queryTimes.projectDetail,
   });
   const sprintsQuery = useQuery({
-    queryKey: queryKeys.projectSprints(taskQuery.data?.projectId ?? ''),
-    queryFn: () => getProjectSprints(taskQuery.data!.projectId),
-    enabled: Boolean(taskQuery.data?.projectId),
+    queryKey: queryKeys.projectSprints(taskProjectId ?? ''),
+    queryFn: () => getProjectSprints(taskProjectId!),
+    enabled: Boolean(taskProjectId),
+    initialData: () => taskProjectId ? queryClient.getQueryData<Sprint[]>(queryKeys.projectSprints(taskProjectId)) : undefined,
     staleTime: queryTimes.sprints,
   });
   const statusesQuery = useQuery({
-    queryKey: queryKeys.projectStatuses(taskQuery.data?.projectId ?? ''),
-    queryFn: () => getProjectStatuses(taskQuery.data!.projectId),
-    enabled: Boolean(taskQuery.data?.projectId),
+    queryKey: queryKeys.projectStatuses(taskProjectId ?? ''),
+    queryFn: () => getProjectStatuses(taskProjectId!),
+    enabled: Boolean(taskProjectId),
+    initialData: () => taskProjectId ? queryClient.getQueryData<ProjectStatus[]>(queryKeys.projectStatuses(taskProjectId)) : undefined,
     staleTime: queryTimes.statuses,
   });
   const statuses = useMemo(
@@ -222,25 +243,40 @@ export default function TaskDetailModal({ taskId: propTaskId, onClose, onTaskUpd
     })),
   ];
 
+  function revokeImagePreviewUrls() {
+    imagePreviewUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
+    imagePreviewUrlsRef.current.clear();
+  }
+
   useEffect(() => {
     setTaskId(propTaskId);
+    setChildrenLoading(Boolean(propTaskId));
+    setChildren([]);
+    setAttachments([]);
+    revokeImagePreviewUrls();
+    setImagePreviews({});
+    setLightboxAttachmentId(null);
     if (!propTaskId) {
       setTask(null);
       setLinkedDocuments([]);
-      setChildren([]);
       setChildrenLoading(false);
-      setAttachments([]);
       setProjectMembers([]);
-      setImagePreviews({});
-      setLightboxAttachmentId(null);
     }
     setError('');
   }, [propTaskId]);
 
   useEffect(() => {
-    if (!taskQuery.data) return;
+    if (!hasFullTaskDetail(taskQuery.data)) return;
     setTask(taskQuery.data);
     setLinkedDocuments(taskQuery.data.documents ?? []);
+    setChildren(taskQuery.data.children ?? []);
+    setChildrenLoading(false);
+    setChildrenMessage('');
+    setAttachments(taskQuery.data.attachments ?? []);
+    setAttachmentsMessage('');
+    revokeImagePreviewUrls();
+    setImagePreviews({});
+    setLightboxAttachmentId(null);
     setDescriptionDraft(taskQuery.data.description ?? '');
     setEditingDescription(false);
     setDescriptionMessage('');
@@ -255,52 +291,12 @@ export default function TaskDetailModal({ taskId: propTaskId, onClose, onTaskUpd
     setStatusMessage('');
     setSprintMessage('');
     setDetailsMessage('');
-  }, [taskQuery.data]);
-
-  useEffect(() => {
-    if (!taskId) return;
-    let active = true;
-    setChildrenMessage('');
-    setAttachmentsMessage('');
-    setImagePreviews({});
-    setChildrenLoading(true);
-
-    const createdPreviewUrls: string[] = [];
-
-    Promise.all([
-      getTaskChildren(taskId),
-      getTaskAttachments(taskId),
-    ])
-      .then(([nextChildren, nextAttachments]) => {
-        if (!active) return;
-        setChildren(nextChildren);
-        setAttachments(nextAttachments);
-
-        nextAttachments
-          .filter((attachment) => attachment.mimeType.startsWith('image/'))
-          .forEach((attachment) => {
-            fetchTaskAttachmentBlob(attachment.id)
-              .then((blob) => {
-                if (!active) return;
-                const url = URL.createObjectURL(blob);
-                createdPreviewUrls.push(url);
-                setImagePreviews((current) => ({ ...current, [attachment.id]: url }));
-              })
-              .catch(() => undefined);
-          });
-      })
-      .catch(() => {
-        if (active) setError('Task details could not be loaded.');
-      })
-      .finally(() => {
-        if (active) setChildrenLoading(false);
+    if (import.meta.env.DEV) {
+      console.debug('[task-detail] consolidated detail payload loaded; image blobs lazy-load on preview', {
+        taskId: taskQuery.data.id,
       });
-
-    return () => {
-      active = false;
-      createdPreviewUrls.forEach((url) => URL.revokeObjectURL(url));
-    };
-  }, [taskId]);
+    }
+  }, [taskQuery.data]);
 
   useEffect(() => {
     if (projectQuery.data?.members) setProjectMembers(projectQuery.data.members);
@@ -309,6 +305,8 @@ export default function TaskDetailModal({ taskId: propTaskId, onClose, onTaskUpd
   useEffect(() => {
     if (taskQuery.isError || projectQuery.isError || sprintsQuery.isError || statusesQuery.isError) setError('Task details could not be loaded.');
   }, [projectQuery.isError, sprintsQuery.isError, statusesQuery.isError, taskQuery.isError]);
+
+  useEffect(() => () => revokeImagePreviewUrls(), []);
 
   function cacheTask(nextTask: Task) {
     setTask(nextTask);
@@ -653,11 +651,25 @@ export default function TaskDetailModal({ taskId: propTaskId, onClose, onTaskUpd
   async function removeAttachment(attachment: TaskAttachment) {
     setAttachmentsMessage('');
     const previous = attachments;
+    const previewUrl = imagePreviews[attachment.id];
     setAttachments((current) => current.filter((item) => item.id !== attachment.id));
+    if (previewUrl) {
+      setImagePreviews((current) => {
+        const { [attachment.id]: _removed, ...rest } = current;
+        return rest;
+      });
+    }
     try {
       await deleteTaskAttachment(attachment.id);
+      if (previewUrl) {
+        URL.revokeObjectURL(previewUrl);
+        imagePreviewUrlsRef.current.delete(previewUrl);
+      }
     } catch {
       setAttachments(previous);
+      if (previewUrl) {
+        setImagePreviews((current) => ({ ...current, [attachment.id]: previewUrl }));
+      }
       setAttachmentsMessage('Could not delete attachment');
     }
   }
@@ -718,6 +730,25 @@ export default function TaskDetailModal({ taskId: propTaskId, onClose, onTaskUpd
     }
   }
 
+  async function openImagePreview(attachment: TaskAttachment) {
+    if (!attachment.mimeType.startsWith('image/')) return;
+
+    setLightboxAttachmentId(attachment.id);
+    if (imagePreviews[attachment.id]) return;
+
+    setAttachmentsMessage('Loading preview...');
+    try {
+      const blob = await fetchTaskAttachmentBlob(attachment.id);
+      const url = URL.createObjectURL(blob);
+      imagePreviewUrlsRef.current.add(url);
+      setImagePreviews((current) => ({ ...current, [attachment.id]: url }));
+      setAttachmentsMessage('');
+    } catch {
+      setLightboxAttachmentId(null);
+      setAttachmentsMessage('Could not load preview');
+    }
+  }
+
   const lightboxAttachment = lightboxAttachmentId ? attachments.find((item) => item.id === lightboxAttachmentId) : null;
   const lightboxUrl = lightboxAttachmentId ? imagePreviews[lightboxAttachmentId] : undefined;
   const hasDescription = Boolean(getTextFromHtml(task?.description));
@@ -725,7 +756,7 @@ export default function TaskDetailModal({ taskId: propTaskId, onClose, onTaskUpd
   return (
     <>
     <Modal isOpen={Boolean(propTaskId)} onClose={onClose} className="task-detail-modal">
-      {taskQuery.isLoading || projectQuery.isLoading || sprintsQuery.isLoading || statusesQuery.isLoading ? (
+      {(!taskDetailReady && (taskQuery.isLoading || taskQuery.isFetching)) || projectQuery.isLoading || sprintsQuery.isLoading || statusesQuery.isLoading ? (
         <div className="task-detail-loading"><Spinner /><span>Loading task details...</span></div>
       ) : error ? (
         <div className="empty-panel"><p>{error}</p></div>
@@ -995,7 +1026,7 @@ export default function TaskDetailModal({ taskId: propTaskId, onClose, onTaskUpd
                               className="attachment-filename-link"
                               onClick={(event) => {
                                 event.stopPropagation();
-                                setLightboxAttachmentId(attachment.id);
+                                void openImagePreview(attachment);
                               }}
                             >
                               {attachment.fileName}

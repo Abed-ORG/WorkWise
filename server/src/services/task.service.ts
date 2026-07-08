@@ -75,6 +75,16 @@ const dashboardFocusTaskSelect = {
   project: { select: { id: true, name: true, key: true } },
 } as const;
 
+const attachmentMetaSelect = {
+  id: true,
+  taskId: true,
+  uploaderId: true,
+  fileName: true,
+  mimeType: true,
+  size: true,
+  createdAt: true,
+} as const;
+
 const linkedDocumentSelect = {
   id: true,
   title: true,
@@ -326,6 +336,14 @@ export const getTaskById = async (taskId: string, userId: string) => {
           createdAt: "desc",
         },
       },
+      subtasks: {
+        select: taskListSelect,
+        orderBy: [{ order: "asc" }, { createdAt: "asc" }],
+      },
+      attachments: {
+        select: attachmentMetaSelect,
+        orderBy: { createdAt: "desc" },
+      },
     },
   });
 
@@ -335,9 +353,12 @@ export const getTaskById = async (taskId: string, userId: string) => {
 
   await requireProjectMember(task.projectId, userId);
 
+  const { subtasks, ...taskDetail } = task;
+
   return {
-    ...task,
+    ...taskDetail,
     documents: task.documents.map((link) => link.document),
+    children: subtasks,
   };
 };
 
@@ -749,16 +770,6 @@ const ALLOWED_MIME_TYPES = new Set([
   "text/plain",
   "text/csv",
 ]);
-
-const attachmentMetaSelect = {
-  id: true,
-  taskId: true,
-  uploaderId: true,
-  fileName: true,
-  mimeType: true,
-  size: true,
-  createdAt: true,
-} as const;
 
 // ─── Attachment service functions ────────────────────────────────────────────
 
