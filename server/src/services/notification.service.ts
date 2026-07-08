@@ -15,6 +15,7 @@ const projectWideTypes = new Set<NotificationType>([
   NotificationType.SPRINT_STARTED,
   NotificationType.SPRINT_COMPLETED,
 ]);
+const shouldLogNotificationFanout = process.env.NODE_ENV !== "production" && process.env.NODE_ENV !== "test";
 
 export type ProjectNotificationToggleField =
   | "taskAssigned"
@@ -61,12 +62,76 @@ export async function createNotification(payload: NotificationPayload) {
 }
 
 export async function notifyProjectMembers(projectId: string, actorId: string, type: NotificationType, message: string) {
+  const startedAt = process.hrtime.bigint();
+  let recipientCount = 0;
+  let createdCount = 0;
+
   const members = await prisma.projectMember.findMany({
     where: { projectId, userId: { not: actorId } },
-    select: { userId: true },
+    select: {
+      userId: true,
+      user: { select: { notificationPreference: true } },
+    },
+  });
+  recipientCount = members.length;
+
+  if (members.length === 0) {
+    if (shouldLogNotificationFanout) {
+      const durationMs = Number(process.hrtime.bigint() - startedAt) / 1_000_000;
+      console.log("[notifications:fanout]", {
+        projectId,
+        type,
+        recipientCount,
+        createdCount,
+        durationMs: Math.round(durationMs),
+      });
+    }
+    return;
+  }
+
+  const recipientIds = members.map((member) => member.userId);
+  const projectPreferences = await prisma.projectNotificationPreference.findMany({
+    where: {
+      projectId,
+      userId: { in: recipientIds },
+    },
   });
 
-  await Promise.all(members.map((member) => createNotification({ userId: member.userId, projectId, type, message })));
+  const userPreferenceByUserId = new Map(
+    members.map((member) => [member.userId, member.user.notificationPreference]),
+  );
+  const projectPreferenceByUserId = new Map(projectPreferences.map((preference) => [preference.userId, preference]));
+  const preferenceField = notificationTypeToPreferenceField[type];
+  const recipients = members.filter((member) => {
+    const userPreference = userPreferenceByUserId.get(member.userId);
+    if (userPreference === NotificationPreference.NONE) return false;
+    if (userPreference === NotificationPreference.MENTIONS_ONLY && projectWideTypes.has(type)) return false;
+
+    const projectPreference = projectPreferenceByUserId.get(member.userId);
+    return !projectPreference || projectPreference[preferenceField] !== false;
+  });
+
+  const notifications = await Promise.all(
+    recipients.map((recipient) => prisma.notification.create({
+      data: { type, message, userId: recipient.userId },
+    })),
+  );
+  createdCount = notifications.length;
+
+  notifications.forEach((notification) => {
+    emitUserEvent(notification.userId, "notification:new", notification);
+  });
+
+  if (shouldLogNotificationFanout) {
+    const durationMs = Number(process.hrtime.bigint() - startedAt) / 1_000_000;
+    console.log("[notifications:fanout]", {
+      projectId,
+      type,
+      recipientCount,
+      createdCount,
+      durationMs: Math.round(durationMs),
+    });
+  }
 }
 
 export async function getUserNotifications(userId: string) {
