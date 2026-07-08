@@ -23,3 +23,6 @@ export { default as Spinner } from './Spinner';
 
 export { Toast, ToastContainer } from './Toast';
 export type { ToastItem, ToastVariant } from './Toast';
+
+export { default as Tooltip } from './Tooltip';
+export type { TooltipProps } from './Tooltip';

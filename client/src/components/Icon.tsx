@@ -1,7 +1,7 @@
 import type { SVGProps } from 'react';
 export type IconName =
   | 'activity' | 'arrow-left' | 'arrow-right' | 'bar-chart' | 'bell' | 'board' | 'bug' | 'calendar'
-  | 'check' | 'chevron-down' | 'clock' | 'close' | 'document' | 'download' | 'folder' | 'home' | 'logout' | 'menu' | 'pencil'
+  | 'check' | 'chevron-down' | 'clock' | 'close' | 'document' | 'download' | 'filter' | 'folder' | 'home' | 'logout' | 'menu' | 'pencil'
   | 'flag' | 'more-horizontal' | 'moon' | 'plus' | 'search' | 'settings' | 'sparkles' | 'story' | 'subtask' | 'sun' | 'tasks'
   | 'team' | 'trash' | 'upload' | 'user';
 
@@ -25,6 +25,7 @@ const paths: Record<IconName, React.ReactNode> = {
   close: <path d="M18 6 6 18M6 6l12 12" />,
   document: <><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8Z" /><path d="M14 3v5h5M9 13h6M9 17h4" /></>,
   download: <><path d="M12 4v12" /><path d="m7 11 5 5 5-5" /><path d="M4 20h16" /></>,
+  filter: <path d="M22 3H2l8 9.46V19l4 2v-8.54Z" />,
   flag: <><path d="M5 21V4" /><path d="M5 5h11l-1.5 4L16 13H5" /></>,
   folder: <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z" />,
   home: <><path d="m3 11 9-8 9 8" /><path d="M5 10v10h14V10M9 20v-6h6v6" /></>,

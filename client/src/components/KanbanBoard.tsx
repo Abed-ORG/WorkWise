@@ -367,7 +367,7 @@ export default function KanbanBoard({
 
         <div className="advanced-filter-root" ref={advancedFiltersRef}>
           <Button variant="secondary" className="advanced-filter-button" onClick={() => setAdvancedFiltersOpen((current) => !current)} aria-expanded={advancedFiltersOpen}>
-            <Icon name="settings" size={15} /> Filter
+            <Icon name="filter" size={15} /> Filter
             {advancedFilterCount > 0 && <span className="filter-count-badge">{advancedFilterCount}</span>}
           </Button>
           {advancedFiltersOpen && (
@@ -440,19 +440,6 @@ export default function KanbanBoard({
                 <span className="kanban-count">{columnTasks.length}</span>
               </header>
               <div className="kanban-task-stack">
-                {columnTasks.map((task) => (
-                  <TaskCard
-                    key={task.id}
-                    task={task}
-                    dragging={draggedTaskId === task.id}
-                    onClick={onTaskClick ? () => onTaskClick(task) : undefined}
-                    selected={selectedTaskIds.includes(task.id)}
-                    onSelect={(selected) => setSelectedTaskIds((current) => selected ? Array.from(new Set([...current, task.id])) : current.filter((id) => id !== task.id))}
-                    onDragStart={(event) => handleDragStart(event, task.id)}
-                    onDragEnd={() => { setDraggedTaskId(null); setDropTarget(null); }}
-                  />
-                ))}
-                {columnTasks.length === 0 && <div className="kanban-empty"><span />Drop tasks here</div>}
                 <div className="board-column-quick-add">
                   {quickAddColumn === column.id ? (
                     <form className="board-quick-add-form" onSubmit={(event) => handleQuickAddSubmit(event, column.id)}>
@@ -482,6 +469,19 @@ export default function KanbanBoard({
                     </button>
                   )}
                 </div>
+                {columnTasks.map((task) => (
+                  <TaskCard
+                    key={task.id}
+                    task={task}
+                    dragging={draggedTaskId === task.id}
+                    onClick={onTaskClick ? () => onTaskClick(task) : undefined}
+                    selected={selectedTaskIds.includes(task.id)}
+                    onSelect={(selected) => setSelectedTaskIds((current) => selected ? Array.from(new Set([...current, task.id])) : current.filter((id) => id !== task.id))}
+                    onDragStart={(event) => handleDragStart(event, task.id)}
+                    onDragEnd={() => { setDraggedTaskId(null); setDropTarget(null); }}
+                  />
+                ))}
+                {columnTasks.length === 0 && <div className="kanban-empty"><span />Drop tasks here</div>}
               </div>
             </section>
           );

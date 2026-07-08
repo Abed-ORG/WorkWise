@@ -821,7 +821,7 @@ export default function BacklogList({
 
         <div className="advanced-filter-root" ref={advancedFiltersRef}>
           <Button variant="secondary" className="advanced-filter-button" onClick={() => setAdvancedFiltersOpen((current) => !current)} aria-expanded={advancedFiltersOpen}>
-            <Icon name="settings" size={15} /> Filter
+            <Icon name="filter" size={15} /> Filter
             {advancedFilterCount > 0 && <span className="filter-count-badge">{advancedFilterCount}</span>}
           </Button>
           {advancedFiltersOpen && (
