@@ -28,6 +28,45 @@ const taskSummaryInclude = {
   },
 } as const;
 
+const taskListSelect = {
+  id: true,
+  title: true,
+  description: true,
+  estimatedHours: true,
+  storyPoints: true,
+  type: true,
+  statusId: true,
+  priority: true,
+  labels: true,
+  dueDate: true,
+  order: true,
+  createdAt: true,
+  updatedAt: true,
+  projectId: true,
+  sprintId: true,
+  assigneeId: true,
+  creatorId: true,
+  parentId: true,
+  project: { select: { id: true, name: true, key: true } },
+  status: {
+    select: {
+      id: true,
+      name: true,
+      category: true,
+      order: true,
+      color: true,
+      isBacklogDefault: true,
+      isSprintDefault: true,
+      projectId: true,
+    },
+  },
+  sprint: { select: { id: true, name: true } },
+  assignee: { select: { id: true, name: true, email: true, avatarUrl: true } },
+  creator: { select: { id: true, name: true, email: true, avatarUrl: true } },
+  parent: { select: { id: true, title: true, type: true } },
+  _count: { select: { comments: true, activities: true } },
+} as const;
+
 const linkedDocumentSelect = {
   id: true,
   title: true,
@@ -167,7 +206,7 @@ export const getProjectTasks = async (projectId: string, userId: string) => {
   // ever surfaced within their parent's detail view via getTaskChildren.
   return prisma.task.findMany({
     where: { projectId, parentId: null },
-    include: taskSummaryInclude,
+    select: taskListSelect,
     orderBy: [{ order: "asc" }, { createdAt: "desc" }],
   });
 };
@@ -179,7 +218,7 @@ export const getAssignedTasks = async (userId: string) => prisma.task.findMany({
     assigneeId: userId,
     project: { members: { some: { userId } } },
   },
-  include: taskSummaryInclude,
+  select: taskListSelect,
   orderBy: [{ dueDate: "asc" }, { createdAt: "desc" }],
 });
 

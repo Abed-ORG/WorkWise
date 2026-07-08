@@ -184,10 +184,14 @@ export function buildContributionMetrics(
     .filter((task) => taskMatchesSprint(task, options.sprintId))
     .flatMap((task) => task.comments ?? [])
     .filter((comment) => dateIsWithinRange(parseDate(comment.createdAt), options.startDate, options.endDate));
+  const hasHydratedTaskComments = tasks.some((task) => Array.isArray(task.comments));
   const filteredActivities = activities.filter((activity) => (
     activityIsWithinRange(activity, options.startDate, options.endDate)
     && activityMatchesSprintTask(activity, sprintTasks, options.sprintId)
   ));
+  const commentActivities = hasHydratedTaskComments
+    ? []
+    : filteredActivities.filter((activity) => activity.action === 'COMMENT_ADDED');
 
   return deliveryMembers.map((member) => {
     const userId = member.user.id;
@@ -196,7 +200,9 @@ export function buildContributionMetrics(
       name: member.user.name,
       role: member.role,
       tasksCompleted: completedTasks.filter((task) => task.assignee?.id === userId).length,
-      commentsMade: comments.filter((comment) => comment.author.id === userId).length,
+      commentsMade: hasHydratedTaskComments
+        ? comments.filter((comment) => comment.author.id === userId).length
+        : commentActivities.filter((activity) => activity.user.id === userId).length,
       prsMerged: filteredActivities.filter((activity) => activity.user.id === userId && /PR_MERGED|PULL_REQUEST_MERGED/i.test(activity.action)).length,
     };
   });

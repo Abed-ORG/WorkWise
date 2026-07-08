@@ -56,6 +56,10 @@ export interface Task {
   comments?: TaskComment[];
   activities?: TaskActivity[];
   documents?: ProjectDocument[];
+  _count?: {
+    comments?: number;
+    activities?: number;
+  };
 }
 
 export interface TaskChecklistItem {
