@@ -35,6 +35,11 @@ const emailFrom = optionalEnv(process.env.EMAIL_FROM)
 const frontendUrl = optionalEnv(process.env.FRONTEND_URL)
   || (process.env.NODE_ENV === "production" ? "https://work-wise-six.vercel.app" : "http://localhost:5173");
 
+// SUPABASE_URL is documented in .env.example as the REST endpoint (".../rest/v1/"),
+// but the Storage SDK wants the bare project URL — strip a trailing REST suffix so
+// the same env var works for both without asking anyone to add a second URL var.
+const supabaseProjectUrl = optionalEnv(process.env.SUPABASE_URL)?.replace(/\/rest\/v1\/?$/, "");
+
 export const env = {
   port: process.env.PORT || "5000",
   nodeEnv: process.env.NODE_ENV || "development",
@@ -54,5 +59,10 @@ export const env = {
       pass: smtpPassword,
       from: smtpFrom,
     },
+  },
+  supabaseStorage: {
+    url: supabaseProjectUrl,
+    serviceKey: optionalEnv(process.env.SUPABASE_SECRET_KEY),
+    attachmentsBucket: optionalEnv(process.env.SUPABASE_ATTACHMENTS_BUCKET),
   },
 };

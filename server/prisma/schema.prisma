@@ -240,7 +240,13 @@ model Attachment {
   fileName   String
   mimeType   String
   size       Int
-  data       String
+  // Legacy inline storage — populated for pre-object-storage attachments only.
+  // Nullable so new object-storage attachments (data == null, objectKey != null) can omit it.
+  data          String?
+  // Object-storage attachments (new uploads): key/path within storageBucket.
+  // Null for legacy base64 rows.
+  objectKey     String?
+  storageBucket String?
   uploaderId String
   createdAt  DateTime @default(now())
 

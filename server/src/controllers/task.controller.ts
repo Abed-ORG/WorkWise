@@ -9,6 +9,7 @@ import {
   deleteTask,
   getAssignedFocusTasks,
   getAssignedTasks,
+  getAttachmentBytes,
   getAttachmentForDownload,
   getTaskAttachments,
   getTaskActivities,
@@ -249,7 +250,7 @@ export const downloadTaskAttachmentController = async (req: Request, res: Respon
   try {
     const user = (req as any).user;
     const attachment = await getAttachmentForDownload(req.params.id as string, user.userId);
-    const buffer = Buffer.from(attachment.data, "base64");
+    const buffer = await getAttachmentBytes(attachment);
     const safeName = attachment.fileName.replace(/[^\x20-\x7E]/g, "_").replace(/"/g, "'");
     res.setHeader("Content-Type", attachment.mimeType);
     res.setHeader("Content-Disposition", `inline; filename="${safeName}"`);
