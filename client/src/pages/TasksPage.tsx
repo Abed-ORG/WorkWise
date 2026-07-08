@@ -1,11 +1,11 @@
 import { useMemo, useState } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
 import BacklogList from '../components/BacklogList';
 import PageHeader from '../components/PageHeader';
 import TaskDetailModal from '../components/TaskDetailModal';
 import Icon from '../components/Icon';
 import { Button, Select } from '../components/ui';
-import { getAssignedTasks, getProjectStatuses, updateTask } from '../services/taskService';
+import { getAssignedTasksPage, getProjectStatuses, updateTask } from '../services/taskService';
 import type { Task } from '../services/taskService';
 import { queryKeys, queryTimes } from '../services/queryOptions';
 import { useToast } from '../hooks/useToast';
@@ -17,22 +17,18 @@ export default function TasksPage() {
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [filter, setFilter] = useState<'all' | 'today' | 'overdue' | 'completed'>('all');
   const [groupBy, setGroupBy] = useState<'none' | 'project' | 'priority' | 'dueDate'>('none');
-  const tasksQuery = useQuery({
-    queryKey: queryKeys.assignedTasks,
-    queryFn: getAssignedTasks,
+  const tasksQuery = useInfiniteQuery({
+    queryKey: queryKeys.assignedTasksPage(filter),
+    queryFn: ({ pageParam }) => getAssignedTasksPage({ cursor: pageParam, limit: 50, filter }),
     staleTime: queryTimes.tasks,
+    initialPageParam: null as string | null,
+    getNextPageParam: (lastPage) => lastPage.hasMore ? lastPage.nextCursor ?? undefined : undefined,
   });
-  const tasks = Array.isArray(tasksQuery.data) ? tasksQuery.data : [];
+  const tasks = useMemo(() => tasksQuery.data?.pages.flatMap((page) => page.items) ?? [], [tasksQuery.data]);
+  const totalCount = tasksQuery.data?.pages[0]?.totalCount ?? 0;
   const today = new Date();
   today.setHours(0, 0, 0, 0);
-  const filteredTasks = useMemo(() => tasks.filter((task) => {
-    const due = task.dueDate ? new Date(task.dueDate) : null;
-    if (due) due.setHours(0, 0, 0, 0);
-    if (filter === 'completed') return isDone(task);
-    if (filter === 'today') return !isDone(task) && due?.getTime() === today.getTime();
-    if (filter === 'overdue') return !isDone(task) && Boolean(due && due < today);
-    return true;
-  }), [filter, tasks]);
+  const filteredTasks = tasks;
 
   const groups = useMemo(() => {
     if (groupBy === 'none') return [{ label: '', tasks: filteredTasks }];
@@ -47,7 +43,7 @@ export default function TasksPage() {
   }, [filteredTasks, groupBy]);
 
   async function quickUpdate(task: Task, payload: Parameters<typeof updateTask>[1]) {
-    try { const updated = await updateTask(task.id, payload); queryClient.setQueryData<Task[]>(queryKeys.assignedTasks, (current = []) => current.map((item) => item.id === updated.id ? updated : item)); toast.success('Task updated.'); }
+    try { const updated = await updateTask(task.id, payload); queryClient.setQueriesData<{ pages: { items: Task[] }[] }>({ queryKey: ['tasks', 'assigned'] }, (current) => current ? { ...current, pages: current.pages.map((page) => ({ ...page, items: page.items.map((item) => item.id === updated.id ? updated : item) })) } : current); toast.success('Task updated.'); }
     catch { toast.error('Task update could not be saved.'); }
   }
 
@@ -81,8 +77,14 @@ export default function TasksPage() {
             {group.tasks.slice(0, 4).map((task) => <div key={task.id} className="task-quick-row"><strong>{task.title}</strong><Button variant="secondary" onClick={() => toggleTaskDone(task)}>{isDone(task) ? 'Reopen' : 'Mark done'}</Button><input aria-label={`Due date for ${task.title}`} type="date" value={task.dueDate?.slice(0, 10) ?? ''} onChange={(event) => quickUpdate(task, { dueDate: event.target.value ? new Date(`${event.target.value}T12:00:00`).toISOString() : null })} /></div>)}
           </div>}
         </section>)}
+      {!tasksQuery.isLoading && tasks.length > 0 && (
+        <div className="backlog-footer">
+          <span>Showing {tasks.length} of {totalCount} assigned task{totalCount === 1 ? '' : 's'}</span>
+          {tasksQuery.hasNextPage && <Button variant="secondary" loading={tasksQuery.isFetchingNextPage} onClick={() => tasksQuery.fetchNextPage()}>Load more</Button>}
+        </div>
+      )}
       <TaskDetailModal taskId={selectedTaskId} onClose={() => setSelectedTaskId(null)} onTaskUpdated={(task) => {
-        queryClient.setQueryData<Task[]>(queryKeys.assignedTasks, (current = []) => current.map((item) => item.id === task.id ? task : item));
+        queryClient.setQueriesData<{ pages: { items: Task[] }[] }>({ queryKey: ['tasks', 'assigned'] }, (current) => current ? { ...current, pages: current.pages.map((page) => ({ ...page, items: page.items.map((item) => item.id === task.id ? task : item) })) } : current);
         queryClient.setQueryData(queryKeys.task(task.id), task);
       }} />
     </>

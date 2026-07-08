@@ -11,8 +11,10 @@ import {
   getAssignedTasks,
   getAttachmentForDownload,
   getTaskAttachments,
+  getTaskActivities,
   getTaskChecklistItems,
   getTaskChildren,
+  getTaskComments,
   getProjectTasks,
   getTaskById,
   getTaskDocuments,
@@ -21,6 +23,17 @@ import {
   updateTaskDocuments,
 } from "../services/task.service";
 import { logResponsePayloadSize } from "../utils/payload-size-logger";
+
+function readPaginationQuery(req: Request) {
+  const requestedLimit = Number(req.query.limit);
+  const limit = Number.isFinite(requestedLimit)
+    ? Math.min(Math.max(Math.floor(requestedLimit), 1), 100)
+    : undefined;
+  return {
+    limit,
+    cursor: typeof req.query.cursor === "string" ? req.query.cursor : undefined,
+  };
+}
 
 export const createTaskController = async (req: Request, res: Response, next: NextFunction) => {
   try {
@@ -35,7 +48,12 @@ export const createTaskController = async (req: Request, res: Response, next: Ne
 export const getProjectTasksController = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const user = (req as any).user;
-    const tasks = await getProjectTasks(req.params.projectId as string, user.userId);
+    const sprintId = req.query.sprintId;
+    const tasks = await getProjectTasks(req.params.projectId as string, user.userId, {
+      ...readPaginationQuery(req),
+      sprintId: sprintId === "null" ? null : typeof sprintId === "string" ? sprintId : undefined,
+      statusId: typeof req.query.statusId === "string" ? req.query.statusId : undefined,
+    });
     const responseBody = { success: true, data: tasks };
     logResponsePayloadSize("tasks.project.list", responseBody);
     return res.status(200).json(responseBody);
@@ -47,7 +65,12 @@ export const getProjectTasksController = async (req: Request, res: Response, nex
 export const getAssignedTasksController = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const user = (req as any).user;
-    const tasks = await getAssignedTasks(user.userId);
+    const tasks = await getAssignedTasks(user.userId, {
+      ...readPaginationQuery(req),
+      filter: req.query.filter === "today" || req.query.filter === "overdue" || req.query.filter === "completed" || req.query.filter === "all"
+        ? req.query.filter
+        : undefined,
+    });
     const responseBody = { success: true, data: tasks };
     logResponsePayloadSize("tasks.assigned.list", responseBody);
     return res.status(200).json(responseBody);
@@ -83,6 +106,26 @@ export const getTaskDocumentsController = async (req: Request, res: Response, ne
     const user = (req as any).user;
     const documents = await getTaskDocuments(req.params.id as string, user.userId);
     return res.status(200).json({ success: true, data: documents });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getTaskCommentsController = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const user = (req as any).user;
+    const comments = await getTaskComments(req.params.id as string, user.userId, readPaginationQuery(req));
+    return res.status(200).json({ success: true, data: comments });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getTaskActivitiesController = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const user = (req as any).user;
+    const activities = await getTaskActivities(req.params.id as string, user.userId, readPaginationQuery(req));
+    return res.status(200).json({ success: true, data: activities });
   } catch (error) {
     next(error);
   }
@@ -185,7 +228,7 @@ export const createSubtaskTaskController = async (req: Request, res: Response, n
 export const getTaskAttachmentsController = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const user = (req as any).user;
-    const attachments = await getTaskAttachments(req.params.id as string, user.userId);
+    const attachments = await getTaskAttachments(req.params.id as string, user.userId, readPaginationQuery(req));
     return res.status(200).json({ success: true, data: attachments });
   } catch (error) {
     next(error);

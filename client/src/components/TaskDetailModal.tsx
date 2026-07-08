@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type DragEvent, type ReactNode } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
 import DocumentLinkPicker from './DocumentLinkPicker';
 import Icon from './Icon';
 import { Button, Modal, Select, Spinner, Tooltip } from './ui';
@@ -11,8 +11,11 @@ import {
   deleteTaskAttachment,
   downloadTaskAttachment,
   fetchTaskAttachmentBlob,
+  getTaskActivities,
+  getTaskAttachments,
   getProjectStatuses,
   getTaskById,
+  getTaskComments,
   updateTask,
   updateTaskDocuments,
   uploadTaskAttachment,
@@ -48,19 +51,13 @@ interface AcceptanceCriterion {
 }
 
 function hasFullTaskDetail(task?: Task): task is Task & {
-  comments: NonNullable<Task['comments']>;
-  activities: NonNullable<Task['activities']>;
   documents: NonNullable<Task['documents']>;
   children: NonNullable<Task['children']>;
-  attachments: NonNullable<Task['attachments']>;
 } {
   return Boolean(
     task
-    && Array.isArray(task.comments)
-    && Array.isArray(task.activities)
     && Array.isArray(task.documents)
     && Array.isArray(task.children)
-    && Array.isArray(task.attachments)
   );
 }
 function TaskPropertyRow({ label, hint, children }: { label: string; hint?: string; children: ReactNode }) {
@@ -223,6 +220,33 @@ export default function TaskDetailModal({ taskId: propTaskId, onClose, onTaskUpd
     initialData: () => taskProjectId ? queryClient.getQueryData<ProjectStatus[]>(queryKeys.projectStatuses(taskProjectId)) : undefined,
     staleTime: queryTimes.statuses,
   });
+  const commentsQuery = useInfiniteQuery({
+    queryKey: queryKeys.taskComments(taskId ?? ''),
+    queryFn: ({ pageParam }) => getTaskComments(taskId!, { cursor: pageParam, limit: 20 }),
+    enabled: Boolean(taskId),
+    initialPageParam: null as string | null,
+    getNextPageParam: (lastPage) => lastPage.hasMore ? lastPage.nextCursor ?? undefined : undefined,
+  });
+  const activitiesQuery = useInfiniteQuery({
+    queryKey: queryKeys.taskActivities(taskId ?? ''),
+    queryFn: ({ pageParam }) => getTaskActivities(taskId!, { cursor: pageParam, limit: 20 }),
+    enabled: Boolean(taskId),
+    initialPageParam: null as string | null,
+    getNextPageParam: (lastPage) => lastPage.hasMore ? lastPage.nextCursor ?? undefined : undefined,
+  });
+  const attachmentsQuery = useInfiniteQuery({
+    queryKey: queryKeys.taskAttachments(taskId ?? ''),
+    queryFn: ({ pageParam }) => getTaskAttachments(taskId!, { cursor: pageParam, limit: 20 }),
+    enabled: Boolean(taskId),
+    initialPageParam: null as string | null,
+    getNextPageParam: (lastPage) => lastPage.hasMore ? lastPage.nextCursor ?? undefined : undefined,
+  });
+  const comments = useMemo(() => commentsQuery.data?.pages.flatMap((page) => page.items) ?? [], [commentsQuery.data]);
+  const activities = useMemo(() => activitiesQuery.data?.pages.flatMap((page) => page.items) ?? [], [activitiesQuery.data]);
+  const attachmentItems = useMemo(() => attachmentsQuery.data?.pages.flatMap((page) => page.items) ?? [], [attachmentsQuery.data]);
+  const commentsTotal = commentsQuery.data?.pages[0]?.totalCount ?? task?._count?.comments ?? 0;
+  const activitiesTotal = activitiesQuery.data?.pages[0]?.totalCount ?? task?._count?.activities ?? 0;
+  const attachmentsTotal = attachmentsQuery.data?.pages[0]?.totalCount ?? task?._count?.attachments ?? 0;
   const statuses = useMemo(
     () => [...(statusesQuery.data ?? [])].sort((a, b) => a.order - b.order),
     [statusesQuery.data],
@@ -277,8 +301,6 @@ export default function TaskDetailModal({ taskId: propTaskId, onClose, onTaskUpd
     setChildren(taskQuery.data.children ?? []);
     setChildrenLoading(false);
     setChildrenMessage('');
-    setAttachments(taskQuery.data.attachments ?? []);
-    setAttachmentsMessage('');
     revokeImagePreviewUrls();
     setImagePreviews({});
     setLightboxAttachmentId(null);
@@ -302,6 +324,11 @@ export default function TaskDetailModal({ taskId: propTaskId, onClose, onTaskUpd
       });
     }
   }, [taskQuery.data]);
+
+  useEffect(() => {
+    setAttachments(attachmentItems);
+    if (!attachmentsQuery.isFetching) setAttachmentsMessage('');
+  }, [attachmentItems, attachmentsQuery.isFetching]);
 
   useEffect(() => {
     if (projectQuery.data?.members) setProjectMembers(projectQuery.data.members);
@@ -638,6 +665,8 @@ export default function TaskDetailModal({ taskId: propTaskId, onClose, onTaskUpd
       const uploaded = await Promise.all(Array.from(files).map((file) => uploadTaskAttachment(taskId, file)));
       setAttachments((current) => [...uploaded, ...current]);
       setAttachmentsMessage('Uploaded');
+      await queryClient.invalidateQueries({ queryKey: queryKeys.taskAttachments(taskId) });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.task(taskId) });
       if (attachmentInputRef.current) attachmentInputRef.current.value = '';
     } catch {
       setAttachmentsMessage('Upload failed');
@@ -666,6 +695,10 @@ export default function TaskDetailModal({ taskId: propTaskId, onClose, onTaskUpd
     }
     try {
       await deleteTaskAttachment(attachment.id);
+      if (taskId) {
+        await queryClient.invalidateQueries({ queryKey: queryKeys.taskAttachments(taskId) });
+        await queryClient.invalidateQueries({ queryKey: queryKeys.task(taskId) });
+      }
       if (previewUrl) {
         URL.revokeObjectURL(previewUrl);
         imagePreviewUrlsRef.current.delete(previewUrl);
@@ -723,10 +756,11 @@ export default function TaskDetailModal({ taskId: propTaskId, onClose, onTaskUpd
     setCommentMessage('');
     try {
       await createTaskComment(taskId, content);
-      const refreshedTask = await getTaskById(taskId);
-      cacheTask(refreshedTask);
       setCommentDraft('');
       setCommentMessage('Posted');
+      await queryClient.invalidateQueries({ queryKey: queryKeys.taskComments(taskId) });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.taskActivities(taskId) });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.task(taskId) });
       await queryClient.invalidateQueries({ queryKey: queryKeys.projectActivity(task.projectId) });
     } catch {
       setCommentMessage('Could not post comment');
@@ -967,7 +1001,7 @@ export default function TaskDetailModal({ taskId: propTaskId, onClose, onTaskUpd
               <section className="task-detail-section">
                 <div className="task-detail-section-heading">
                   <h3>Attachments</h3>
-                  <span>{uploadingAttachment ? 'Uploading...' : attachmentsMessage}</span>
+                  <span>{uploadingAttachment ? 'Uploading...' : attachmentsMessage || `${attachments.length} of ${attachmentsTotal}`}</span>
                 </div>
                 <input
                   ref={attachmentInputRef}
@@ -1053,8 +1087,15 @@ export default function TaskDetailModal({ taskId: propTaskId, onClose, onTaskUpd
                       </div>
                     );
                   })}
-                  {attachments.length === 0 && <div className="document-link-empty">No files attached yet.</div>}
+                  {attachments.length === 0 && (
+                    <div className="document-link-empty">{attachmentsQuery.isLoading ? 'Loading attachments...' : 'No files attached yet.'}</div>
+                  )}
                 </div>
+                {attachmentsQuery.hasNextPage && (
+                  <Button variant="secondary" loading={attachmentsQuery.isFetchingNextPage} onClick={() => attachmentsQuery.fetchNextPage()}>
+                    Load more attachments
+                  </Button>
+                )}
               </section>
 
               <section className="task-detail-section">
@@ -1110,13 +1151,13 @@ export default function TaskDetailModal({ taskId: propTaskId, onClose, onTaskUpd
                   <span>{postingComment ? 'Posting...' : commentMessage}</span>
                 </div>
                 <div className="task-detail-tabs" role="tablist" aria-label="Task discussion and history">
-                  <button type="button" className={commentsView === 'comments' ? 'is-active' : ''} onClick={() => setCommentsView('comments')} role="tab" aria-selected={commentsView === 'comments'}>Comments ({task.comments?.length ?? 0})</button>
-                  <button type="button" className={commentsView === 'activity' ? 'is-active' : ''} onClick={() => setCommentsView('activity')} role="tab" aria-selected={commentsView === 'activity'}>History ({task.activities?.length ?? 0})</button>
+                  <button type="button" className={commentsView === 'comments' ? 'is-active' : ''} onClick={() => setCommentsView('comments')} role="tab" aria-selected={commentsView === 'comments'}>Comments ({commentsTotal})</button>
+                  <button type="button" className={commentsView === 'activity' ? 'is-active' : ''} onClick={() => setCommentsView('activity')} role="tab" aria-selected={commentsView === 'activity'}>History ({activitiesTotal})</button>
                 </div>
                 {commentsView === 'comments' ? (
                   <div className="task-comments-panel">
                     <div className="task-comment-list">
-                      {task.comments?.length ? task.comments.map((comment) => (
+                      {comments.length ? comments.map((comment) => (
                         <article className="task-comment" key={comment.id}>
                           <div className="task-comment-avatar">{getInitials(comment.author.name)}</div>
                           <div className="task-comment-body">
@@ -1127,10 +1168,13 @@ export default function TaskDetailModal({ taskId: propTaskId, onClose, onTaskUpd
                             <p>{comment.content}</p>
                           </div>
                         </article>
-                      )) : (
+                      )) : commentsQuery.isLoading ? (
+                        <div className="document-link-empty">Loading comments...</div>
+                      ) : (
                         <div className="document-link-empty">No comments yet.</div>
                       )}
                     </div>
+                    {commentsQuery.hasNextPage && <Button variant="secondary" loading={commentsQuery.isFetchingNextPage} onClick={() => commentsQuery.fetchNextPage()}>Load more comments</Button>}
                     <div className="task-comment-composer">
                       <textarea
                         className="task-description-field task-comment-input"
@@ -1151,7 +1195,7 @@ export default function TaskDetailModal({ taskId: propTaskId, onClose, onTaskUpd
                 ) : (
                   <div className="task-activity-list">
                     <p className="task-history-help">Status changes, comments, and task updates are recorded here in order.</p>
-                    {task.activities?.length ? task.activities.map((activity) => (
+                    {activities.length ? activities.map((activity) => (
                       <article className="task-activity-item" key={activity.id}>
                         <span><Icon name="activity" size={13} /></span>
                         <div>
@@ -1160,9 +1204,12 @@ export default function TaskDetailModal({ taskId: propTaskId, onClose, onTaskUpd
                           <time>{formatCommentDate(activity.createdAt)} by {activity.user.name}</time>
                         </div>
                       </article>
-                    )) : (
+                    )) : activitiesQuery.isLoading ? (
+                      <div className="document-link-empty">Loading history...</div>
+                    ) : (
                       <div className="document-link-empty">No activity yet.</div>
                     )}
+                    {activitiesQuery.hasNextPage && <Button variant="secondary" loading={activitiesQuery.isFetchingNextPage} onClick={() => activitiesQuery.fetchNextPage()}>Load more history</Button>}
                   </div>
                 )}
               </section>

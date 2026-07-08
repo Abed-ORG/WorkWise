@@ -85,6 +85,24 @@ const attachmentMetaSelect = {
   createdAt: true,
 } as const;
 
+const commentSelect = {
+  id: true,
+  content: true,
+  createdAt: true,
+  updatedAt: true,
+  taskId: true,
+  author: { select: { id: true, name: true, email: true, avatarUrl: true } },
+} as const;
+
+const taskActivitySelect = {
+  id: true,
+  action: true,
+  details: true,
+  createdAt: true,
+  taskId: true,
+  user: { select: { id: true, name: true, email: true, avatarUrl: true } },
+} as const;
+
 const linkedDocumentSelect = {
   id: true,
   title: true,
@@ -119,6 +137,35 @@ export interface CreateTaskInput {
   sprintId?: string;
   assigneeId?: string;
   creatorId: string;
+}
+
+export interface PaginationInput {
+  limit?: number;
+  cursor?: string;
+}
+
+export interface ProjectTaskListInput extends PaginationInput {
+  sprintId?: string | null;
+  statusId?: string;
+}
+
+export interface AssignedTaskListInput extends PaginationInput {
+  filter?: "all" | "today" | "overdue" | "completed";
+}
+
+async function pagedFindMany<T>(
+  limit: number,
+  query: (take: number) => Promise<T[]>,
+  getCursor: (item: T) => string
+) {
+  const rows = await query(limit + 1);
+  const hasMore = rows.length > limit;
+  const items = hasMore ? rows.slice(0, limit) : rows;
+  return {
+    items,
+    hasMore,
+    nextCursor: hasMore && items.length ? getCursor(items[items.length - 1]) : null,
+  };
 }
 
 export const createTask = async (input: CreateTaskInput) => {
@@ -216,7 +263,7 @@ export const createTask = async (input: CreateTaskInput) => {
   emitProjectEvent(task.projectId, "task:created", task);
   return task;
 };
-export const getProjectTasks = async (projectId: string, userId: string) => {
+export const getProjectTasksLegacy = async (projectId: string, userId: string) => {
   await requireProjectMember(projectId, userId);
 
   // Board, backlog, and every other project-wide task view render this list directly —
@@ -229,9 +276,37 @@ export const getProjectTasks = async (projectId: string, userId: string) => {
   });
 };
 
+export const getProjectTasks = async (projectId: string, userId: string, options: ProjectTaskListInput = {}) => {
+  await requireProjectMember(projectId, userId);
+  const limit = options.limit ?? 75;
+  const where = {
+    projectId,
+    parentId: null,
+    ...(options.sprintId !== undefined ? { sprintId: options.sprintId } : {}),
+    ...(options.statusId ? { statusId: options.statusId } : {}),
+  };
+
+  const [page, totalCount] = await Promise.all([
+    pagedFindMany(
+      limit,
+      (take) => prisma.task.findMany({
+        where,
+        select: taskListSelect,
+        orderBy: [{ order: "asc" }, { createdAt: "desc" }],
+        take,
+        ...(options.cursor ? { skip: 1, cursor: { id: options.cursor } } : {}),
+      }),
+      (task) => task.id
+    ),
+    prisma.task.count({ where }),
+  ]);
+
+  return { ...page, totalCount };
+};
+
 // Unlike getProjectTasks, subtasks ARE included here — a user assigned to a subtask
 // should see it in their personal task list (the parent include gives it context).
-export const getAssignedTasks = async (userId: string) => prisma.task.findMany({
+export const getAssignedTasksLegacy = async (userId: string) => prisma.task.findMany({
   where: {
     assigneeId: userId,
     project: { members: { some: { userId } } },
@@ -239,6 +314,44 @@ export const getAssignedTasks = async (userId: string) => prisma.task.findMany({
   select: taskListSelect,
   orderBy: [{ dueDate: "asc" }, { createdAt: "desc" }],
 });
+
+export const getAssignedTasks = async (userId: string, options: AssignedTaskListInput = {}) => {
+  const todayStart = new Date();
+  todayStart.setHours(0, 0, 0, 0);
+  const todayEnd = new Date(todayStart);
+  todayEnd.setHours(23, 59, 59, 999);
+  const limit = options.limit ?? 50;
+  const where = {
+    assigneeId: userId,
+    project: { members: { some: { userId } } },
+    ...(options.filter === "completed" ? { status: { category: StatusCategory.DONE } } : {}),
+    ...(options.filter === "today" ? {
+      status: { category: { not: StatusCategory.DONE } },
+      dueDate: { gte: todayStart, lte: todayEnd },
+    } : {}),
+    ...(options.filter === "overdue" ? {
+      status: { category: { not: StatusCategory.DONE } },
+      dueDate: { lt: todayStart },
+    } : {}),
+  };
+
+  const [page, totalCount] = await Promise.all([
+    pagedFindMany(
+      limit,
+      (take) => prisma.task.findMany({
+        where,
+        select: taskListSelect,
+        orderBy: [{ dueDate: "asc" }, { createdAt: "desc" }],
+        take,
+        ...(options.cursor ? { skip: 1, cursor: { id: options.cursor } } : {}),
+      }),
+      (task) => task.id
+    ),
+    prisma.task.count({ where }),
+  ]);
+
+  return { ...page, totalCount };
+};
 
 export const getAssignedFocusTasks = async (userId: string) => {
   const endToday = new Date();
@@ -298,34 +411,6 @@ export const getTaskById = async (taskId: string, userId: string) => {
           type: true,
         },
       },
-      comments: {
-        include: {
-          author: {
-            select: {
-              id: true,
-              name: true,
-              email: true,
-            },
-          },
-        },
-        orderBy: {
-          createdAt: "asc",
-        },
-      },
-      activities: {
-        include: {
-          user: {
-            select: {
-              id: true,
-              name: true,
-              email: true,
-            },
-          },
-        },
-        orderBy: {
-          createdAt: "desc",
-        },
-      },
       documents: {
         include: {
           document: {
@@ -340,10 +425,7 @@ export const getTaskById = async (taskId: string, userId: string) => {
         select: taskListSelect,
         orderBy: [{ order: "asc" }, { createdAt: "asc" }],
       },
-      attachments: {
-        select: attachmentMetaSelect,
-        orderBy: { createdAt: "desc" },
-      },
+      _count: { select: { comments: true, activities: true, attachments: true } },
     },
   });
 
@@ -383,6 +465,48 @@ export const getTaskDocuments = async (taskId: string, userId: string) => {
   });
 
   return links.map((link) => link.document);
+};
+
+export const getTaskComments = async (taskId: string, userId: string, options: PaginationInput = {}) => {
+  await getTaskForTaskFeature(taskId, userId);
+  const limit = options.limit ?? 20;
+  const [page, totalCount] = await Promise.all([
+    pagedFindMany(
+      limit,
+      (take) => prisma.comment.findMany({
+        where: { taskId },
+        select: commentSelect,
+        orderBy: { createdAt: "desc" },
+        take,
+        ...(options.cursor ? { skip: 1, cursor: { id: options.cursor } } : {}),
+      }),
+      (comment) => comment.id
+    ),
+    prisma.comment.count({ where: { taskId } }),
+  ]);
+
+  return { ...page, items: [...page.items].reverse(), totalCount };
+};
+
+export const getTaskActivities = async (taskId: string, userId: string, options: PaginationInput = {}) => {
+  await getTaskForTaskFeature(taskId, userId);
+  const limit = options.limit ?? 20;
+  const [page, totalCount] = await Promise.all([
+    pagedFindMany(
+      limit,
+      (take) => prisma.taskActivity.findMany({
+        where: { taskId },
+        select: taskActivitySelect,
+        orderBy: { createdAt: "desc" },
+        take,
+        ...(options.cursor ? { skip: 1, cursor: { id: options.cursor } } : {}),
+      }),
+      (activity) => activity.id
+    ),
+    prisma.taskActivity.count({ where: { taskId } }),
+  ]);
+
+  return { ...page, totalCount };
 };
 
 export const updateTaskDocuments = async (taskId: string, userId: string, documentIds: string[]) => {
@@ -773,14 +897,26 @@ const ALLOWED_MIME_TYPES = new Set([
 
 // ─── Attachment service functions ────────────────────────────────────────────
 
-export const getTaskAttachments = async (taskId: string, userId: string) => {
+export const getTaskAttachments = async (taskId: string, userId: string, options: PaginationInput = {}) => {
   await getTaskForTaskFeature(taskId, userId);
+  const limit = options.limit ?? 20;
 
-  return prisma.attachment.findMany({
-    where: { taskId },
-    select: attachmentMetaSelect,
-    orderBy: { createdAt: "desc" },
-  });
+  const [page, totalCount] = await Promise.all([
+    pagedFindMany(
+      limit,
+      (take) => prisma.attachment.findMany({
+        where: { taskId },
+        select: attachmentMetaSelect,
+        orderBy: { createdAt: "desc" },
+        take,
+        ...(options.cursor ? { skip: 1, cursor: { id: options.cursor } } : {}),
+      }),
+      (attachment) => attachment.id
+    ),
+    prisma.attachment.count({ where: { taskId } }),
+  ]);
+
+  return { ...page, totalCount };
 };
 
 export const getAttachmentForDownload = async (attachmentId: string, userId: string) => {
