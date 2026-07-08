@@ -8,6 +8,7 @@ import {
   deleteTaskChecklistItemController,
   deleteTaskController,
   downloadTaskAttachmentController,
+  getAssignedFocusTasksController,
   getAssignedTasksController,
   getTaskAttachmentsController,
   getTaskChecklistItemsController,
@@ -41,6 +42,7 @@ router.post(
   createTaskController
 );
 
+router.get("/assigned/me/focus", authenticate, getAssignedFocusTasksController);
 router.get("/assigned/me", authenticate, getAssignedTasksController);
 router.get("/project/:projectId", authenticate, getProjectTasksController);
 router.patch("/subtasks/:id", authenticate, validateBody(updateChecklistItemSchema), updateTaskChecklistItemController);

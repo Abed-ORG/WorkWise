@@ -7,6 +7,7 @@ import {
   deleteTaskAttachment,
   deleteTaskChecklistItem,
   deleteTask,
+  getAssignedFocusTasks,
   getAssignedTasks,
   getAttachmentForDownload,
   getTaskAttachments,
@@ -49,6 +50,18 @@ export const getAssignedTasksController = async (req: Request, res: Response, ne
     const tasks = await getAssignedTasks(user.userId);
     const responseBody = { success: true, data: tasks };
     logResponsePayloadSize("tasks.assigned.list", responseBody);
+    return res.status(200).json(responseBody);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getAssignedFocusTasksController = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const user = (req as any).user;
+    const tasks = await getAssignedFocusTasks(user.userId);
+    const responseBody = { success: true, data: tasks };
+    logResponsePayloadSize("tasks.assigned.focus", responseBody);
     return res.status(200).json(responseBody);
   } catch (error) {
     next(error);

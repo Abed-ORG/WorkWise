@@ -62,6 +62,8 @@ export interface Task {
   };
 }
 
+export type AssignedFocusTask = Pick<Task, 'id' | 'title' | 'dueDate' | 'projectId' | 'project'>;
+
 export interface TaskChecklistItem {
   id: string;
   taskId: string;
@@ -126,6 +128,11 @@ export async function getProjectTasks(projectId: string): Promise<Task[]> {
 
 export async function getAssignedTasks(): Promise<Task[]> {
   const response = await apiClient.get('/tasks/assigned/me');
+  return response.data.data;
+}
+
+export async function getAssignedFocusTasks(): Promise<AssignedFocusTask[]> {
+  const response = await apiClient.get('/tasks/assigned/me/focus');
   return response.data.data;
 }
 
