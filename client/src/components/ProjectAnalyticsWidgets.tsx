@@ -74,21 +74,19 @@ export function VelocityChart({ points, average }: VelocityChartProps) {
           <p>Complete a sprint to start seeing delivery capacity over time.</p>
         </div>
       ) : (
-        <>
-          <div className="velocity-bars">
-            {points.map((point) => (
-              <div className="velocity-bar-wrap" key={point.sprintId}>
-                <div className="velocity-bar" style={{ height: `${Math.max(8, (point.completed / maxValue) * 100)}%` }}>
-                  <span className="velocity-tooltip">{point.sprintName}: {point.completed}</span>
-                </div>
-                <span>{point.sprintName}</span>
+        <div className="velocity-bars">
+          {points.map((point) => (
+            <div className="velocity-bar-wrap" key={point.sprintId}>
+              <div className="velocity-bar" style={{ height: `${Math.max(8, (point.completed / maxValue) * 100)}%` }}>
+                <span className="velocity-bar-value">{point.completed}</span>
               </div>
-            ))}
-            <div className="velocity-average-line" style={{ bottom: `${(average / maxValue) * 100}%` }}>
-              <span>Avg {average.toFixed(1)}</span>
+              <span>{point.sprintName}</span>
             </div>
+          ))}
+          <div className="velocity-average-line" style={{ bottom: `${(average / maxValue) * 100}%` }}>
+            <span>Avg {average.toFixed(1)}</span>
           </div>
-        </>
+        </div>
       )}
     </div>
   );

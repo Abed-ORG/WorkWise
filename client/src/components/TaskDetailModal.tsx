@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, type DragEvent, type ReactNode } 
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import DocumentLinkPicker from './DocumentLinkPicker';
 import Icon from './Icon';
-import { Button, Modal, Select, Spinner } from './ui';
+import { Button, Modal, Select, Spinner, Tooltip } from './ui';
 import { getProjectById, getProjectSprints } from '../services/projectService';
 import {
   createTaskChild,
@@ -63,11 +63,14 @@ function hasFullTaskDetail(task?: Task): task is Task & {
     && Array.isArray(task.attachments)
   );
 }
-
-function TaskPropertyRow({ label, children }: { label: string; children: ReactNode }) {
+function TaskPropertyRow({ label, hint, children }: { label: string; hint?: string; children: ReactNode }) {
   return (
     <div className="task-property-row">
-      <span className="task-property-label">{label}</span>
+      {hint ? (
+        <Tooltip content={hint}><span className="task-property-label">{label}</span></Tooltip>
+      ) : (
+        <span className="task-property-label">{label}</span>
+      )}
       <div className="task-property-value">{children}</div>
     </div>
   );
@@ -242,6 +245,8 @@ export default function TaskDetailModal({ taskId: propTaskId, onClose, onTaskUpd
       disabled: currentPastSprint?.id === sprint.id,
     })),
   ];
+  const currentSprintLabel = sprintOptions.find((option) => option.value === (task?.sprintId ?? ''))?.label
+    ?? 'Product backlog / No sprint';
 
   function revokeImagePreviewUrls() {
     imagePreviewUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
@@ -1170,7 +1175,7 @@ export default function TaskDetailModal({ taskId: propTaskId, onClose, onTaskUpd
                   <span>{savingDetails || savingStatus || savingSprint ? 'Saving...' : detailsMessage || statusMessage || sprintMessage}</span>
                 </div>
                 <div className="task-property-list">
-                  <TaskPropertyRow label="Type">
+                  <TaskPropertyRow label="Type" hint="The kind of work item — story, task, bug, and so on">
                     {task.parentId ? (
                       <strong className="task-property-readonly"><Icon name="subtask" size={13} className={taskTypeColorClass('SUBTASK')} /> Subtask</strong>
                     ) : (
@@ -1182,7 +1187,7 @@ export default function TaskDetailModal({ taskId: propTaskId, onClose, onTaskUpd
                       />
                     )}
                   </TaskPropertyRow>
-                  <TaskPropertyRow label="Priority">
+                  <TaskPropertyRow label="Priority" hint="How urgently this task needs attention">
                     <Select
                       value={task.priority}
                       options={PRIORITY_OPTIONS}
@@ -1190,7 +1195,7 @@ export default function TaskDetailModal({ taskId: propTaskId, onClose, onTaskUpd
                       disabled={savingDetails}
                     />
                   </TaskPropertyRow>
-                  <TaskPropertyRow label="Status">
+                  <TaskPropertyRow label="Status" hint="Current stage in the project workflow">
                     <Select
                       className="task-status-select"
                       value={task.statusId}
@@ -1199,19 +1204,23 @@ export default function TaskDetailModal({ taskId: propTaskId, onClose, onTaskUpd
                       disabled={savingStatus}
                     />
                   </TaskPropertyRow>
-                  <TaskPropertyRow label="Sprint">
+                  <TaskPropertyRow label="Sprint" hint="The sprint this task is scheduled in">
                     {task.parentId ? (
-                      <strong className="task-property-readonly">{task.sprint?.name ?? 'Product backlog / No sprint'}</strong>
+                      <Tooltip block content={task.sprint?.name ?? 'Product backlog / No sprint'}>
+                        <strong className="task-property-readonly">{task.sprint?.name ?? 'Product backlog / No sprint'}</strong>
+                      </Tooltip>
                     ) : (
-                      <Select
-                        value={task.sprintId ?? ''}
-                        options={sprintOptions}
-                        onChange={(event) => updateSprint(event.target.value)}
-                        disabled={savingSprint}
-                      />
+                      <Tooltip block content={currentSprintLabel}>
+                        <Select
+                          value={task.sprintId ?? ''}
+                          options={sprintOptions}
+                          onChange={(event) => updateSprint(event.target.value)}
+                          disabled={savingSprint}
+                        />
+                      </Tooltip>
                     )}
                   </TaskPropertyRow>
-                  <TaskPropertyRow label="Assignee">
+                  <TaskPropertyRow label="Assignee" hint="Team member responsible for this task">
                     <Select
                       value={task.assignee?.id ?? ''}
                       options={[
@@ -1222,7 +1231,7 @@ export default function TaskDetailModal({ taskId: propTaskId, onClose, onTaskUpd
                       disabled={savingDetails}
                     />
                   </TaskPropertyRow>
-                  <TaskPropertyRow label="Story Points">
+                  <TaskPropertyRow label="Story Points" hint="Relative effort estimate for this task">
                     <Select
                       value={task.storyPoints ? String(task.storyPoints) : ''}
                       options={storyPointsSelectOptions}
@@ -1230,7 +1239,7 @@ export default function TaskDetailModal({ taskId: propTaskId, onClose, onTaskUpd
                       disabled={savingDetails}
                     />
                   </TaskPropertyRow>
-                  <TaskPropertyRow label="Due Date">
+                  <TaskPropertyRow label="Due Date" hint="Target date to complete this task">
                     <input
                       className="field-control task-property-date"
                       type="date"
@@ -1239,13 +1248,17 @@ export default function TaskDetailModal({ taskId: propTaskId, onClose, onTaskUpd
                       disabled={savingDetails}
                     />
                   </TaskPropertyRow>
-                  <TaskPropertyRow label="Reporter">
-                    <strong className="task-property-readonly">{task.creator?.name ?? 'Unknown'}</strong>
+                  <TaskPropertyRow label="Reporter" hint="Person who created this task">
+                    <Tooltip block content={task.creator?.name ?? 'Unknown'}>
+                      <strong className="task-property-readonly">{task.creator?.name ?? 'Unknown'}</strong>
+                    </Tooltip>
                   </TaskPropertyRow>
-                  <TaskPropertyRow label="Project">
+                  <TaskPropertyRow label="Project" hint="Project this task belongs to">
                     <span className="task-property-project">
                       <span className="task-property-project-key">{task.project?.key ?? 'PROJ'}</span>
-                      <strong>{task.project?.name ?? 'Unknown'}</strong>
+                      <Tooltip block content={task.project?.name ?? 'Unknown'}>
+                        <strong>{task.project?.name ?? 'Unknown'}</strong>
+                      </Tooltip>
                     </span>
                   </TaskPropertyRow>
                 </div>
