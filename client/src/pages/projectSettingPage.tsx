@@ -45,6 +45,8 @@ export default function ProjectSettingsPage() {
   const [form, setForm] = useState({ name: '', description: '' });
   const [deleteConfirmName, setDeleteConfirmName] = useState('');
   const [inviteForm, setInviteForm] = useState({ email: '', role: 'DEVELOPER' });
+  const [inviteSending, setInviteSending] = useState(false);
+  const [inviteStep, setInviteStep] = useState('');
 
   useEffect(() => {
     if (!projectId) return;
@@ -74,20 +76,34 @@ export default function ProjectSettingsPage() {
 
   async function handleInvite(event: React.FormEvent) {
     event.preventDefault();
-    if (!projectId) return;
+    if (!projectId || inviteSending) return;
+    setInviteSending(true);
+    setInviteStep('Preparing invitation...');
     try {
+      setInviteStep('Saving invitation and sending email...');
       const invitation = await inviteMember(projectId, inviteForm);
       setInvitations((current) => [...current, invitation]);
       setInviteForm({ email: '', role: 'DEVELOPER' });
-      setShowInviteForm(false);
       if (invitation.emailDeliveryStatus === 'FAILED') {
+        setInviteStep('Invitation saved, but email delivery failed.');
         toast.info('Invitation saved, but the email could not be delivered. Ask them to sign in with this email to accept it.');
       } else {
+        setInviteStep('Invitation email sent successfully.');
         toast.success('Invitation email sent successfully.');
       }
+      setShowInviteForm(false);
     } catch (requestError: unknown) {
+      const status = axios.isAxiosError(requestError) ? requestError.response?.status : undefined;
       const message = axios.isAxiosError<{ message?: string }>(requestError) ? requestError.response?.data?.message : undefined;
-      toast.error(message || 'Failed to send invitation.');
+      if (status === 429) {
+        setInviteStep('Too many invite emails. Please wait one hour before trying again.');
+        toast.error(message || 'Too many invite emails. Please wait one hour before trying again.');
+      } else {
+        setInviteStep('Invitation failed. Check the details and try again.');
+        toast.error(message || 'Failed to send invitation.');
+      }
+    } finally {
+      setInviteSending(false);
     }
   }
 
@@ -169,10 +185,11 @@ export default function ProjectSettingsPage() {
           {showInviteForm && (
             <form className="invite-panel" onSubmit={handleInvite}>
               <div className="inline-form">
-                <Input type="email" placeholder="teammate@company.com" value={inviteForm.email} onChange={(event) => setInviteForm((current) => ({ ...current, email: event.target.value }))} required />
-                <Select options={roleOptions} value={inviteForm.role} onChange={(event) => setInviteForm((current) => ({ ...current, role: event.target.value }))} />
-                <Button type="submit">Send invite</Button>
+                <Input type="email" placeholder="teammate@company.com" value={inviteForm.email} onChange={(event) => setInviteForm((current) => ({ ...current, email: event.target.value }))} required disabled={inviteSending} />
+                <Select options={roleOptions} value={inviteForm.role} onChange={(event) => setInviteForm((current) => ({ ...current, role: event.target.value }))} disabled={inviteSending} />
+                <Button type="submit" loading={inviteSending} disabled={inviteSending}>{inviteSending ? 'Sending...' : 'Send invite'}</Button>
               </div>
+              {inviteStep && <p className="field-help mt-2">{inviteStep}</p>}
             </form>
           )}
 
