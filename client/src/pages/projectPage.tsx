@@ -86,6 +86,7 @@ export default function ProjectsPage() {
   const error = projectsQuery.isError || invitationsQuery.isError
     ? 'We could not load your projects. Check the connection and try again.'
     : mutationError;
+  const linkedInvitationVisible = Boolean(linkedInvitationId && invitations.some((invitation) => invitation.id === linkedInvitationId));
 
   if (loading) return <PageSkeleton variant="cards" />;
 
@@ -94,6 +95,12 @@ export default function ProjectsPage() {
       <PageHeader eyebrow="Project portfolio" title="Projects" description="Organize goals, tasks, and people into focused spaces that are easy to navigate." actions={<Button onClick={() => navigate('/projects/create')}><Icon name="plus" size={16} /> New project</Button>} />
 
       {error && <div className="alert alert-error mb-5">{error} <button className="text-link ml-2" onClick={() => { projectsQuery.refetch(); invitationsQuery.refetch(); }}>Retry</button></div>}
+
+      {linkedInvitationId && !linkedInvitationVisible && (
+        <div className="alert alert-error mb-5">
+          This invitation is not available for the signed-in account. Sign out, then sign in or register with the email address that received the invitation.
+        </div>
+      )}
 
       {invitations.length > 0 && (
         <section className="invitation-stack animate-enter-delay" aria-label="Pending invitations">

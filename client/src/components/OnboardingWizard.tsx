@@ -28,6 +28,7 @@ export default function OnboardingWizard() {
   const [projectId, setProjectId] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [inviteProgress, setInviteProgress] = useState('');
   const [taskForm, setTaskForm] = useState({ title: '', description: '', priority: 'MEDIUM' });
   const [inviteForm, setInviteForm] = useState({ email: '', role: 'DEVELOPER' });
   const [sprintForm, setSprintForm] = useState({ name: 'Sprint 1', goal: '' });
@@ -110,18 +111,31 @@ export default function OnboardingWizard() {
   async function handleInviteSubmit(event: React.FormEvent) {
     event.preventDefault();
     if (!selectedAdminProject || !inviteForm.email.trim()) return setError('Choose an admin project and enter an email.');
-    setLoading(true); setError('');
+    if (loading) return;
+    setLoading(true); setError(''); setInviteProgress('Preparing invitation...');
     try {
+      setInviteProgress('Saving invitation and sending email...');
       const invitation = await inviteMember(selectedAdminProject.id, { email: inviteForm.email.trim(), role: inviteForm.role });
       if (invitation.emailDeliveryStatus === 'FAILED') {
+        setInviteProgress('Invitation saved, but email delivery failed.');
         toast.info('Invitation saved, but the email could not be delivered. Ask them to sign in with this email to accept it.');
       } else {
+        setInviteProgress('Invitation email sent.');
         toast.success('Invitation email sent.');
       }
       nextStep();
     } catch (requestError) {
+      const status = axios.isAxiosError(requestError) ? requestError.response?.status : undefined;
       const message = axios.isAxiosError<{ message?: string }>(requestError) ? requestError.response?.data?.message : undefined;
-      setError(message || 'We could not send that invitation.');
+      if (status === 429) {
+        const waitMessage = message || 'Too many invitation emails. Please wait one hour before trying again.';
+        setInviteProgress(waitMessage);
+        setError(waitMessage);
+        toast.error(waitMessage);
+      } else {
+        setInviteProgress('Invitation failed. Check the details and try again.');
+        setError(message || 'We could not send that invitation.');
+      }
     } finally { setLoading(false); }
   }
 
@@ -187,9 +201,10 @@ export default function OnboardingWizard() {
         ) : step === 1 ? (
           adminProjects.length ? <form className="form-stack" onSubmit={handleInviteSubmit}>
             <Select label="Project" options={options} value={selectedAdminProject?.id || adminProjects[0]?.id || ''} onChange={(event) => setProjectId(event.target.value)} />
-            <Input label="Teammate email" type="email" placeholder="teammate@company.com" value={inviteForm.email} onChange={(event) => setInviteForm((current) => ({ ...current, email: event.target.value }))} autoFocus />
-            <Select label="Role" options={[{ value: 'DEVELOPER', label: 'Developer' }, { value: 'VIEWER', label: 'Viewer' }, { value: 'ADMIN', label: 'Admin' }]} value={inviteForm.role} onChange={(event) => setInviteForm((current) => ({ ...current, role: event.target.value }))} />
-            <Button type="submit" loading={loading}>Send invitation and continue <Icon name="arrow-right" size={16} /></Button>
+            <Input label="Teammate email" type="email" placeholder="teammate@company.com" value={inviteForm.email} onChange={(event) => setInviteForm((current) => ({ ...current, email: event.target.value }))} autoFocus disabled={loading} />
+            <Select label="Role" options={[{ value: 'DEVELOPER', label: 'Developer' }, { value: 'VIEWER', label: 'Viewer' }, { value: 'ADMIN', label: 'Admin' }]} value={inviteForm.role} onChange={(event) => setInviteForm((current) => ({ ...current, role: event.target.value }))} disabled={loading} />
+            <Button type="submit" loading={loading} disabled={loading}>Send invitation and continue <Icon name="arrow-right" size={16} /></Button>
+            {inviteProgress && <p className="field-help">{inviteProgress}</p>}
           </form> : <p className="alert alert-error">You need admin access to invite project members.</p>
         ) : (
           adminProjects.length ? <form className="form-stack" onSubmit={handleSprintSubmit}>
